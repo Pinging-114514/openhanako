@@ -1,5 +1,9 @@
 [
   {
+    "keyId": "2026pinging",
+    "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAYXvW8MxLJNavIiT7wpV333r97uU1DsYiTOJdfBbfp9A=\n-----END PUBLIC KEY-----\n"
+  },
+  {
     "keyId": "2026a",
     "publicKey": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEABxlmYzrnEDdrKL7lW+KQsvO5omvy8Wyuj1G3YIs7eFo=\n-----END PUBLIC KEY-----\n"
   }

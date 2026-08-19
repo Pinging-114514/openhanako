@@ -20,12 +20,50 @@
 
 瞬态错误（`ECONNRESET` 等）会短退避重试 3 次。
 
-## 自己发热更新要准备什么
+## 最短上手路径
 
-1. 生成 Ed25519 密钥，公钥写入 `shared/artifact-core/pinned-keyset.json`  
-2. 私钥放进 GitHub Secret：`HANA_SIGN_KEY`（整段 PEM）  
-3. CI 打出 `vX.Y.Z` 安装包 Release  
-4. 跑 `publish-train`（workflow 或 `node scripts/publish-train.mjs --tag vX.Y.Z --channel stable`）  
-5. 客户端轮询 `.../releases/download/channels/stable.json`
+### 0. 已经做好的
+- 更新源默认指向 `Pinging-114514/openhanako`
+- OTA 走系统/手动代理 + 瞬态重试
+- 签名公钥 `2026pinging` 已写入 `shared/artifact-core/pinned-keyset.json`（排第一，发版会用它）
+- 私钥在仓库外：`E:\personal\HanaAgent\openhanako-secrets\hana-sign-private.pem`
 
-密钥目录建议放在仓库外，例如 `E:\personal\HanaAgent\openhanako-secrets\`，**不要提交私钥**。
+### 1. 把私钥塞进 GitHub Secret
+仓库 Settings → Secrets and variables → Actions → New repository secret：
+
+- Name: `HANA_SIGN_KEY`
+- Value: `hana-sign-private.pem` 的**全文**（含 BEGIN/END）
+
+或用 gh：
+
+```powershell
+gh secret set HANA_SIGN_KEY --repo Pinging-114514/openhanako --body (Get-Content -Raw E:\personal\HanaAgent\openhanako-secrets\hana-sign-private.pem)
+```
+
+### 2. 打第一个正式包
+推一个版本 tag，触发 `.github/workflows/build.yml`：
+
+```powershell
+git tag v0.447.4-pinging.1
+git push origin v0.447.4-pinging.1
+```
+
+成功后 GitHub Releases 会出现安装包；`publish-train` job 会写：
+- `channels/stable.json`（+ `.sig`）
+- `train-stable-N` 热更新归档
+
+### 3. 装你自己的包
+卸掉/覆盖当前官方 `0.446.6`，改装你 Release 里的 Windows 安装包。  
+只有装了 fork 包，自动更新才会查你家仓库，而不是 `liliMozi/openhanako`。
+
+### 4. 日常更新
+以后每次：
+1. 合代码到 `main`
+2. `git tag vX.Y.Z && git push origin vX.Y.Z`
+3. 等 Actions 绿
+4. 已安装客户端会自己检查；也可设置里手动检查更新
+
+### 5. 梯子
+Settings → 网络 用「系统代理」或填手动代理。TUN 全局模式通常最省心。
+
+**不要把私钥提交进 git。**
