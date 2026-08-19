@@ -1900,30 +1900,39 @@ export function createChatRoute(engine: any, hub: any, {
                 wsSend(ws, { type: "error", message: "slash system not ready", sessionPath: sp });
                 return;
               }
-              const agentId = slashCtx.agentId;
-              if (!agentId) {
-                // 走到这里说明服务端认不出这个会话的归属、调用方也没带身份——是内部契约被
-                // 破坏，不是用户操作错误。带上 code 让前端换成通用文案，英文原文进详情。
-                wsSend(ws, {
-                  type: "error",
-                  code: "internal_contract",
-                  message: "agent identity unresolved",
-                  sessionPath: sp,
-                });
-                return;
+              // Prefer session ownership / client payload; if both are empty (draft sessions,
+              // stale window context), fall back to the focused agent so slash commands like
+              // plugin /usage do not die as an opaque internal_contract error.
+              const agentId = slashCtx.agentId
+                || (typeof msg.agentId === "string" && msg.agentId.trim() ? msg.agentId.trim() : null)
+                || engine.currentAgentId
+                || engine.agent?.id
+                || "hanako";
+              if (!slashCtx.agentId) {
+                log.warn(`slash agentId fallback -> ${agentId} (sessionPath=${sp})`);
               }
               const sendReply = async (text) => {
                 wsSend(ws, { type: "slash_result", sessionPath: sp, text, level: "success" });
               };
-              const res = await dispatcher.tryDispatch(msg.text.trim(), {
-                sessionRef: buildDesktopSlashSessionRef(engine, agentId, sp),
-                source: "desktop",
-                senderId: "desktop",
-                isOwner: true,
-                reply: sendReply,
-              });
-              if (!res.handled) {
-                wsSend(ws, { type: "slash_result", sessionPath: sp, text: t("chat.unknownCommand", { text: msg.text }), level: "error" });
+              try {
+                const res = await dispatcher.tryDispatch(msg.text.trim(), {
+                  sessionRef: buildDesktopSlashSessionRef(engine, agentId, sp),
+                  source: "desktop",
+                  senderId: "desktop",
+                  isOwner: true,
+                  reply: sendReply,
+                });
+                if (!res.handled) {
+                  wsSend(ws, { type: "slash_result", sessionPath: sp, text: t("chat.unknownCommand", { text: msg.text }), level: "error" });
+                }
+              } catch (slashErr: any) {
+                log.error(`slash dispatch failed: ${slashErr?.message || slashErr}`);
+                wsSend(ws, {
+                  type: "slash_result",
+                  sessionPath: sp,
+                  text: String(slashErr?.message || slashErr),
+                  level: "error",
+                });
               }
               return;
             }

@@ -8,6 +8,12 @@ import {
 } from "./model-image-preprocess.ts";
 import { modelSupportsImage } from "./message-sanitizer.ts";
 import { getVisionCapabilities, modelSupportsDirectImageInput } from "../shared/model-capabilities.ts";
+import {
+  isAbortLikeVisionError,
+  isRecoverableVisionWatchdogError,
+  logVisionWatchdog,
+  raceWithVisionWatchdog,
+} from "./vision-watchdog.ts";
 
 export const VISION_CONTEXT_START = "<vision-context>";
 export const VISION_CONTEXT_END = "</vision-context>";
@@ -476,7 +482,18 @@ export class VisionBridge {
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       throwIfAborted(signal);
-      const note = await this._analyzeImage(config, img, i, userRequest, signal, sessionPath);
+      let note;
+      try {
+        note = await raceWithVisionWatchdog(
+          this._analyzeImage(config, img, i, userRequest, signal, sessionPath),
+          "vision note watchdog timeout",
+        );
+      } catch (err: any) {
+        if (isAbortLikeVisionError(err) || err?.code === "LLM_AUTH_FAILED") throw err;
+        if (!isRecoverableVisionWatchdogError(err)) throw err;
+        logVisionWatchdog(`VisionBridge.prepare image ${i} watchdog/err: ${err?.message || err}`);
+        note = "";
+      }
       const imagePath = paths[i];
       if (imagePath) {
         const entry = {
@@ -552,7 +569,18 @@ export class VisionBridge {
       }
 
       throwIfAborted(signal);
-      const note = await this._analyzeImage(config, img, i, request, signal, sessionPath);
+      let note;
+      try {
+        note = await raceWithVisionWatchdog(
+          this._analyzeImage(config, img, i, request, signal, sessionPath),
+          "vision resource watchdog timeout",
+        );
+      } catch (err: any) {
+        if (isAbortLikeVisionError(err) || err?.code === "LLM_AUTH_FAILED") throw err;
+        if (!isRecoverableVisionWatchdogError(err)) throw err;
+        logVisionWatchdog(`_summarizeResources image ${i} key ${key} watchdog/err: ${err?.message || err}`);
+        note = "";
+      }
       const entry = {
         note,
         sessionId: this._sessionIdForPath(sessionPath),

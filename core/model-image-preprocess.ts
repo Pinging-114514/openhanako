@@ -1,5 +1,11 @@
 import { Buffer } from "node:buffer";
 import * as piSdk from "../lib/pi-sdk/index.ts";
+import {
+  isAbortLikeVisionError,
+  isRecoverableVisionWatchdogError,
+  logVisionWatchdog,
+  raceWithVisionWatchdog,
+} from "./vision-watchdog.ts";
 
 export const MODEL_IMAGE_INPUT_POLICY = Object.freeze({
   maxWidth: 2000,
@@ -291,15 +297,28 @@ export async function prepareModelImageInputsForPrompt({
   const dimensionNotes = [];
 
   for (let index = 0; index < opts.images.length; index += 1) {
-    const prepared = await prepareSingleModelImageInputForPrompt({
-      image: opts.images[index],
-      index,
-      imageCount: opts.images.length,
-      imagePolicy: policy,
-      resizeImage,
-      formatDimensionNote,
-      signal,
-    });
+    let prepared;
+    try {
+      prepared = await raceWithVisionWatchdog(
+        prepareSingleModelImageInputForPrompt({
+          image: opts.images[index],
+          index,
+          imageCount: opts.images.length,
+          imagePolicy: policy,
+          resizeImage,
+          formatDimensionNote,
+          signal,
+        }),
+        "image prepare watchdog timeout",
+      );
+    } catch (err: any) {
+      if (isAbortLikeVisionError(err) || err?.code === "LLM_AUTH_FAILED") throw err;
+      if (!isRecoverableVisionWatchdogError(err)) throw err;
+      logVisionWatchdog(`prepareModelImageInputs image ${index} watchdog/err: ${err?.message || err}`);
+      // Soft-fail: keep the original image so the turn can continue instead of hanging forever.
+      nextImages.push(opts.images[index]);
+      continue;
+    }
     nextImages.push(prepared.image);
 
     const note = prepared.note;
