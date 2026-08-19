@@ -216,10 +216,16 @@ async function resolveOtaProxyUrl(targetUrl) {
   if (config.mode === "manual") {
     return resolveProxyForUrl(targetUrl, config, process.env) || "";
   }
-  // system: prefer live Electron resolution, then HTTPS_PROXY env fallback.
+  // system: Electron PAC/TUN often reports DIRECT for GitHub while the
+  // shell/server still have HTTPS_PROXY from the ladder. Prefer a real
+  // proxy URL from either source; never treat DIRECT as "no proxy needed".
   const fromElectron = await resolveElectronProxyUrl(targetUrl);
   if (fromElectron) return fromElectron;
-  return resolveProxyForUrl(targetUrl, { mode: "system" }, process.env) || "";
+  const fromEnv = resolveProxyForUrl(targetUrl, { mode: "system" }, process.env) || "";
+  if (fromEnv) return fromEnv;
+  // Last resort: probe the same example.com resolution the server child uses.
+  const fromExample = await resolveElectronProxyUrl("https://example.com");
+  return fromExample || "";
 }
 
 function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(msg))) {

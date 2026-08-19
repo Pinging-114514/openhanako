@@ -1140,7 +1140,12 @@ async function checkOnce(opts) {
     // lastError is written on every failed check and is only ever cleared
     // by a check or apply that completes successfully — a "not-modified"
     // reply must never be mistaken for "the previous failure is resolved".
-    await writeOtaChannelState(homeDir, channel, { lastCheckedAt: nowIso(), lastError: err.message }).catch(() => {});
+    const attemptedUrl = channelManifestUrls(channel)[0] || null;
+    await writeOtaChannelState(homeDir, channel, {
+      lastCheckedAt: nowIso(),
+      lastError: err.message,
+      lastManifestUrl: attemptedUrl,
+    }).catch(() => {});
     return { outcome: "error", error: err.message };
   }
 }
