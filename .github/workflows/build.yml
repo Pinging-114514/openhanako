@@ -54,12 +54,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-latest
-            target: dmg
-            arch: arm64
-          - os: macos-latest
-            target: dmg
-            arch: x64
+          # macOS builds need Apple Developer ID secrets (CSC_LINK / CSC_KEY_PASSWORD).
+          # This fork ships Windows/Linux first; re-enable mac rows when those secrets exist.
+          # - os: macos-latest
+          #   target: dmg
+          #   arch: arm64
+          # - os: macos-latest
+          #   target: dmg
+          #   arch: x64
           - os: windows-latest
             target: nsis
             arch: x64
@@ -344,7 +346,9 @@ jobs:
 
   release:
     needs: build
-    if: startsWith(github.ref, 'refs/tags/v')
+    # Allow release when the remaining platforms succeed even if optional
+    # (currently disabled) mac rows are absent.
+    if: startsWith(github.ref, 'refs/tags/v') && needs.build.result == 'success'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -383,9 +387,16 @@ jobs:
           fi
 
       # 合并双架构的 latest-mac.yml（本地生成，不上传；上传由下一步统一处理）
+      # Fork builds may omit macOS; treat missing mac metadata as a skip, not a hard fail.
       - name: Generate merged latest-mac.yml
+        continue-on-error: true
         run: |
-          node scripts/merge-latest-mac-yml.cjs artifacts latest-mac.yml
+          if find artifacts -name 'latest-mac*.yml' | grep -q .; then
+            node scripts/merge-latest-mac-yml.cjs artifacts latest-mac.yml
+          else
+            echo "No macOS update metadata found; skipping latest-mac.yml merge"
+            exit 0
+          fi
 
       # 更新摘要必须在本地 tag 前生成并提交。CI 只校验，不调用 LLM。
       - name: Validate committed release digest
@@ -431,13 +442,13 @@ jobs:
           # prebuiltRendererArchive / HANA_PREBUILT_RENDERER_BOX). Which platform's copy we
           # publish here no longer matters for correctness — macOS arm64 is kept only to
           # avoid widening this step's diff.
-          echo "=== Uploading renderer hot-update archive (macOS arm64 build only) ==="
-          RENDERER_TGZ=$(find artifacts -path '*installer-macos-latest-arm64*/dist-renderer-artifact/renderer-*.tar.gz' | head -1)
+          echo "=== Uploading renderer hot-update archive ==="
+          RENDERER_TGZ=$(find artifacts \( -path '*renderer-box*/renderer-*.tar.gz' -o -path '*/dist-renderer-artifact/renderer-*.tar.gz' \) | head -1)
           if [ -n "$RENDERER_TGZ" ]; then
             echo "  $RENDERER_TGZ"
             gh release upload "${{ github.ref_name }}" "$RENDERER_TGZ" --clobber
           else
-            echo "::error::renderer hot-update archive not found from the macOS arm64 build"
+            echo "::error::renderer hot-update archive not found"
             exit 1
           fi
 
@@ -450,8 +461,12 @@ jobs:
             echo "::warning::latest.yml not found (Windows build may have failed)"
           fi
 
-          echo "=== Uploading latest-mac.yml (merged) ==="
-          gh release upload "${{ github.ref_name }}" latest-mac.yml --clobber
+          echo "=== Uploading latest-mac.yml (merged, optional on this fork) ==="
+          if [ -f latest-mac.yml ]; then
+            gh release upload "${{ github.ref_name }}" latest-mac.yml --clobber
+          else
+            echo "::warning::latest-mac.yml not present; macOS release metadata skipped"
+          fi
 
           echo "=== Uploading release digest ==="
           gh release upload "${{ github.ref_name }}" release-digest.v1.json --clobber
@@ -478,19 +493,14 @@ jobs:
           echo ""
 
           MISSING=()
-          echo "$ASSETS" | grep -qx 'latest-mac.yml' || MISSING+=("latest-mac.yml")
+          # Fork release gate: require Windows + Linux + shared hot-update pieces.
+          # macOS assets stay optional until Apple signing secrets are configured.
           echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
           echo "$ASSETS" | grep -qx 'latest-linux.yml' || MISSING+=("latest-linux.yml")
           echo "$ASSETS" | grep -qx 'release-digest.v1.json' || MISSING+=("release-digest.v1.json")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64\.dmg$' || MISSING+=("macOS-x64.dmg")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-macOS-x64\.zip$' || MISSING+=("macOS-x64.zip")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
-          echo "$ASSETS" | grep -qE '^server-.*-darwin-arm64\.tar\.gz$' || MISSING+=("server darwin-arm64 hot-update archive")
-          echo "$ASSETS" | grep -qE '^server-.*-darwin-x64\.tar\.gz$' || MISSING+=("server darwin-x64 hot-update archive")
           echo "$ASSETS" | grep -qE '^server-.*-win32-x64\.tar\.gz$' || MISSING+=("server win32-x64 hot-update archive")
           echo "$ASSETS" | grep -qE '^server-.*-linux-x64\.tar\.gz$' || MISSING+=("server linux-x64 hot-update archive")
           echo "$ASSETS" | grep -qE '^renderer-.*\.tar\.gz$' || MISSING+=("renderer hot-update archive")
