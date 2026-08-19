@@ -14,4 +14,18 @@ describe("default session settings", () => {
       keepRecentTokens: 20_000,
     });
   });
+
+  it("enables three agent retries and three provider transport retries by default", () => {
+    const settings = createDefaultSettings();
+
+    expect(settings.getRetrySettings()).toEqual({
+      enabled: true,
+      maxRetries: 3,
+      baseDelayMs: 2000,
+    });
+    expect(settings.getProviderRetrySettings()).toMatchObject({
+      maxRetries: 3,
+      maxRetryDelayMs: 60_000,
+    });
+  });
 });

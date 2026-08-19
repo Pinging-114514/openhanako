@@ -1,6 +1,8 @@
 import type { AssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
+import { getLocale } from "../i18n.ts";
 import { isToolProtocolFragment } from "../tool-protocol-sanitizer.ts";
+import { formatUserFacingProviderError } from "./retry-policy.ts";
 
 const STREAM_GUARD_FLAG = Symbol.for("hana.piSdk.streamGuardInstalled");
 
@@ -73,10 +75,10 @@ function guardStreamEvent(event, state) {
     return [{ ...event, partial: sanitizeAssistantMessage(event.partial, state) }];
   }
   if (event.type === "done") {
-    return [{ ...event, message: sanitizeAssistantMessage(event.message, state) }];
+    return [{ ...event, message: ensureVisibleProviderError(sanitizeAssistantMessage(event.message, state)) }];
   }
   if (event.type === "error") {
-    return [{ ...event, error: sanitizeAssistantMessage(event.error, state) }];
+    return [{ ...event, error: ensureVisibleProviderError(sanitizeAssistantMessage(event.error, state)) }];
   }
   if ("partial" in event) {
     return [{ ...event, partial: sanitizeAssistantMessage(event.partial, state) }];
@@ -107,6 +109,22 @@ export function sanitizeAssistantMessage(message, state = null) {
     }
     content.push(block);
   });
+  return { ...message, content };
+}
+
+/**
+ * Capacity / transport failures often arrive as stopReason=error with an empty
+ * content array. That looks like a silent mid-sentence cut. Inject a short
+ * visible explanation so the chat itself carries the failure, not only a toast.
+ */
+export function ensureVisibleProviderError(message) {
+  if (!message || message.stopReason !== "error") return message;
+  const content = Array.isArray(message.content) ? [...message.content] : [];
+  const hasVisibleText = content.some((block) => (
+    block?.type === "text" && String(block.text || "").trim().length > 0
+  ));
+  if (hasVisibleText) return content === message.content ? message : { ...message, content };
+  appendTextBlock(content, formatUserFacingProviderError(message.errorMessage, getLocale()));
   return { ...message, content };
 }
 

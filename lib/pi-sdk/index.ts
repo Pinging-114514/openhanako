@@ -31,6 +31,7 @@ import {
 } from "./session-options.ts";
 import { installAssistantStreamGuard } from "./stream-guard.ts";
 import { installToolOutcomeAdapter } from "./tool-outcome-adapter.ts";
+import { installRetryPolicy } from "./retry-policy.ts";
 import {
   createFindTool,
   createGrepTool,
@@ -70,6 +71,7 @@ export async function createAgentSession(options) {
   const result = await rawCreateAgentSession(normalizeCreateAgentSessionOptions(sessionOptions));
   installToolOutcomeAdapter(result?.session);
   installAssistantStreamGuard(result?.session);
+  installRetryPolicy(result?.session);
   return result;
 }
 
