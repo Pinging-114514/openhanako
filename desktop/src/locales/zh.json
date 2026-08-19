@@ -185,7 +185,7 @@
       "createAction": "创建",
       "save": "保存",
       "cancel": "取消",
-      "showMore": "展开显示",
+      "showMore": "加载更多（{n}）",
       "loading": "正在载入项目…",
       "empty": "还没有项目"
     }

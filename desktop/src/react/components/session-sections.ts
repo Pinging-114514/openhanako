@@ -90,6 +90,43 @@ function compareByModifiedDesc(a: Session, b: Session): number {
   return modifiedTime(b) - modifiedTime(a) || compareByPath(a, b);
 }
 
+/** 同项目下默认只展示最近 3 天活跃的会话；更早的藏在「加载更多」后面。 */
+export const PROJECT_SESSION_RECENT_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function splitProjectSessionsByRecency(
+  items: Session[],
+  {
+    now = Date.now(),
+    recentMs = PROJECT_SESSION_RECENT_MS,
+    alwaysVisiblePaths = [],
+  }: {
+    now?: number;
+    recentMs?: number;
+    alwaysVisiblePaths?: Array<string | null | undefined>;
+  } = {},
+): { visible: Session[]; hidden: Session[] } {
+  const alwaysVisible = new Set(
+    alwaysVisiblePaths
+      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+      .map(value => value.trim()),
+  );
+  const visible: Session[] = [];
+  const hidden: Session[] = [];
+
+  for (const session of items) {
+    const modifiedMs = modifiedTime(session);
+    const hasKnownModified = modifiedMs > 0;
+    const isRecent = hasKnownModified && (now - modifiedMs) <= recentMs;
+    const forceVisible = alwaysVisible.has(session.path)
+      || (typeof session.sessionId === 'string' && alwaysVisible.has(session.sessionId));
+    // Missing/invalid timestamps stay visible so bad metadata cannot bury a live chat.
+    if (!hasKnownModified || isRecent || forceVisible) visible.push(session);
+    else hidden.push(session);
+  }
+
+  return { visible, hidden };
+}
+
 /**
  * 置顶区按手动顺序升序。还没有顺序的会话排在有顺序的之后，彼此之间仍按最近活动排——
  * 顺序固化前的老数据因此保持原来的显示顺序。

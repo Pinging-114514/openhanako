@@ -185,7 +185,7 @@
       "createAction": "建立",
       "save": "儲存",
       "cancel": "取消",
-      "showMore": "展開顯示",
+      "showMore": "載入更多（{n}）",
       "loading": "正在載入項目…",
       "empty": "還沒有項目"
     }

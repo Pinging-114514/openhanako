@@ -185,7 +185,7 @@
       "createAction": "만들기",
       "save": "저장",
       "cancel": "취소",
-      "showMore": "더 보기",
+      "showMore": "더 보기 ({n})",
       "loading": "프로젝트 불러오는 중…",
       "empty": "아직 프로젝트가 없습니다"
     }

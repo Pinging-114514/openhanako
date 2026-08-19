@@ -22,6 +22,7 @@ import {
   autoProjectIdForCwd,
   buildSessionProjectView,
   buildSessionSections,
+  splitProjectSessionsByRecency,
   type SessionViewMode,
 } from './session-sections';
 import type { SessionProjectFolderGroup, SessionProjectGroup } from '../types/session-projects';
@@ -47,7 +48,7 @@ const SESSION_VIEW_MODE_KEY = 'hana-session-sidebar-view-mode';
 const SESSION_DRAG_MIME = 'application/x-hana-session-path';
 const PROJECT_DRAG_MIME = 'application/x-hana-project-id';
 const FOLDER_DRAG_MIME = 'application/x-hana-project-folder-id';
-const PROJECT_SESSION_PREVIEW_LIMIT = 5;
+// 同项目默认只露出最近 3 天的会话；更早的点「加载更多」再展开。
 
 type SidebarDragState =
   | { kind: 'session'; sessionPath: string }
@@ -743,6 +744,7 @@ function SessionListInner() {
   ) : viewMode === 'project' ? (
     <ProjectSessionView
       view={projectView}
+      currentSessionPath={currentSessionPath}
       renderSessionItem={(session) => renderSessionItem(session, { draggable: true })}
       renderPinnedSessionItem={renderPinnedSessionItem}
       collapsedProjectIds={collapsedProjectIds}
@@ -925,6 +927,7 @@ function ProjectNameDialog({
 
 function ProjectSessionView({
   view,
+  currentSessionPath,
   renderSessionItem,
   renderPinnedSessionItem,
   collapsedProjectIds,
@@ -949,6 +952,7 @@ function ProjectSessionView({
   onOpenFolderMenu,
 }: {
   view: ReturnType<typeof buildSessionProjectView>;
+  currentSessionPath: string | null;
   renderSessionItem: (session: Session) => React.ReactNode;
   renderPinnedSessionItem: (session: Session, pinnedItems: Session[]) => React.ReactNode;
   collapsedProjectIds: Set<string>;
@@ -1025,6 +1029,7 @@ function ProjectSessionView({
             project={project}
             collapsed={collapsedProjectIds.has(project.id)}
             showAll={showAllProjectIds.has(project.id)}
+            currentSessionPath={currentSessionPath}
             onToggle={() => onToggleProject(project.id)}
             onShowAll={() => onShowAllProject(project.id)}
             renderSessionItem={renderSessionItem}
@@ -1044,6 +1049,7 @@ function ProjectSessionView({
             collapsed={collapsedFolderIds.has(folder.id)}
             collapsedProjectIds={collapsedProjectIds}
             showAllProjectIds={showAllProjectIds}
+            currentSessionPath={currentSessionPath}
             onToggle={() => onToggleFolder(folder.id)}
             onToggleProject={onToggleProject}
             onShowAllProject={onShowAllProject}
@@ -1075,6 +1081,7 @@ function ProjectBlock({
   project,
   collapsed,
   showAll,
+  currentSessionPath,
   onToggle,
   onShowAll,
   renderSessionItem,
@@ -1089,6 +1096,7 @@ function ProjectBlock({
   project: SessionProjectGroup;
   collapsed: boolean;
   showAll: boolean;
+  currentSessionPath: string | null;
   onToggle: () => void;
   onShowAll: () => void;
   renderSessionItem: (session: Session) => React.ReactNode;
@@ -1102,6 +1110,13 @@ function ProjectBlock({
 }) {
   const lastDragEndAtRef = useRef(0);
   const { t } = useI18n();
+  const { visible, hidden } = useMemo(
+    () => splitProjectSessionsByRecency(project.items, {
+      alwaysVisiblePaths: [currentSessionPath],
+    }),
+    [currentSessionPath, project.items],
+  );
+  const sessionsToRender = showAll ? project.items : visible;
   return (
     <div className={styles.projectBlock}>
       <div
@@ -1165,10 +1180,10 @@ function ProjectBlock({
       </div>
       <Collapse open={!collapsed}>
         <div className={styles.projectSessionList}>
-          {(showAll ? project.items : project.items.slice(0, PROJECT_SESSION_PREVIEW_LIMIT)).map(session => renderSessionItem(session))}
-          {!showAll && project.items.length > PROJECT_SESSION_PREVIEW_LIMIT && (
+          {sessionsToRender.map(session => renderSessionItem(session))}
+          {!showAll && hidden.length > 0 && (
             <button type="button" className={styles.projectShowMoreButton} onClick={onShowAll}>
-              {t('sidebar.projects.showMore')}
+              {t('sidebar.projects.showMore', { n: hidden.length })}
             </button>
           )}
         </div>
@@ -1182,6 +1197,7 @@ function FolderBlock({
   collapsed,
   collapsedProjectIds,
   showAllProjectIds,
+  currentSessionPath,
   onToggle,
   onToggleProject,
   onShowAllProject,
@@ -1202,6 +1218,7 @@ function FolderBlock({
   collapsed: boolean;
   collapsedProjectIds: Set<string>;
   showAllProjectIds: Set<string>;
+  currentSessionPath: string | null;
   onToggle: () => void;
   onToggleProject: (projectId: string) => void;
   onShowAllProject: (projectId: string) => void;
@@ -1266,6 +1283,7 @@ function FolderBlock({
               project={project}
               collapsed={collapsedProjectIds.has(project.id)}
               showAll={showAllProjectIds.has(project.id)}
+              currentSessionPath={currentSessionPath}
               onToggle={() => onToggleProject(project.id)}
               onShowAll={() => onShowAllProject(project.id)}
               renderSessionItem={renderSessionItem}

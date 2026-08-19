@@ -185,7 +185,7 @@
       "createAction": "Create",
       "save": "Save",
       "cancel": "Cancel",
-      "showMore": "Show more",
+      "showMore": "Load more ({n})",
       "loading": "Loading projects…",
       "empty": "No projects yet"
     }
