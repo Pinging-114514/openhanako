@@ -3,6 +3,59 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.447.7",
+      "version": "0.447.7",
+      "previousTag": "v0.447.6",
+      "generatedAt": "2026-08-19T06:50:04.442Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "这一版只构建 Windows，并把 Release 发成正式最新版，热更新直接写入 stable 频道，避免 pre-release 只进 beta 的坑。",
+        "en": "Windows-only builds, published as the formal latest release so hot updates write the stable channel instead of beta-only prereleases."
+      },
+      "counts": {
+        "feature": 0,
+        "fix": 1,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.6..v0.447.7",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.7",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "windows-only-stable-release",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "只发 Windows 正式版并写入 stable",
+            "en": "Windows-only formal release into stable"
+          },
+          "summary": {
+            "zh": "去掉 Linux 构建；Release 不再标 pre-release，publish-train 会更新 stable.json。",
+            "en": "Drop Linux builds; releases are no longer prerelease, so publish-train updates stable.json."
+          },
+          "details": [
+            {
+              "zh": "train 是热更新班次；channels/stable.json 是站牌。正式版才会改主站牌。",
+              "en": "A train is a hot-update batch; channels/stable.json is the pointer clients poll."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "workflow",
+              "title": "formal windows-only release"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.447.6",
       "version": "0.447.6",
       "previousTag": "v0.447.5",

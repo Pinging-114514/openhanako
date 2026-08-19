@@ -54,19 +54,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # macOS builds need Apple Developer ID secrets (CSC_LINK / CSC_KEY_PASSWORD).
-          # This fork ships Windows/Linux first; re-enable mac rows when those secrets exist.
-          # - os: macos-latest
-          #   target: dmg
-          #   arch: arm64
-          # - os: macos-latest
-          #   target: dmg
-          #   arch: x64
+          # This fork ships Windows only for now.
+          # Re-enable macOS when CSC_LINK/CSC_KEY_PASSWORD exist; Linux if needed later.
           - os: windows-latest
             target: nsis
-            arch: x64
-          - os: ubuntu-latest
-            target: AppImage
             arch: x64
 
     runs-on: ${{ matrix.os }}
@@ -379,9 +370,10 @@ jobs:
           if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
             echo "Release ${{ github.ref_name }} already exists, skipping create"
           else
+            # Fork releases are formal/latest by default so hot updates land on
+            # the stable channel clients already poll.
             gh release create "${{ github.ref_name }}" \
               --draft \
-              --prerelease \
               --title "${{ github.ref_name }}" \
               --generate-notes
           fi
@@ -493,16 +485,11 @@ jobs:
           echo ""
 
           MISSING=()
-          # Fork release gate: require Windows + Linux + shared hot-update pieces.
-          # macOS assets stay optional until Apple signing secrets are configured.
+          # Fork release gate: Windows installer + Windows hot-update pieces only.
           echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
-          echo "$ASSETS" | grep -qx 'latest-linux.yml' || MISSING+=("latest-linux.yml")
           echo "$ASSETS" | grep -qx 'release-digest.v1.json' || MISSING+=("release-digest.v1.json")
           echo "$ASSETS" | grep -qE '^HanaAgent-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
-          echo "$ASSETS" | grep -qE '^HanaAgent-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
           echo "$ASSETS" | grep -qE '^server-.*-win32-x64\.tar\.gz$' || MISSING+=("server win32-x64 hot-update archive")
-          echo "$ASSETS" | grep -qE '^server-.*-linux-x64\.tar\.gz$' || MISSING+=("server linux-x64 hot-update archive")
           echo "$ASSETS" | grep -qE '^renderer-.*\.tar\.gz$' || MISSING+=("renderer hot-update archive")
           echo "$ASSETS" | grep -qE '^HanaCore-.*-Windows-x64\.tar\.gz$' || MISSING+=("Windows x64 standalone server archive")
           echo "$ASSETS" | grep -qE '^HanaCore-.*-Windows-x64\.manifest\.json$' || MISSING+=("Windows x64 standalone server manifest")
@@ -527,11 +514,12 @@ jobs:
           echo ""
           echo "✓ All required assets present"
 
-      - name: Publish release (un-draft, pre-release)
+      - name: Publish release (latest formal)
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release edit "${{ github.ref_name }}" --prerelease --draft=false
+          # Formal/latest so publish-train writes the stable channel pointer.
+          gh release edit "${{ github.ref_name }}" --latest --prerelease=false --draft=false
 
   # Publishes the hot-update train that already-installed clients pull automatically —
   # separate from (and downstream of) the installer release above, so a failure here never
@@ -624,6 +612,8 @@ jobs:
     needs: release
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
+    # Optional for this fork; missing ATOMGIT_TOKEN must not paint the whole Build red.
+    continue-on-error: true
     permissions:
       contents: read
 

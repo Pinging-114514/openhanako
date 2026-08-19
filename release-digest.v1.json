@@ -1,13 +1,13 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.447.6",
-  "version": "0.447.6",
-  "previousTag": "v0.447.5",
-  "generatedAt": "2026-08-19T06:27:10.667Z",
+  "tag": "v0.447.7",
+  "version": "0.447.7",
+  "previousTag": "v0.447.6",
+  "generatedAt": "2026-08-19T06:50:04.442Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "这一版继续完善 Pinging fork 发版链路：没有 Apple 签名证书时跳过 macOS 构建，不再挡住 Windows/Linux 安装包和热更新发布。",
-    "en": "Keeps the Pinging fork release pipeline moving: skip macOS builds when Apple signing certs are absent so Windows/Linux installers and hot updates can still publish."
+    "zh": "这一版只构建 Windows，并把 Release 发成正式最新版，热更新直接写入 stable 频道，避免 pre-release 只进 beta 的坑。",
+    "en": "Windows-only builds, published as the formal latest release so hot updates write the stable channel instead of beta-only prereleases."
   },
   "counts": {
     "feature": 0,
@@ -18,34 +18,34 @@
   "source": {
     "owner": "Pinging-114514",
     "repo": "openhanako",
-    "commitRange": "v0.447.5..v0.447.6",
-    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.6",
+    "commitRange": "v0.447.6..v0.447.7",
+    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.7",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "fork-skip-mac-signing",
+      "id": "windows-only-stable-release",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "无 Apple 证书时跳过 macOS，放行 Windows 发版",
-        "en": "Skip macOS without Apple certs so Windows releases can ship"
+        "zh": "只发 Windows 正式版并写入 stable",
+        "en": "Windows-only formal release into stable"
       },
       "summary": {
-        "zh": "fork 没有 CSC_LINK 时不再因 macOS keychain 步骤失败而跳过 release/publish-train。",
-        "en": "Without CSC_LINK, macOS keychain failures no longer skip release/publish-train on this fork."
+        "zh": "去掉 Linux 构建；Release 不再标 pre-release，publish-train 会更新 stable.json。",
+        "en": "Drop Linux builds; releases are no longer prerelease, so publish-train updates stable.json."
       },
       "details": [
         {
-          "zh": "矩阵暂时只保留 Windows 与 Linux；校验清单也改为不强制要求 mac 产物。",
-          "en": "Matrix temporarily keeps Windows and Linux only; release verification no longer requires mac assets."
+          "zh": "train 是热更新班次；channels/stable.json 是站牌。正式版才会改主站牌。",
+          "en": "A train is a hot-update batch; channels/stable.json is the pointer clients poll."
         }
       ],
       "sources": [
         {
           "type": "commit",
           "ref": "workflow",
-          "title": "build.yml fork mac skip"
+          "title": "formal windows-only release"
         }
       ]
     }
