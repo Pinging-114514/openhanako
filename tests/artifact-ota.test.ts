@@ -409,9 +409,9 @@ describe("artifact-ota: downloadToFile stall/deadline guards (trickle-attack mit
 });
 
 describe("artifact-ota: channelManifestUrls", () => {
-  it.each(["stable", "beta"])("returns only the GitHub %s channel pointer", (channel) => {
-    expect(channelManifestUrls(channel)).toEqual([
-      `https://github.com/liliMozi/openhanako/releases/download/channels/${channel}.json`,
+  it.each(["stable", "beta"])("returns this fork's GitHub %s channel pointer by default", (channel) => {
+    expect(channelManifestUrls(channel, {})).toEqual([
+      `https://github.com/Pinging-114514/openhanako/releases/download/channels/${channel}.json`,
     ]);
   });
 
@@ -442,17 +442,45 @@ describe("artifact-ota: fetchChannelManifest (GitHub-only)", () => {
     expect(calls).toEqual([originUrl, `${originUrl}.sig`]);
   });
 
-  it("performs no hidden retry when the GitHub request fails", async () => {
+  it("retries transient network failures a few times", async () => {
     const keys = makeKeys();
     let calls = 0;
     const fetchOnce = async () => {
       calls += 1;
-      throw new Error("network down");
+      const err: any = new Error("read ECONNRESET");
+      err.code = "ECONNRESET";
+      throw err;
     };
 
     await expect(
-      fetchChannelManifest({ channel: "stable", keyset: keys.keyset, fetchOnce, log: () => {} }),
-    ).rejects.toThrow(/GitHub.*network down/i);
+      fetchChannelManifest({
+        channel: "stable",
+        keyset: keys.keyset,
+        fetchOnce,
+        sleep: async () => {},
+        log: () => {},
+      }),
+    ).rejects.toThrow(/channel manifest request failed:.*ECONNRESET/i);
+    expect(calls).toBe(3);
+  });
+
+  it("does not retry non-transient HTTP failures", async () => {
+    const keys = makeKeys();
+    let calls = 0;
+    const fetchOnce = async () => {
+      calls += 1;
+      throw new Error("artifact-ota: HTTP 404 for https://example.test/stable.json");
+    };
+
+    await expect(
+      fetchChannelManifest({
+        channel: "stable",
+        keyset: keys.keyset,
+        fetchOnce,
+        sleep: async () => {},
+        log: () => {},
+      }),
+    ).rejects.toThrow(/channel manifest request failed:.*HTTP 404/i);
     expect(calls).toBe(1);
   });
 
@@ -489,7 +517,7 @@ describe("artifact-ota: fetchChannelManifest (GitHub-only)", () => {
 
     await expect(
       fetchChannelManifest({ channel: "stable", keyset: keys.keyset, fetchOnce, log: () => {} }),
-    ).rejects.toThrow(/signature or schema verification/i);
+    ).rejects.toThrow(/channel manifest failed signature or schema verification/i);
   });
 });
 

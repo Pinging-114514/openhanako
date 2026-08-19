@@ -61,12 +61,13 @@ function scheduleBackgroundOtaChecks(opts) {
     channel = SEED_CHANNEL,
     firstDelayMs = otaCore.FIRST_CHECK_DELAY_MS,
     intervalMs = otaCore.RECHECK_INTERVAL_MS,
+    fetchOnce,
     log = () => {},
     onAvailable,
   } = opts || {};
 
   const runOnce = () => {
-    otaCore.checkOnce({ homeDir, keyset, currentShellVersion, platformArch, channel, log, devBypass })
+    otaCore.checkOnce({ homeDir, keyset, currentShellVersion, platformArch, channel, fetchOnce, log, devBypass })
       .then((result) => {
         log(`[ota] cycle: ${result.outcome}${result.error ? ` (${result.error})` : ""}`);
         if ((result.outcome === "available" || result.outcome === "minshell-blocked") && typeof onAvailable === "function") {

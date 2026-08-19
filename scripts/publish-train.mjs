@@ -94,7 +94,7 @@ const { loadPinnedKeyset } = require("../shared/artifact-core/keyset.cjs");
 
 // Matches desktop/src/shared/artifact-ota.cjs's GITHUB_CHANNEL_BASE owner/repo
 // and scripts/mirror-release-to-atomgit.mjs's DEFAULT_GITHUB_REPOSITORY.
-const DEFAULT_REPO = "liliMozi/openhanako";
+const DEFAULT_REPO = "Pinging-114514/openhanako";
 
 const TRAIN_RELEASE_NOTES =
   "Hot-update train release. Holds one train's signed archives and manifest "

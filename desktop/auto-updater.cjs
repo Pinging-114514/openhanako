@@ -20,7 +20,7 @@ const UPDATE_CHANNEL_VERSION = 1;
 // 任何邀请入口，正式构建在服务上线前不会露出半个按钮。上线后填这里，
 // 或用 HANA_INVITE_API_URL 覆盖。
 const DEFAULT_INVITE_API_URL = "";
-const DEFAULT_GITHUB_OWNER = "liliMozi";
+const DEFAULT_GITHUB_OWNER = "Pinging-114514";
 const DEFAULT_GITHUB_REPO = "openhanako";
 
 let _mainWindow = null;

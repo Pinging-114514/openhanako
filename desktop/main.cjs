@@ -63,7 +63,11 @@ const {
   proxyConfigToEnvironment,
   systemProxyConfigToEnvironment,
   withForcedLocalProxyBypass,
+  resolveProxyForUrl,
 } = require("../shared/network-proxy.cjs");
+const {
+  createOtaFetchOnce,
+} = require("./src/shared/ota-proxied-fetch.cjs");
 const {
   resolveWorkspaceOutputDir,
 } = require("../shared/workspace-output.cjs");
@@ -198,6 +202,31 @@ function readUpdateChannelPreference() {
   const prefsPath = path.join(hanakoHome, "user", "preferences.json");
   const prefs = safeReadJSON(prefsPath, {});
   return prefs?.update_channel === "beta" ? "beta" : "stable";
+}
+
+/**
+ * Resolve the outbound proxy for OTA HTTPS. Manual mode uses Settings >
+ * Network; system mode asks Electron for the OS/ladder proxy that the
+ * browser already uses. Without this, artifact-ota bare-https requests
+ * bypass the ladder and die with ECONNRESET while Chrome still works.
+ */
+async function resolveOtaProxyUrl(targetUrl) {
+  const config = readNetworkProxyPreference();
+  if (config.mode === "direct") return "";
+  if (config.mode === "manual") {
+    return resolveProxyForUrl(targetUrl, config, process.env) || "";
+  }
+  // system: prefer live Electron resolution, then HTTPS_PROXY env fallback.
+  const fromElectron = await resolveElectronProxyUrl(targetUrl);
+  if (fromElectron) return fromElectron;
+  return resolveProxyForUrl(targetUrl, { mode: "system" }, process.env) || "";
+}
+
+function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(msg))) {
+  return createOtaFetchOnce({
+    getProxyUrl: resolveOtaProxyUrl,
+    log,
+  });
 }
 
 async function applyDesktopNetworkProxy(config, { reason = "runtime" } = {}) {
@@ -2744,13 +2773,15 @@ function startBackgroundOtaSchedulerOnce() {
     // isShellVersionSufficient() 与本函数下游 checkOnce() 对 minShell 的
     // 处理；与之相邻的"这班车是否比已激活内容更新"判断走的是
     // pointerStore 记录的 train/version，完全不经 app.getVersion()。
+    const otaLog = (msg) => console.log(redactMainLogText(msg));
     artifactOta.scheduleBackgroundOtaChecks({
       homeDir: hanakoHome,
       keyset: loadPinnedKeyset(),
       currentShellVersion: app.getVersion(),
       platformArch: `${process.platform}-${process.arch}`,
       channel: readUpdateChannelPreference(),
-      log: (msg) => console.log(redactMainLogText(msg)),
+      fetchOnce: createDesktopOtaFetchOnce(otaLog),
+      log: otaLog,
       onAvailable: (result) => {
         broadcastToAllWindows("train-update-available", {
           version: result.version || null,
@@ -5021,18 +5052,20 @@ async function applyTrainUpdateNow(senderWebContents) {
 
   // 壳身份用途：同 startBackgroundOtaSchedulerOnce() 里的说明——minShell
   // 闸门问的是壳二进制新不新，必须是 app.getVersion()，不是内容版本。
+  const otaLog = (msg) => console.log(redactMainLogText(msg));
   const downloadResult = await artifactOta.downloadAndApplyArtifacts({
     homeDir: hanakoHome,
     keyset: loadPinnedKeyset(),
     currentShellVersion: app.getVersion(),
     platformArch: `${process.platform}-${process.arch}`,
     channel,
+    fetchOnce: createDesktopOtaFetchOnce(otaLog),
     onProgress: (progress) => {
       try {
         if (senderWebContents && !senderWebContents.isDestroyed()) senderWebContents.send("train-update-progress", progress);
       } catch {}
     },
-    log: (msg) => console.log(redactMainLogText(msg)),
+    log: otaLog,
   });
   if (!downloadResult.ok) {
     console.error(`[desktop] train-update-apply 下载/激活失败: ${downloadResult.error}`);
@@ -5109,13 +5142,15 @@ wrapIpcHandler("train-fallback-notice-ack", () => {
 wrapIpcHandler("train-update-check", async () => {
   if (!app.isPackaged) return { outcome: "dev-skipped" };
   // 壳身份用途：同 startBackgroundOtaSchedulerOnce() 里的说明。
+  const otaLog = (msg) => console.log(redactMainLogText(msg));
   return artifactOta.checkOnce({
     homeDir: hanakoHome,
     keyset: loadPinnedKeyset(),
     currentShellVersion: app.getVersion(),
     platformArch: `${process.platform}-${process.arch}`,
     channel: readUpdateChannelPreference(),
-    log: (msg) => console.log(redactMainLogText(msg)),
+    fetchOnce: createDesktopOtaFetchOnce(otaLog),
+    log: otaLog,
   });
 });
 

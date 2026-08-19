@@ -210,14 +210,50 @@ const ORIGIN_MANIFEST_RACE_TIMEOUT_MS = MANIFEST_REQUEST_TIMEOUT_MS;
 
 // ── channel pointer URLs: clients poll ONLY these static asset
 //    URLs, never the GitHub API ───────────────────────────────────────────
-const GITHUB_CHANNEL_BASE = "https://github.com/liliMozi/openhanako/releases/download/channels";
+const DEFAULT_UPDATE_OWNER = "Pinging-114514";
+const DEFAULT_UPDATE_REPO = "openhanako";
+const CHANNEL_MANIFEST_MAX_ATTEMPTS = 3;
+const CHANNEL_MANIFEST_RETRY_BASE_MS = 400;
+
+function resolveUpdateRepository(env = process.env) {
+  const owner = String(env.HANA_UPDATE_OWNER || DEFAULT_UPDATE_OWNER).trim() || DEFAULT_UPDATE_OWNER;
+  const repo = String(env.HANA_UPDATE_REPO || DEFAULT_UPDATE_REPO).trim() || DEFAULT_UPDATE_REPO;
+  return { owner, repo };
+}
+
+function defaultChannelBase(env = process.env) {
+  const { owner, repo } = resolveUpdateRepository(env);
+  return `https://github.com/${owner}/${repo}/releases/download/channels`;
+}
 
 /**
- * One-element array retained for compatibility with existing callers.
- * @returns {[string]} the GitHub channel manifest URL.
+ * Channel pointer URLs. Primary is this fork's GitHub `channels` release;
+ * optional comma-separated extras via HANA_OTA_CHANNEL_MIRRORS (each entry is
+ * a base that already ends at `/channels`, or a full `.../channels/<name>.json`).
+ * @returns {string[]}
  */
-function channelManifestUrls(channel) {
-  return [`${GITHUB_CHANNEL_BASE}/${channel}.json`];
+function channelManifestUrls(channel, env = process.env) {
+  const primary = `${defaultChannelBase(env).replace(/\/+$/, "")}/${channel}.json`;
+  const extras = String(env.HANA_OTA_CHANNEL_MIRRORS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean)
+    .map((value) => {
+      if (value.endsWith(".json")) return value;
+      return `${value.replace(/\/+$/, "")}/${channel}.json`;
+    });
+  return [...new Set([primary, ...extras])];
+}
+
+function isTransientNetworkError(err) {
+  const code = String(err?.code || "");
+  const message = String(err?.message || err || "");
+  return /ECONNRESET|ETIMEDOUT|ECONNREFUSED|EAI_AGAIN|ENOTFOUND|EPIPE|EHOSTUNREACH|UND_ERR|socket hang up|network|timed out/i
+    .test(`${code} ${message}`);
+}
+
+function sleepMs(ms, sleep = (delay) => new Promise((resolve) => setTimeout(resolve, delay))) {
+  return sleep(ms);
 }
 
 // ── low-level https transport: manual redirect following, injectable for
@@ -463,51 +499,80 @@ function tryVerifyManifestCandidate(fetchResult, keyset, log) {
 }
 
 /**
- * Fetches this round's channel manifest from GitHub exactly once. A failed
- * round returns an error to the caller; retrying is a separate user action.
+ * Fetches this round's channel manifest. Transient network failures are
+ * retried with short backoff; bad signatures / non-transient errors fail
+ * fast. Optional mirror bases from HANA_OTA_CHANNEL_MIRRORS are tried after
+ * the primary URL is exhausted.
  * @param {{channel: string, keyset: Array<{keyId:string, publicKey:string}>,
  *   cachedEtags?: {origin?: string|null},
  *   log?: (msg: string) => void, fetchOnce?: Function,
+ *   sleep?: (ms: number) => Promise<void>,
  *   devBypass?: {hasDevOverride: () => boolean, resolveDevManifestOverride: () => string|null}}} opts
- *   `devBypass` defaults to "no override, ever" (see `NO_DEV_OVERRIDE`) —
- *   only the desktop shell ever passes the real dev-bypass module in.
  * @returns {Promise<
  *   {notModified: true, sourceEtagUpdate: {origin?: string|null}} |
  *   {manifest: object, sourceUrl: string, sourceKind: "origin",
  *    originUnreachable: boolean, etag: string|null, localDir: string|null,
  *    sourceEtagUpdate: {origin?: string|null}}>}
  */
-async function fetchChannelManifest({ channel, keyset, cachedEtags = {}, log = () => {}, fetchOnce, devBypass = NO_DEV_OVERRIDE }) {
+async function fetchChannelManifest({
+  channel,
+  keyset,
+  cachedEtags = {},
+  log = () => {},
+  fetchOnce,
+  sleep,
+  devBypass = NO_DEV_OVERRIDE,
+}) {
   if (devBypass.hasDevOverride()) {
     return fetchDevOverrideManifest(devBypass.resolveDevManifestOverride(), keyset, log);
   }
-  const [originUrl] = channelManifestUrls(channel);
-  const originResult = await fetchOneChannelSource(originUrl, {
-    cachedEtag: cachedEtags.origin,
-    fetchOnce,
-    log,
-    timeoutMs: MANIFEST_REQUEST_TIMEOUT_MS,
-  });
 
-  const sourceEtagUpdate = {};
-  if (originResult.status === "fetched") sourceEtagUpdate.origin = originResult.etag;
-  if (originResult.status === "not-modified") return { notModified: true, sourceEtagUpdate };
-  if (originResult.status === "error") {
-    throw new Error(`artifact-ota: GitHub channel manifest request failed: ${originResult.error.message}`);
+  const urls = channelManifestUrls(channel);
+  let lastError = null;
+
+  for (let urlIndex = 0; urlIndex < urls.length; urlIndex += 1) {
+    const originUrl = urls[urlIndex];
+    for (let attempt = 1; attempt <= CHANNEL_MANIFEST_MAX_ATTEMPTS; attempt += 1) {
+      const originResult = await fetchOneChannelSource(originUrl, {
+        cachedEtag: urlIndex === 0 ? cachedEtags.origin : null,
+        fetchOnce,
+        log,
+        timeoutMs: MANIFEST_REQUEST_TIMEOUT_MS,
+      });
+
+      const sourceEtagUpdate = {};
+      if (originResult.status === "fetched" && urlIndex === 0) {
+        sourceEtagUpdate.origin = originResult.etag;
+      }
+      if (originResult.status === "not-modified") {
+        return { notModified: true, sourceEtagUpdate };
+      }
+      if (originResult.status === "fetched") {
+        const verified = tryVerifyManifestCandidate(originResult, keyset, log);
+        if (!verified) {
+          lastError = new Error("artifact-ota: channel manifest failed signature or schema verification");
+          break;
+        }
+        return {
+          manifest: verified,
+          sourceUrl: originResult.sourceUrl,
+          sourceKind: "origin",
+          originUnreachable: false,
+          etag: originResult.etag,
+          localDir: null,
+          sourceEtagUpdate,
+        };
+      }
+
+      lastError = originResult.error || new Error("unknown channel manifest fetch failure");
+      const transient = isTransientNetworkError(lastError);
+      if (!transient || attempt >= CHANNEL_MANIFEST_MAX_ATTEMPTS) break;
+      log(`[ota] transient channel fetch failure on ${originUrl} (attempt ${attempt}/${CHANNEL_MANIFEST_MAX_ATTEMPTS}): ${lastError.message}`);
+      await sleepMs(CHANNEL_MANIFEST_RETRY_BASE_MS * attempt, sleep);
+    }
   }
 
-  const verified = tryVerifyManifestCandidate(originResult, keyset, log);
-  if (!verified) throw new Error("artifact-ota: GitHub channel manifest failed signature or schema verification");
-
-  return {
-    manifest: verified,
-    sourceUrl: originResult.sourceUrl,
-    sourceKind: "origin",
-    originUnreachable: false,
-    etag: originResult.etag,
-    localDir: null,
-    sourceEtagUpdate,
-  };
+  throw new Error(`artifact-ota: channel manifest request failed: ${lastError ? lastError.message : "unknown error"}`);
 }
 
 /**
@@ -691,7 +756,7 @@ function nowIso() {
  * `onProgress(receivedBytes)` is forwarded to the network download only
  * (a local dev-override copy is effectively instant and reports nothing).
  */
-async function stageArtifact({ finalPath, entry, mirrors, localDir, log, label, onProgress }) {
+async function stageArtifact({ finalPath, entry, mirrors, localDir, log, label, onProgress, fetchOnce }) {
   const maxBytes = entry.size + Math.max(Math.round(entry.size * 0.05), 5 * 1024 * 1024);
   const partPath = `${finalPath}.part`;
 
@@ -710,7 +775,7 @@ async function stageArtifact({ finalPath, entry, mirrors, localDir, log, label, 
       const url = `${String(mirrorBase).replace(/\/+$/, "")}/${entry.path}`;
       try {
         await fsp.rm(partPath, { force: true }).catch(() => {});
-        await downloadToFile(url, partPath, { maxBytes, timeoutMs: DOWNLOAD_REQUEST_TIMEOUT_MS, onProgress });
+        await downloadToFile(url, partPath, { maxBytes, timeoutMs: DOWNLOAD_REQUEST_TIMEOUT_MS, onProgress, fetchOnce });
         await fsp.rename(partPath, finalPath);
         staged = true;
         break;
@@ -1272,6 +1337,7 @@ async function downloadAndApplyArtifacts(opts) {
         log,
         label: `server-${serverEntry.version}-${platformArch}`,
         onProgress: (receivedBytes) => emitProgress({ phase: "downloading", kind: "server", receivedBytes, totalBytes: serverEntry.size }),
+        fetchOnce,
       });
       emitProgress({ phase: "verifying", kind: "server", receivedBytes: serverEntry.size, totalBytes: serverEntry.size });
 
@@ -1284,6 +1350,7 @@ async function downloadAndApplyArtifacts(opts) {
         log,
         label: `renderer-${rendererEntry.version}`,
         onProgress: (receivedBytes) => emitProgress({ phase: "downloading", kind: "renderer", receivedBytes, totalBytes: rendererEntry.size }),
+        fetchOnce,
       });
       emitProgress({ phase: "verifying", kind: "renderer", receivedBytes: rendererEntry.size, totalBytes: rendererEntry.size });
 
@@ -1566,6 +1633,7 @@ async function downloadAndApplyRendererArtifact(opts) {
         log,
         label: `renderer-${rendererEntry.version}`,
         onProgress: (receivedBytes) => emitProgress({ phase: "downloading", kind: "renderer", receivedBytes, totalBytes: rendererEntry.size }),
+        fetchOnce,
       });
       emitProgress({ phase: "verifying", kind: "renderer", receivedBytes: rendererEntry.size, totalBytes: rendererEntry.size });
 
@@ -1747,6 +1815,8 @@ module.exports = {
   RECHECK_INTERVAL_MS,
   ORIGIN_MANIFEST_RACE_TIMEOUT_MS,
   channelManifestUrls,
+  resolveUpdateRepository,
+  isTransientNetworkError,
   isShellVersionSufficient,
   isPreloadContractSatisfied,
   isServerProtocolSatisfied,
@@ -1766,3 +1836,4 @@ module.exports = {
   resolveStagedTrainStatus,
   readStagedTrainStatus,
 };
+
