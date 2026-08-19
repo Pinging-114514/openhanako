@@ -3,6 +3,111 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.447.5",
+      "version": "0.447.5",
+      "previousTag": "v0.447.4",
+      "generatedAt": "2026-08-19T05:58:49.335Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "这一版是 Pinging fork 的首个自建发版：热更新会走系统/手动代理并在连接失败时重试；xAI capacity 失败会自动重试三次并在对话里给出明确提示；项目视图里超过三天的会话默认收进「加载更多」。",
+        "en": "First self-hosted release of the Pinging fork: hot updates honor system/manual proxy with retries; xAI capacity failures retry three times and show a visible chat error; project view hides sessions older than three days behind Load more."
+      },
+      "counts": {
+        "feature": 1,
+        "fix": 2,
+        "improvement": 0,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.4..v0.447.5",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.5",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "ota-proxy-retry",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "热更新走代理并重试瞬态失败",
+            "en": "Hot updates use proxy and retry transient failures"
+          },
+          "summary": {
+            "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+            "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
+          },
+          "details": [
+            {
+              "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+              "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Hot updates use proxy and retry transient failures"
+            }
+          ]
+        },
+        {
+          "id": "capacity-retry-visible",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "capacity 静默中断改为重试并明牌提示",
+            "en": "Capacity failures retry and surface visibly"
+          },
+          "summary": {
+            "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+            "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
+          },
+          "details": [
+            {
+              "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+              "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Capacity failures retry and surface visibly"
+            }
+          ]
+        },
+        {
+          "id": "project-session-recency",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "项目会话超过三天默认隐藏",
+            "en": "Hide project sessions older than 3 days by default"
+          },
+          "summary": {
+            "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+            "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
+          },
+          "details": [
+            {
+              "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+              "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Hide project sessions older than 3 days by default"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.447.4",
       "version": "0.447.4",
       "previousTag": "v0.446.6",

@@ -1,120 +1,103 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.447.4",
-  "version": "0.447.4",
-  "previousTag": "v0.446.6",
-  "generatedAt": "2026-08-14T17:08:16.000Z",
+  "tag": "v0.447.5",
+  "version": "0.447.5",
+  "previousTag": "v0.447.4",
+  "generatedAt": "2026-08-19T05:58:49.335Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "这一版把 Agent 的人格文件正式迁移到通用的 AGENTS.md 命名，并为旧文件、旧角色卡和旧接口保留安全兼容；自动化任务存储损坏时会保留原文件并尝试从有效临时副本恢复，无法恢复时也会明确报错；Windows 更新现在会清理旧版本的 seed 安装归档，避免安装目录持续累积历史文件。",
-    "en": "This release moves Agent persona files to the standard AGENTS.md naming while preserving safe compatibility with existing files, character cards, and API clients. Automation storage can now recover from a valid temporary copy while preserving the damaged original, and unrecoverable failures remain visible. Windows updates also remove obsolete seed archives so old installation payloads no longer accumulate."
+    "zh": "这一版是 Pinging fork 的首个自建发版：热更新会走系统/手动代理并在连接失败时重试；xAI capacity 失败会自动重试三次并在对话里给出明确提示；项目视图里超过三天的会话默认收进「加载更多」。",
+    "en": "First self-hosted release of the Pinging fork: hot updates honor system/manual proxy with retries; xAI capacity failures retry three times and show a visible chat error; project view hides sessions older than three days behind Load more."
   },
   "counts": {
-    "feature": 0,
+    "feature": 1,
     "fix": 2,
     "improvement": 0,
-    "migration": 1
+    "migration": 0
   },
   "source": {
-    "owner": "liliMozi",
+    "owner": "Pinging-114514",
     "repo": "openhanako",
-    "commitRange": "v0.446.6..v0.447.4",
-    "releaseUrl": "https://github.com/liliMozi/openhanako/releases/tag/v0.447.4",
+    "commitRange": "v0.447.4..v0.447.5",
+    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.5",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "agents-md-persona-migration",
-      "kind": "migration",
+      "id": "ota-proxy-retry",
+      "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "人格文件迁移到 AGENTS.md，旧数据自动兼容",
-        "en": "Persona files move to AGENTS.md with automatic legacy compatibility"
+        "zh": "热更新走代理并重试瞬态失败",
+        "en": "Hot updates use proxy and retry transient failures"
       },
       "summary": {
-        "zh": "Agent 的人格文件现在使用 AGENTS.md，对外版本使用 AGENTS.public.md。启动时会自动迁移旧的 ishiki.md 和 public-ishiki.md，迁移过程不会覆盖已有新文件；发生冲突时保留新文件并把旧文件移到一旁，失败则留待下次启动重试。项目目录里的 AGENTS.md 仍作为独立的项目指令层生效，同时避免 Agent 自己的目录被重复注入。角色卡导出和新接口改用新名称，旧角色卡字段与旧接口路径继续兼容。",
-        "en": "Agent persona files now use AGENTS.md, with AGENTS.public.md for the public-facing variant. Existing ishiki.md and public-ishiki.md files are migrated automatically at startup without overwriting newer files; conflicts preserve the new file and move the legacy copy aside, while failed migrations are retried on the next launch. Project-level AGENTS.md files remain a separate instruction layer without duplicating an Agent's own persona. Character-card exports and new APIs use the new names, while legacy card fields and route aliases remain supported."
+        "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+        "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
       },
       "details": [
         {
-          "zh": "迁移会在读取人格文件之前执行，并在每次启动时检查，因此之后从备份或同步目录带回来的旧文件也能被处理。新旧文件同时存在时，新文件始终优先，旧文件只会改名保留，不会被删除或覆盖。",
-          "en": "Migration runs before persona files are read and is checked on every launch, so legacy files that arrive later through a backup or sync can still be handled. When both names exist, the new file always wins and the legacy copy is renamed for safekeeping rather than deleted or overwritten."
-        },
-        {
-          "zh": "Agent 自己的人格文件和项目目录中的 AGENTS.md 分属全局与项目两层；当工作目录正好是 Agent 自己的目录时，Hana 会跳过重复的工作区注入。",
-          "en": "An Agent's own persona and a project's AGENTS.md remain separate global and project layers. When the working directory is the Agent's own directory, Hana skips the duplicate workspace injection."
-        },
-        {
-          "zh": "新角色卡写入 prompts.agents 和 prompts.publicAgents，导入仍永久接受旧字段；旧的 HTTP 路径暂时保留为同一处理器的兼容别名。",
-          "en": "New character cards write prompts.agents and prompts.publicAgents, while imports continue to accept the legacy fields. Older HTTP paths remain temporary compatibility aliases for the same handlers."
+          "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+          "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "bed24b93c",
-          "title": "feat(agent): adopt AGENTS.md as the persona file name, replacing ishiki"
-        },
-        {
-          "type": "commit",
-          "ref": "b3927f07b",
-          "title": "docs(skills): align character and user guides with the AGENTS.md persona naming"
+          "ref": "4af97a0",
+          "title": "Hot updates use proxy and retry transient failures"
         }
       ]
     },
     {
-      "id": "automation-store-recovery",
+      "id": "capacity-retry-visible",
       "kind": "fix",
       "importance": "high",
       "title": {
-        "zh": "自动化存储损坏时可以恢复，失败也不再静默",
-        "en": "Automation storage can recover safely and no longer fails silently"
+        "zh": "capacity 静默中断改为重试并明牌提示",
+        "en": "Capacity failures retry and surface visibly"
       },
       "summary": {
-        "zh": "自动化任务主文件损坏、缺失或暂时不可读时，Hana 会检查写入过程中留下的临时副本。临时副本有效时，损坏的主文件会先按原始字节保留为备份，再由临时副本恢复；无法安全恢复时，自动化面板、聊天里的自动化建议和手动创建操作都会显示明确错误，不再把故障伪装成空任务列表。手动新增按钮在请求期间也会暂时禁用，避免重复创建。",
-        "en": "When the main automation task file is corrupt, missing, or temporarily unreadable, Hana checks the temporary copy left by the write process. If that copy is valid, the damaged primary file is preserved byte-for-byte before the temporary copy is promoted. If recovery cannot be completed safely, the Automation panel, chat suggestions, and manual creation flow show an explicit error instead of presenting an empty task list. The manual add button is also disabled while its request is in flight to prevent duplicate creation."
+        "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+        "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
       },
       "details": [
         {
-          "zh": "只有结构完整的临时副本才会被提升为主文件；损坏主文件的备份会留在原存储旁边，便于排查和人工恢复。",
-          "en": "Only a structurally valid temporary copy can be promoted to the primary file. A backup of the damaged primary stays beside the store for diagnosis or manual recovery."
-        },
-        {
-          "zh": "服务端会返回稳定、可识别的存储错误，同时隐藏未知底层异常里的本机路径；桌面端据此保留现有任务画面并显示错误状态。",
-          "en": "The server returns stable, recognizable storage errors while hiding local paths from unknown underlying failures. The desktop can keep the existing task view in place and show the error state."
+          "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+          "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "a14a13bcc",
-          "title": "fix: recover and surface automation store failures"
+          "ref": "4af97a0",
+          "title": "Capacity failures retry and surface visibly"
         }
       ]
     },
     {
-      "id": "windows-stale-seed-cleanup",
-      "kind": "fix",
+      "id": "project-session-recency",
+      "kind": "feature",
       "importance": "medium",
       "title": {
-        "zh": "Windows 更新不再累积旧版 seed 归档",
-        "en": "Windows updates no longer accumulate old seed archives"
+        "zh": "项目会话超过三天默认隐藏",
+        "en": "Hide project sessions older than 3 days by default"
       },
       "summary": {
-        "zh": "Windows 覆盖更新会在写入新版安装内容前清理安装目录中由 Hana 管理的 resources/seed，卸载清理也遵循同一边界。旧版本归档不会继续占用磁盘，用户数据目录 HANA_HOME 不受影响。",
-        "en": "Before overlaying a new Windows installation, Hana now removes the app-owned resources/seed directory, and uninstall cleanup follows the same boundary. Obsolete versioned archives no longer consume disk space, while the user data directory in HANA_HOME remains untouched."
+        "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+        "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
       },
       "details": [
         {
-          "zh": "清理范围严格限制在安装目录的应用自有资源树，不会触碰保存会话、设置和 Agent 数据的 HANA_HOME。",
-          "en": "Cleanup is restricted to the app-owned resource tree inside the installation directory and never touches HANA_HOME, where sessions, settings, and Agent data live."
+          "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+          "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "ecc2c0552",
-          "title": "fix(windows): remove stale seed archives during updates"
+          "ref": "4af97a0",
+          "title": "Hide project sessions older than 3 days by default"
         }
       ]
     }
