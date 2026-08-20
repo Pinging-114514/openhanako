@@ -193,6 +193,14 @@
   "titlebar": {
     "currentChatTitle": "目前對話標題"
   },
+  "chat": {
+    "turnUsage": {
+      "cache": "快取 {rate}%",
+      "cacheUnknown": "快取 —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    }
+  },
   "session": {
     "untitled": "新對話",
     "messageCount": "{n} 則訊息",

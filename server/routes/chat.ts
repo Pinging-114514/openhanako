@@ -38,6 +38,7 @@ import {
   normalizeSessionReferences,
 } from "../../lib/agent-review/turn-coordinator.ts";
 import { logLlmUsage } from "../../lib/llm/usage-observer.ts";
+import { summarizeTurnUsage, turnUsageFromPiAssistantUsage } from "../../lib/llm/turn-usage.ts";
 import { BrowserManager } from "../../lib/browser/browser-manager.ts";
 import {
   createSessionStreamState,
@@ -317,6 +318,30 @@ export function resolveTurnStallAbortMs(value = process.env.HANA_TURN_STALL_ABOR
   const parsed = Number(value);
   if (!Number.isFinite(parsed) || parsed < 0) return DEFAULT_TURN_STALL_ABORT_MS;
   return Math.floor(parsed);
+}
+
+function resolveTurnUsage(engine, sessionPath, ss) {
+  try {
+    const startedAt = ss?.turnStartedAt || null;
+    const listed = engine.usageLedger?.list?.({
+      sessionPath,
+      subsystem: "session",
+      operation: "reply",
+      ...(startedAt ? { since: new Date(startedAt).toISOString() } : {}),
+    });
+    const fromLedger = summarizeTurnUsage(listed?.entries || [], {
+      startedAt,
+      endedAt: Date.now(),
+    });
+    if (fromLedger) return fromLedger;
+    const sess = engine.getSessionByPath?.(sessionPath);
+    return turnUsageFromPiAssistantUsage(getLastAssistantUsage(sess?.entries ?? []), {
+      startedAt,
+      endedAt: Date.now(),
+    });
+  } catch {
+    return null;
+  }
 }
 
 export function createChatRoute(engine: any, hub: any, {
@@ -659,6 +684,7 @@ export function createChatRoute(engine: any, hub: any, {
     ss.pendingTurnCompletionNotification = null;
     ss.lastStreamActivityAt = Date.now();
     ss.turnActive = true;
+    ss.turnStartedAt = Date.now();
     ss.thinkTagParser.reset();
     ss.moodParser.reset();
     ss.cardParser.reset();
@@ -1643,10 +1669,12 @@ export function createChatRoute(engine: any, hub: any, {
       }
 
       persistConsumedTurnInputs(sessionPath, ss, persistedEntries);
+      const turnUsage = resolveTurnUsage(engine, sessionPath, ss);
       emitStreamEvent(sessionPath, ss, {
         type: "turn_end",
         ...persistedEntries,
         ...(turnWasTruncated ? { truncated: true, stopReason: "length" } : {}),
+        ...(turnUsage ? { turnUsage } : {}),
       });
       finishSessionStream(ss);
       ss.turnActive = false;
@@ -1663,6 +1691,7 @@ export function createChatRoute(engine: any, hub: any, {
       ss.hasThinking = false;
       ss.hasError = false;
       ss.assistantStopReason = null;
+      ss.turnStartedAt = null;
       ss.isAborted = false;
       ss.pendingTurnInputConsumptions = [];
       ss.consumedTurnInputsForCurrentTurn = [];

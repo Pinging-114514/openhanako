@@ -66,6 +66,7 @@ export interface HistoryApiResponse {
     }>;
     images?: Array<{ data: string; mimeType: string }>;
     timestamp?: number | string | null;
+    turnUsage?: import('../stores/chat-types').ChatMessage['turnUsage'];
     sourceIndex?: number;
     turnInputEntryId?: string;
     turnInputVisible?: boolean;
@@ -608,6 +609,7 @@ export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] 
         ...(typeof m.turnInputVisible === 'boolean' ? { turnInputVisible: m.turnInputVisible } : {}),
       };
       if (timestamp !== undefined) msg.timestamp = timestamp;
+      if (m.turnUsage) msg.turnUsage = m.turnUsage;
       if (blocks.length > 0) {
         items.push({ type: 'message', data: msg });
       }

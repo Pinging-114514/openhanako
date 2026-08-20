@@ -493,6 +493,12 @@ class StreamBufferManager {
         break;
 
       case 'turn_end':
+        if (msg.turnUsage) {
+          this.updateTargetMessage(buf, (m) => ({
+            ...m,
+            turnUsage: msg.turnUsage,
+          }));
+        }
         useStore.getState().bindPersistedTurnEntries?.(buf.sessionPath, {
           turnInputEntryId: msg.turnInputEntryId,
           userEntryId: msg.userEntryId,

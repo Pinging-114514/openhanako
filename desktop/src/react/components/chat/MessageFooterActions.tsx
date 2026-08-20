@@ -14,6 +14,7 @@ export interface MessageFooterAction {
 
 interface Props {
   timeText?: string | null;
+  usageText?: string | null;
   leadingActions?: MessageFooterAction[];
   actions: MessageFooterAction[];
   align?: 'left' | 'right';
@@ -24,6 +25,7 @@ interface Props {
 
 export const MessageFooterActions = memo(function MessageFooterActions({
   timeText,
+  usageText,
   leadingActions = [],
   actions,
   align = 'right',
@@ -31,7 +33,7 @@ export const MessageFooterActions = memo(function MessageFooterActions({
   timePersistent = false,
   testId,
 }: Props) {
-  if (!timeText && leadingActions.length === 0 && actions.length === 0) return null;
+  if (!timeText && !usageText && leadingActions.length === 0 && actions.length === 0) return null;
 
   return (
     <div
@@ -39,12 +41,13 @@ export const MessageFooterActions = memo(function MessageFooterActions({
         styles.messageFooterActions,
         align === 'left' ? styles.messageFooterActionsLeft : styles.messageFooterActionsRight,
         visible ? styles.messageFooterActionsVisible : '',
-        timePersistent && timeText ? styles.messageFooterActionsTimePersistent : '',
+        timePersistent && (timeText || usageText) ? styles.messageFooterActionsTimePersistent : '',
       ].filter(Boolean).join(' ')}
       data-message-actions=""
       data-testid={testId}
     >
       {timeText && <span className={styles.messageFooterTime}>{timeText}</span>}
+      {usageText && <span className={styles.messageFooterUsage}>{usageText}</span>}
       {leadingActions.map(action => (
         <FooterActionButton key={action.id} action={action} />
       ))}

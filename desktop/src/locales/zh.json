@@ -193,6 +193,14 @@
   "titlebar": {
     "currentChatTitle": "当前对话标题"
   },
+  "chat": {
+    "turnUsage": {
+      "cache": "缓存 {rate}%",
+      "cacheUnknown": "缓存 —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    }
+  },
   "session": {
     "untitled": "新对话",
     "messageCount": "{n} 条消息",

@@ -193,6 +193,14 @@
   "titlebar": {
     "currentChatTitle": "현재 대화 제목"
   },
+  "chat": {
+    "turnUsage": {
+      "cache": "캐시 {rate}%",
+      "cacheUnknown": "캐시 —",
+      "io": "입력 {input} / 출력 {output}",
+      "speed": "{speed} tok/s"
+    }
+  },
   "session": {
     "untitled": "새 대화",
     "messageCount": "{n}개의 메시지",

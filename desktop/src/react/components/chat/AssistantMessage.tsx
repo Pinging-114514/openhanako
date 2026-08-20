@@ -18,6 +18,7 @@ import { InteractiveCard } from './InteractiveCard';
 import { SessionCollabDraftCard } from './SessionCollabDraftCard';
 import { useMessageFooterActions } from './MessageActions';
 import { MessageFooterActions, formatMessageTime } from './MessageFooterActions';
+import { formatTurnUsageLine } from '../../utils/turn-usage-format';
 import { ChatResourceCard } from './ChatResourceCard';
 import { FileResourceIcon, SkillResourceIcon } from './ChatResourceIcons';
 import { BLOCK_RENDERERS } from './block-renderers';
@@ -141,6 +142,7 @@ export const AssistantMessage = memo(function AssistantMessage({
   const canShowNodeActions = !readOnly && showTurnCompletionTime && !!turnTarget && !isStreaming;
   const shouldPersistCompletionTime = showTurnCompletionTime && isLatestAssistantMessage && !isStreaming;
   const timeText = showTurnCompletionTime && !isStreaming ? formatMessageTime(message.timestamp) : null;
+  const usageText = showTurnCompletionTime && !isStreaming ? formatTurnUsageLine(message.turnUsage) : null;
   const standardMessageActions = useMessageFooterActions({
     messageId: message.id,
     selectionIds: assistantTurnSelectionIds,
@@ -189,10 +191,11 @@ export const AssistantMessage = memo(function AssistantMessage({
           </ContentBlockErrorBoundary>
         ))}
       </div>
-      {!isInterludeOnly && (timeText || footerActions.length > 0 || messageActions.length > 0) && (
+      {!isInterludeOnly && (timeText || usageText || footerActions.length > 0 || messageActions.length > 0) && (
         <MessageFooterActions
           align="left"
           timeText={timeText}
+          usageText={usageText}
           timePersistent={shouldPersistCompletionTime}
           leadingActions={footerActions}
           actions={messageActions}

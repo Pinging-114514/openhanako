@@ -193,6 +193,14 @@
   "titlebar": {
     "currentChatTitle": "現在のチャットタイトル"
   },
+  "chat": {
+    "turnUsage": {
+      "cache": "キャッシュ {rate}%",
+      "cacheUnknown": "キャッシュ —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    }
+  },
   "session": {
     "untitled": "新しいチャット",
     "messageCount": "{n} 件のメッセージ",

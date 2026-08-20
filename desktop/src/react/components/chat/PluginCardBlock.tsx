@@ -127,6 +127,8 @@ function PluginWebViewCard({ card, agentId }: Props) {
 }
 
 export function PluginCardBlock({ card, agentId }: Props) {
+  // 用量已收成原生页脚，旧 turn-stats 插件卡不再跟一条。
+  if (card.pluginId === 'turn-stats') return null;
   if (card.type === 'chat.surface') {
     return <PluginChatSurfaceCard card={card} />;
   }

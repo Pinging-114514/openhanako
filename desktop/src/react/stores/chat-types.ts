@@ -318,6 +318,16 @@ export interface ChatMessage {
   origin?: { kind: 'agent'; agentId: string | null; agentName: string | null };
   // Assistant
   blocks?: ContentBlock[];
+  turnUsage?: {
+    calls: number;
+    input: number;
+    output: number;
+    cacheRead: number;
+    cacheWrite: number;
+    hitRatio: number | null;
+    tokensPerSec: number | null;
+    durationMs: number | null;
+  } | null;
   // 通用
   timestamp?: number;
 }

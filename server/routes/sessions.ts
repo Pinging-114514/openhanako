@@ -33,6 +33,7 @@ import {
   normalizeExecutorMetadata,
   readSubagentSessionMetaSync,
 } from "../../lib/subagent-executor-metadata.ts";
+import { assignTurnUsageToAssistants } from "../../lib/llm/turn-usage.ts";
 import {
   extractTextContent,
   contentHasThinkingBlock,
@@ -120,6 +121,27 @@ function getWritableSessionManager(engine, sessionPath) {
     return engine.openSessionManagerAtCurrentBranch(sessionPath, path.dirname(sessionPath));
   }
   return SessionManager.open(sessionPath, path.dirname(sessionPath));
+}
+
+function attachTurnUsageToHistoryMessages(engine, sessionPath, messages) {
+  if (!sessionPath || !Array.isArray(messages) || messages.length === 0) return;
+  const entries = engine.usageLedger?.list?.({
+    sessionPath,
+    subsystem: "session",
+    operation: "reply",
+  })?.entries;
+  if (!Array.isArray(entries) || entries.length === 0) return;
+  const assistantIndexes = [];
+  const assistants = [];
+  for (let i = 0; i < messages.length; i += 1) {
+    if (messages[i]?.role !== "assistant") continue;
+    assistantIndexes.push(i);
+    assistants.push(messages[i]);
+  }
+  const assigned = assignTurnUsageToAssistants(assistants, entries);
+  for (let i = 0; i < assistantIndexes.length; i += 1) {
+    if (assigned[i]) messages[assistantIndexes[i]].turnUsage = assigned[i];
+  }
 }
 
 function authorizeSessionRoute(requestContext, capability, target) {
@@ -1759,6 +1781,8 @@ export function createSessionsRoute(engine, hub = null) {
       if (beforeId == null && resolvedSessionPath) {
         engine.activityHub?.rebroadcastSession?.(resolvedSessionPath);
       }
+
+      attachTurnUsageToHistoryMessages(engine, resolvedSessionPath, messages);
 
       return c.json({ messages, blocks: slicedBlocks, todos, hasMore, sessionFiles, revision });
     } catch (err) {

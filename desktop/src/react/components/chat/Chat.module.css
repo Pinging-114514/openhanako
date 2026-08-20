@@ -177,6 +177,14 @@
     font-variant-numeric: tabular-nums;
 }
 
+.messageFooterUsage {
+    font-size: 0.64rem;
+    line-height: 1;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+    opacity: 0.88;
+}
+
 .messageFooterBtn {
     display: inline-flex;
     align-items: center;

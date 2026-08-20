@@ -193,6 +193,14 @@
   "titlebar": {
     "currentChatTitle": "Current chat title"
   },
+  "chat": {
+    "turnUsage": {
+      "cache": "cache {rate}%",
+      "cacheUnknown": "cache —",
+      "io": "in {input} / out {output}",
+      "speed": "{speed} tok/s"
+    }
+  },
   "session": {
     "untitled": "New Chat",
     "messageCount": "{n} messages",
