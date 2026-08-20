@@ -3,6 +3,169 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.447.8",
+      "version": "0.447.8",
+      "previousTag": "v0.447.7",
+      "generatedAt": "2026-08-20T07:20:47.953Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "观察记忆压缩、Grok OAuth 搜索和周额度、以及原生回合用量页脚。压缩阈值默认可调。",
+        "en": "Observational memory compaction, Grok OAuth search with weekly quota, and native turn usage. Auto-compaction threshold is configurable."
+      },
+      "counts": {
+        "feature": 4,
+        "fix": 1,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.7..v0.447.8",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.8",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "observational-compaction",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "观察记忆压缩",
+            "en": "Observational memory compaction"
+          },
+          "summary": {
+            "zh": "平时用工具模型记下要点，压缩时直接装订，不再让 Grok 写长摘要。没笔记时退回缓存保护。手动压缩和自动阈值走同一条钩子。",
+            "en": "Record notes with the utility model while chatting, then bind them at compact time instead of asking Grok to write a long summary. Empty notes fall back to cache-preserving. Manual compact and the auto threshold share the same hook."
+          },
+          "details": [
+            {
+              "zh": "实验页手动选中「观察记忆压缩」。刚切过去的第一次若还没笔记，仍可能走缓存保护。",
+              "en": "Select Observational memory compaction in Experiments. The first compact after switching may still use cache-preserving if no notes exist yet."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "grok-oauth-search",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "Grok OAuth 搜索收进 Hana web_search",
+            "en": "Grok OAuth search inside Hana web_search"
+          },
+          "summary": {
+            "zh": "登录 Grok OAuth 后，网页搜和 X 搜走同一刀。Auto 顺序是 OAuth → 付费 API → AnySearch 免费 → 浏览器。Provider 页有搜索开关。",
+            "en": "After Grok OAuth login, web and X search run in one request. Auto order is OAuth, paid APIs, free AnySearch, then browser. Provider page has a search toggle."
+          },
+          "details": [
+            {
+              "zh": "不往聊天请求里注入原生 web_search / x_search，避免吞回复和工具重名。",
+              "en": "Native web_search / x_search are not injected into chat requests, which avoids swallowed replies and duplicate tool names."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "grok-weekly-quota",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "Grok OAuth 周额度",
+            "en": "Grok OAuth weekly quota"
+          },
+          "summary": {
+            "zh": "Provider 页已登录下方显示本周剩余额度。",
+            "en": "The provider page shows remaining weekly quota under the signed-in state."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "native-turn-usage",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "原生回合用量页脚",
+            "en": "Native turn usage footer"
+          },
+          "summary": {
+            "zh": "回复时间旁显示缓存、入、出、tok/s。Grok 不写 assistant.usage，改从账本按整轮加总。",
+            "en": "Cache, input, output, and tok/s appear next to the reply time. Grok does not write assistant.usage, so the footer sums the whole turn from the ledger."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4e825fc",
+              "title": "show turn cache, tokens, and speed next to the reply time"
+            }
+          ]
+        },
+        {
+          "id": "compaction-threshold",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "可调自动压缩阈值",
+            "en": "Configurable auto-compaction threshold"
+          },
+          "summary": {
+            "zh": "实验页可设 50–95%，默认 75%。",
+            "en": "Experiments can set 50–95%, default 75%."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "session-fold-settings",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "会话按条数折叠，设置不再整页转圈",
+            "en": "Fold sessions by count and stop settings from blocking"
+          },
+          "summary": {
+            "zh": "忙项目折叠改成按条数，不再按 3 天。打开设置不再整页 loading，Computer Use 探测只在该页跑。",
+            "en": "Busy projects fold by count instead of 3 days. Settings no longer show a full-page loader, and Computer Use probing stays on that page."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "be9fc1a",
+              "title": "fold busy projects by count and stop settings from blocking on probes"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.447.7",
       "version": "0.447.7",
       "previousTag": "v0.447.6",
