@@ -163,7 +163,7 @@ export function AgentMemoryDream({
           </button>
         </div>
       )}
-      {(error || report?.status === 'failed') && (
+      {(error || (!running && report?.status === 'failed')) && (
         <div className={styles['memory-dream-error']} role="alert">
           {error || (report ? dreamReportErrorText(report) : t('settings.memory.dream.failed'))}
         </div>

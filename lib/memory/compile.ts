@@ -1084,7 +1084,7 @@ async function _compactLLM(input, systemPrompt, resolvedModel, maxTokens, operat
     systemPrompt: layout.systemPrompt,
     temperature: 0.3,
     maxTokens: withMemoryReasoningBuffer(maxTokens, resolvedModel),
-    timeoutMs: 60_000,
+    timeoutMs: 120_000,
     signal: undefined,
     usageLedger: resolvedModel.usageLedger,
     usageContext,

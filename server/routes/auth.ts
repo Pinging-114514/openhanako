@@ -23,6 +23,7 @@ import {
   DEFAULT_OAUTH_LOGIN_METHOD,
   isOAuthLoginMethod,
 } from "../../shared/oauth-login.ts";
+import { fetchCodexOauthUsage } from "../../lib/auth/openai-codex-oauth-usage.ts";
 import { fetchXaiOauthUsage } from "../../lib/auth/xai-oauth-usage.ts";
 
 const log = createModuleLogger("auth");
@@ -385,17 +386,26 @@ export function createAuthRoute(engine) {
 
   // ── OAuth 自定义模型 ──
 
-  /** xAI Grok OAuth 周额度。其他 OAuth 供应商没有这个接口。 */
+  /** xAI Grok / Codex OAuth 额度。其他 OAuth 供应商没有这个接口。 */
   route.get("/auth/oauth/:provider/usage", async (c) => {
     const provider = c.req.param("provider");
     const resolved = engine.providerRegistry.resolveChatProvider?.(provider);
     const authKey = engine.providerRegistry.getAuthJsonKey?.(provider) || resolved?.sourceProviderId || provider;
-    if (authKey !== "xai-oauth" && provider !== "xai-oauth") {
+    const isXai = authKey === "xai-oauth" || provider === "xai-oauth";
+    const isCodex = authKey === "openai-codex" || provider === "openai-codex" || provider === "openai-codex-oauth";
+    if (!isXai && !isCodex) {
       return c.json({ ok: false, error: "unsupported_provider" }, 404);
     }
     const cred = engine.authStorage.get(authKey);
     if (cred?.type !== "oauth" || !cred.access) {
       return c.json({ ok: false, error: "not_logged_in", used: null, remaining: null, resetAt: null });
+    }
+    if (isCodex) {
+      const usage = await fetchCodexOauthUsage({
+        accessToken: cred.access,
+        accountId: cred.accountId || cred.account_id || "",
+      });
+      return c.json(usage);
     }
     const usage = await fetchXaiOauthUsage({ accessToken: cred.access });
     return c.json(usage);

@@ -1785,6 +1785,7 @@
       "weeklyUsed": "本周已用 {used}%",
       "weeklyReset": "{when} 重置",
       "weeklyUnknown": "周用量暂时读不到",
+      "hoursRemaining": "{hours}小时剩余 {remaining}%",
       "searchTools": "搜索工具",
       "searchToolsHint": "开启后，web_search 会用 Grok 同时搜网页和 X。用的是本周额度。"
     },

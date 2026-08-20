@@ -1785,6 +1785,7 @@
       "weeklyUsed": "{used}% used this week",
       "weeklyReset": "resets {when}",
       "weeklyUnknown": "Weekly quota unavailable",
+      "hoursRemaining": "{remaining}% left in {hours}h window",
       "searchTools": "Search tools",
       "searchToolsHint": "When on, Hana web_search uses Grok OAuth search and adds x_search for X. This uses the weekly quota."
     },

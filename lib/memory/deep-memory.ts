@@ -296,7 +296,7 @@ async function extractFactsFromDiff(currentSummary, previousSnapshot, resolvedMo
     messages: layout.messages,
     temperature: 0.3,
     maxTokens: 4096,
-    timeoutMs: 60_000,
+    timeoutMs: 180_000,
     usageLedger: resolvedModel.usageLedger,
     usageContext,
   }) as string;

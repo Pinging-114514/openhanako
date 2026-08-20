@@ -1705,6 +1705,7 @@
       "weeklyUsed": "今週の使用 {used}%",
       "weeklyReset": "{when} にリセット",
       "weeklyUnknown": "週間クォータを取得できません",
+      "hoursRemaining": "{hours}時間ウィンドウ残り {remaining}%",
       "searchTools": "検索ツール",
       "searchToolsHint": "オンにすると Hana の web_search が Grok OAuth 検索を使い、x_search（X 検索）も追加されます。週間クォータを消費します。"
     },

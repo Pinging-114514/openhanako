@@ -1705,6 +1705,7 @@
       "weeklyUsed": "이번 주 사용 {used}%",
       "weeklyReset": "{when}에 초기화",
       "weeklyUnknown": "주간 한도를 아직 읽지 못했어요",
+      "hoursRemaining": "{hours}시간 남은 용량 {remaining}%",
       "searchTools": "검색 도구",
       "searchToolsHint": "켜면 Hana web_search가 Grok OAuth 검색을 쓰고, X 검색용 x_search도 추가됩니다. 주간 한도를 씁니다."
     },

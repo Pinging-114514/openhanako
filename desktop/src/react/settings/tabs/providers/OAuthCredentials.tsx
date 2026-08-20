@@ -139,6 +139,9 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
           <XaiOauthSearchToolsToggle />
         </>
       )}
+      {(providerId === 'openai-codex-oauth' || providerId === 'openai-codex') && summary.logged_in && (
+        <CodexOauthUsage providerId={providerId} />
+      )}
 
       {showCodeInput && (
         <div className={styles['oauth-code-section']}>
@@ -216,6 +219,91 @@ async function readXaiOauthUsage(): Promise<XaiOauthUsageState> {
     }
   }
   return unknown;
+}
+
+type CodexOauthUsageState = {
+  remaining: number | null;
+  resetAt: string | null;
+  planType: string | null;
+  windowKind: 'week' | 'hours' | 'window';
+  windowSeconds: number | null;
+  unknown: boolean;
+};
+
+function formatPlanType(planType: string | null): string {
+  const raw = String(planType || '').trim();
+  if (!raw) return '';
+  return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+async function readCodexOauthUsage(providerId: string): Promise<CodexOauthUsageState> {
+  const unknown: CodexOauthUsageState = {
+    remaining: null,
+    resetAt: null,
+    planType: null,
+    windowKind: 'week',
+    windowSeconds: null,
+    unknown: true,
+  };
+  try {
+    const res = await hanaFetch(`/api/auth/oauth/${encodeURIComponent(providerId)}/usage`);
+    const data = await res.json() as {
+      ok?: boolean;
+      remaining?: number | null;
+      resetAt?: string | null;
+      planType?: string | null;
+      windowKind?: 'week' | 'hours' | 'window';
+      windowSeconds?: number | null;
+    };
+    if (data?.ok && typeof data.remaining === 'number') {
+      return {
+        remaining: data.remaining,
+        resetAt: typeof data.resetAt === 'string' ? data.resetAt : null,
+        planType: typeof data.planType === 'string' ? data.planType : null,
+        windowKind: data.windowKind === 'hours' || data.windowKind === 'window' ? data.windowKind : 'week',
+        windowSeconds: typeof data.windowSeconds === 'number' ? data.windowSeconds : null,
+        unknown: false,
+      };
+    }
+  } catch {
+    // Older servers may not expose Codex usage yet.
+  }
+  return unknown;
+}
+
+function CodexOauthUsage({ providerId }: { providerId: string }) {
+  const [usage, setUsage] = useState<CodexOauthUsageState | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    readCodexOauthUsage(providerId).then((next) => {
+      if (!cancelled) setUsage(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [providerId]);
+
+  if (!usage) return null;
+  const reset = formatResetWhen(usage.resetAt);
+  const remainingText = usage.unknown || usage.remaining == null
+    ? t('settings.oauth.weeklyUnknown')
+    : usage.windowKind === 'hours'
+      ? t('settings.oauth.hoursRemaining', {
+        hours: String(Math.max(1, Math.round((usage.windowSeconds || 18000) / 3600))),
+        remaining: String(usage.remaining),
+      })
+      : t('settings.oauth.weeklyRemaining', { remaining: String(usage.remaining) });
+  const plan = formatPlanType(usage.planType);
+  const text = [plan, remainingText, reset ? t('settings.oauth.weeklyReset', { when: reset }) : '']
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <div className={styles['oauth-weekly-usage']}>
+      {text}
+    </div>
+  );
 }
 
 function XaiOauthWeeklyUsage() {

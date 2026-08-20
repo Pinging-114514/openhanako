@@ -301,4 +301,35 @@ describe("auth oauth route", () => {
       remaining: 65,
     });
   });
+
+  it("returns chatgpt plan remaining quota for openai-codex-oauth", async () => {
+    const engine = makeEngine(() => new Promise<void>(() => {}));
+    engine.authStorage.get = vi.fn(() => ({
+      type: "oauth",
+      access: "codex-access",
+      accountId: "acct-1",
+    }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      plan_type: "pro",
+      rate_limit: {
+        primary_window: {
+          used_percent: 3,
+          limit_window_seconds: 604800,
+          reset_at: 1787801632,
+        },
+      },
+    }), { status: 200 })));
+
+    const app = new Hono();
+    app.route("/api", createAuthRoute(engine));
+    const response = await app.request("/api/auth/oauth/openai-codex-oauth/usage");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      planType: "pro",
+      used: 3,
+      remaining: 97,
+      windowKind: "week",
+    });
+  });
 });

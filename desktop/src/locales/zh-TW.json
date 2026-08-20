@@ -1705,6 +1705,7 @@
       "weeklyUsed": "本週已用 {used}%",
       "weeklyReset": "{when} 重置",
       "weeklyUnknown": "週用量暫時讀不到",
+      "hoursRemaining": "{hours}小時剩餘 {remaining}%",
       "searchTools": "搜尋工具",
       "searchToolsHint": "開啟後，Hana 的 web_search 會走 Grok OAuth 搜尋，並提供 x_search（搜 X）。使用本週額度。"
     },

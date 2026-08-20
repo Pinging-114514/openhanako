@@ -90,4 +90,26 @@ describe('OAuthCredentials', () => {
       code: 'manual-code',
     });
   });
+
+  it('loads Codex OAuth remaining quota under the logged-in badge', async () => {
+    mocks.hanaFetch.mockResolvedValueOnce(jsonResponse({
+      ok: true,
+      remaining: 97,
+      resetAt: '2026-08-27T09:33:52.000Z',
+      planType: 'pro',
+      windowKind: 'week',
+      windowSeconds: 604800,
+    }));
+    render(
+      <OAuthCredentials
+        providerId="openai-codex-oauth"
+        summary={{ ...summary, logged_in: true }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith(
+      '/api/auth/oauth/openai-codex-oauth/usage',
+    ));
+    expect(await screen.findByText(/settings.oauth.weeklyRemaining/)).toBeInTheDocument();
+  });
 });

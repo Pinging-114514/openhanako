@@ -75,7 +75,7 @@ async function callStructured(options: {
       systemPrompt: layout.systemPrompt,
       temperature: 0.1,
       maxTokens: withMemoryReasoningBuffer(options.maxTokens, options.resolvedModel),
-      timeoutMs: 90_000,
+      timeoutMs: 360_000,
       signal: options.signal,
       usageLedger: options.resolvedModel?.usageLedger,
       usageContext: usageContext(operation, options.trigger, options.resolvedModel, layout),
