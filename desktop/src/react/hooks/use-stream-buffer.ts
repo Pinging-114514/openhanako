@@ -20,6 +20,7 @@ import {
   type StreamBufferSnapshot,
 } from '../stores/stream-invalidator';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
+import { scheduleTurnUsageBackfill } from '../utils/turn-usage-backfill';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 流式消息 handle(msg) 接收动态 JSON */
 
@@ -492,21 +493,26 @@ class StreamBufferManager {
       case 'compaction_end':
         break;
 
-      case 'turn_end':
+      case 'turn_end': {
+        const assistantMessageId = buf.messageId;
         if (msg.turnUsage) {
           this.updateTargetMessage(buf, (m) => ({
             ...m,
             turnUsage: msg.turnUsage,
           }));
         }
+        window.setTimeout(() => {
+          scheduleTurnUsageBackfill(buf.sessionPath, assistantMessageId);
+        }, 800);
         useStore.getState().bindPersistedTurnEntries?.(buf.sessionPath, {
           turnInputEntryId: msg.turnInputEntryId,
           userEntryId: msg.userEntryId,
           assistantEntryId: msg.assistantEntryId,
-          assistantMessageId: buf.messageId,
+          assistantMessageId,
         });
         this.finishBufferTurn(buf);
         break;
+      }
 
     }
   }

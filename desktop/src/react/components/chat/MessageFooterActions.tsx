@@ -35,6 +35,7 @@ export const MessageFooterActions = memo(function MessageFooterActions({
 }: Props) {
   if (!timeText && !usageText && leadingActions.length === 0 && actions.length === 0) return null;
 
+  const hasToolbar = leadingActions.length > 0 || actions.length > 0;
   return (
     <div
       className={[
@@ -42,18 +43,27 @@ export const MessageFooterActions = memo(function MessageFooterActions({
         align === 'left' ? styles.messageFooterActionsLeft : styles.messageFooterActionsRight,
         visible ? styles.messageFooterActionsVisible : '',
         timePersistent && (timeText || usageText) ? styles.messageFooterActionsTimePersistent : '',
+        hasToolbar ? styles.messageFooterActionsStacked : '',
       ].filter(Boolean).join(' ')}
       data-message-actions=""
       data-testid={testId}
     >
-      {timeText && <span className={styles.messageFooterTime}>{timeText}</span>}
-      {usageText && <span className={styles.messageFooterUsage}>{usageText}</span>}
-      {leadingActions.map(action => (
-        <FooterActionButton key={action.id} action={action} />
-      ))}
-      {actions.map(action => (
-        <FooterActionButton key={action.id} action={action} />
-      ))}
+      {(timeText || usageText) && (
+        <div className={styles.messageFooterMeta}>
+          {timeText && <span className={styles.messageFooterTime}>{timeText}</span>}
+          {usageText && <span className={styles.messageFooterUsage}>{usageText}</span>}
+        </div>
+      )}
+      {hasToolbar && (
+        <div className={styles.messageFooterToolbar}>
+          {leadingActions.map(action => (
+            <FooterActionButton key={action.id} action={action} />
+          ))}
+          {actions.map(action => (
+            <FooterActionButton key={action.id} action={action} />
+          ))}
+        </div>
+      )}
     </div>
   );
 });

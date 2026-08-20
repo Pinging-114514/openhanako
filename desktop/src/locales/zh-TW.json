@@ -193,14 +193,6 @@
   "titlebar": {
     "currentChatTitle": "目前對話標題"
   },
-  "chat": {
-    "turnUsage": {
-      "cache": "快取 {rate}%",
-      "cacheUnknown": "快取 —",
-      "io": "入 {input} / 出 {output}",
-      "speed": "{speed} tok/s"
-    }
-  },
   "session": {
     "untitled": "新對話",
     "messageCount": "{n} 則訊息",
@@ -299,6 +291,13 @@
     "back": "返回"
   },
   "chat": {
+    "turnUsage": {
+      "calls": "{n} 次",
+      "cache": "快取 {rate}%",
+      "cacheUnknown": "快取 —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    },
     "find": {
       "locateFailed": "未能定位到該訊息",
       "placeholder": "在會話中查找"
@@ -1701,7 +1700,13 @@
       "clickToCopy": "點擊複製",
       "codeCopied": "驗證碼已複製",
       "addModel": "新增模型",
-      "customModelPlaceholder": "輸入模型 ID"
+      "customModelPlaceholder": "輸入模型 ID",
+      "weeklyRemaining": "本週剩餘 {remaining}%",
+      "weeklyUsed": "本週已用 {used}%",
+      "weeklyReset": "{when} 重置",
+      "weeklyUnknown": "週用量暫時讀不到",
+      "searchTools": "搜尋工具",
+      "searchToolsHint": "開啟後，Hana 的 web_search 會走 Grok OAuth 搜尋，並提供 x_search（搜 X）。使用本週額度。"
     },
     "api": {
       "title": "模型與介面",
@@ -2408,7 +2413,12 @@
         "description": "自動會優先使用快取保護壓縮；普通壓縮會使用 Pi SDK 原生摘要。",
         "auto": "自動",
         "cachePreserving": "快取保護壓縮",
-        "piCompatible": "普通壓縮"
+        "piCompatible": "普通壓縮",
+        "observational": "觀察記憶壓縮"
+      },
+      "compactionThreshold": {
+        "title": "壓縮閾值",
+        "description": "上下文用到這個百分比時開始自動壓縮。預設 75%。"
       },
       "instantSimpleCompaction": {
         "title": "瞬時簡易壓縮",

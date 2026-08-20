@@ -1,8 +1,9 @@
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useSettingsStore, type ProviderSummary } from '../../store';
 import { hanaFetch } from '../../api';
 import { t } from '../../helpers';
 import { DEFAULT_OAUTH_LOGIN_METHOD } from '../../../../../../shared/oauth-login.ts';
+import { Toggle } from '@/ui';
 import styles from '../../Settings.module.css';
 
 const platform = window.platform;
@@ -132,6 +133,12 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
           <button className={styles['oauth-login-btn']} onClick={login}>{t('settings.oauth.login')}</button>
         )}
       </div>
+      {providerId === 'xai-oauth' && (
+        <>
+          {summary.logged_in && <XaiOauthWeeklyUsage />}
+          <XaiOauthSearchToolsToggle />
+        </>
+      )}
 
       {showCodeInput && (
         <div className={styles['oauth-code-section']}>
@@ -165,6 +172,140 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
           <div className={styles['oauth-device-spinner']}>{t('settings.oauth.waiting')}</div>
         </div>
       )}
+    </div>
+  );
+}
+
+type XaiOauthUsageState = {
+  remaining: number | null;
+  resetAt: string | null;
+  unknown: boolean;
+};
+
+function formatResetWhen(iso: string | null): string {
+  if (!iso) return '';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '';
+  return date.toLocaleString(undefined, {
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+async function readXaiOauthUsage(): Promise<XaiOauthUsageState> {
+  const unknown: XaiOauthUsageState = { remaining: null, resetAt: null, unknown: true };
+  const urls = [
+    '/api/auth/oauth/xai-oauth/usage',
+    '/api/plugins/xai-native-search/usage',
+  ];
+  for (const url of urls) {
+    try {
+      const res = await hanaFetch(url);
+      const data = await res.json() as { ok?: boolean; remaining?: number | null; resetAt?: string | null };
+      if (data?.ok && typeof data.remaining === 'number') {
+        return {
+          remaining: data.remaining,
+          resetAt: typeof data.resetAt === 'string' ? data.resetAt : null,
+          unknown: false,
+        };
+      }
+    } catch {
+      // Core route may be missing on older servers; try the plugin fallback.
+    }
+  }
+  return unknown;
+}
+
+function XaiOauthWeeklyUsage() {
+  const [usage, setUsage] = useState<XaiOauthUsageState | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    readXaiOauthUsage().then((next) => {
+      if (!cancelled) setUsage(next);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!usage) return null;
+  const reset = formatResetWhen(usage.resetAt);
+  const text = usage.unknown || usage.remaining == null
+    ? t('settings.oauth.weeklyUnknown')
+    : [
+      t('settings.oauth.weeklyRemaining', { remaining: String(usage.remaining) }),
+      reset ? t('settings.oauth.weeklyReset', { when: reset }) : '',
+    ].filter(Boolean).join(' · ');
+
+  return (
+    <div className={styles['oauth-weekly-usage']}>
+      {text}
+    </div>
+  );
+}
+
+function XaiOauthSearchToolsToggle() {
+  const showToast = useSettingsStore(s => s.showToast);
+  const snapshotEnabled = useSettingsStore(s => s.settingsSnapshot?.data?.preferences?.xaiOauthSearch?.enabled);
+  const [enabled, setEnabled] = useState<boolean | undefined>(
+    typeof snapshotEnabled === 'boolean' ? snapshotEnabled : undefined,
+  );
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void hanaFetch('/api/preferences/xai-oauth-search')
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (typeof data?.enabled === 'boolean') setEnabled(data.enabled);
+        else setEnabled(true);
+      })
+      .catch(() => {
+        if (!cancelled) setEnabled(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleChange = async (on: boolean) => {
+    const previous = enabled;
+    setEnabled(on);
+    setSaving(true);
+    try {
+      const res = await hanaFetch('/api/preferences/xai-oauth-search', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled: on }),
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (typeof data.enabled === 'boolean') setEnabled(data.enabled);
+    } catch (err: unknown) {
+      setEnabled(previous);
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(t('settings.saveFailed') + ': ' + msg, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className={styles['oauth-search-tools']}>
+      <div className={styles['oauth-search-tools-row']}>
+        <span className={styles['oauth-search-tools-label']}>{t('settings.oauth.searchTools')}</span>
+        <Toggle
+          on={enabled}
+          onChange={handleChange}
+          disabled={saving}
+          ariaLabel={t('settings.oauth.searchTools')}
+        />
+      </div>
+      <div className={styles['oauth-search-tools-hint']}>{t('settings.oauth.searchToolsHint')}</div>
     </div>
   );
 }

@@ -6,6 +6,10 @@ import {
 import {
   COMPACTION_MODE_EXPERIMENT_ID,
   COMPACTION_MODES,
+  COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID,
+  DEFAULT_COMPACTION_TRIGGER_PERCENT,
+  MAX_COMPACTION_TRIGGER_PERCENT,
+  MIN_COMPACTION_TRIGGER_PERCENT,
   getResolvedInstantSimpleCompactionEnabled,
   INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID,
 } from "../../shared/compaction-mode.ts";
@@ -13,7 +17,7 @@ import {
 export const CACHE_SNAPSHOT_EXPERIMENT_ID = "memory.cache_snapshot_reflection";
 export const DEEPSEEK_ROLEPLAY_REASONING_PATCH_EXPERIMENT_ID = "provider.deepseek_roleplay_reasoning_patch";
 export const PROACTIVE_SUBAGENT_EXPERIMENT_ID = "subagent.proactive_delegation";
-export { COMPACTION_MODE_EXPERIMENT_ID, INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID };
+export { COMPACTION_MODE_EXPERIMENT_ID, COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID, INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID };
 
 const RETIRED_EXPERIMENT_VALUES = new Map([
   [CACHE_SNAPSHOT_EXPERIMENT_ID, "off"],
@@ -36,6 +40,7 @@ const DEFINITIONS = [
         { value: COMPACTION_MODES.AUTO, labelKey: "settings.experiments.compaction.auto" },
         { value: COMPACTION_MODES.CACHE_PRESERVING, labelKey: "settings.experiments.compaction.cachePreserving" },
         { value: COMPACTION_MODES.PI_COMPATIBLE, labelKey: "settings.experiments.compaction.piCompatible" },
+        { value: COMPACTION_MODES.OBSERVATIONAL, labelKey: "settings.experiments.compaction.observational" },
       ],
     },
     status: "beta",
@@ -54,6 +59,38 @@ const DEFINITIONS = [
     sunsetPolicy: {
       removeWhenRetired: false,
       migration: "Keep reading session.compaction_mode until the setting graduates out of Experiments.",
+    },
+  }),
+  normalizeExperimentDefinition({
+    id: COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID,
+    titleKey: "settings.experiments.compactionThreshold.title",
+    descriptionKey: "settings.experiments.compactionThreshold.description",
+    owner: "session",
+    scope: "global",
+    defaultValue: DEFAULT_COMPACTION_TRIGGER_PERCENT,
+    valueSchema: {
+      type: "number",
+      min: MIN_COMPACTION_TRIGGER_PERCENT,
+      max: MAX_COMPACTION_TRIGGER_PERCENT,
+      presentation: {
+        type: "input",
+      },
+    },
+    status: "beta",
+    risk: "low",
+    restartPolicy: "immediate",
+    targetHome: {
+      tab: "experiments",
+      section: "compaction",
+      whenStable: "Move beside the compaction mode control after the threshold is the normal way to start auto-compaction.",
+    },
+    exitCriteria: [
+      "A lower percent starts auto-compaction earlier without looping.",
+      "Existing sessions pick up the new reserve on the next turn.",
+    ],
+    sunsetPolicy: {
+      removeWhenRetired: false,
+      migration: "Keep reading session.compaction_trigger_percent after this graduates.",
     },
   }),
   normalizeExperimentDefinition({

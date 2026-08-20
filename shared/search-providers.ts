@@ -18,14 +18,22 @@ export const BROWSER_SEARCH_PROVIDER_IDS = Object.freeze([
   "duckduckgo_browser",
 ] as const);
 
+export const XAI_OAUTH_SEARCH_PROVIDER = "xai_oauth";
+export const OAUTH_SEARCH_PROVIDER_IDS = Object.freeze([
+  XAI_OAUTH_SEARCH_PROVIDER,
+] as const);
+export const DEFAULT_XAI_OAUTH_SEARCH_TOOLS = true;
+
 export const SEARCH_CAPABILITY_PROVIDERS = Object.freeze([
   ...SEARCH_API_PROVIDER_IDS.map((id) => ({ id, source: "api", requiresApiKey: true })),
   ...SEARCH_FREE_API_PROVIDER_IDS.map((id) => ({ id, source: "api", requiresApiKey: false })),
+  ...OAUTH_SEARCH_PROVIDER_IDS.map((id) => ({ id, source: "oauth", requiresApiKey: false })),
   ...BROWSER_SEARCH_PROVIDER_IDS.map((id) => ({ id, source: "browser", requiresApiKey: false })),
 ]);
 
 const SEARCH_API_PROVIDER_SET = new Set<string>(SEARCH_API_PROVIDER_IDS);
 const SEARCH_FREE_API_PROVIDER_SET = new Set<string>(SEARCH_FREE_API_PROVIDER_IDS);
+const OAUTH_SEARCH_PROVIDER_SET = new Set<string>(OAUTH_SEARCH_PROVIDER_IDS);
 const BROWSER_SEARCH_PROVIDER_SET = new Set<string>(BROWSER_SEARCH_PROVIDER_IDS);
 
 export function normalizeSearchProvider(provider: unknown): string {
@@ -44,12 +52,23 @@ export function isBrowserSearchProvider(provider: unknown): boolean {
   return BROWSER_SEARCH_PROVIDER_SET.has(normalizeSearchProvider(provider));
 }
 
+export function isOauthSearchProvider(provider: unknown): boolean {
+  return OAUTH_SEARCH_PROVIDER_SET.has(normalizeSearchProvider(provider));
+}
+
 export function isKnownSearchProvider(provider: unknown): boolean {
   const normalized = normalizeSearchProvider(provider);
   return normalized === AUTO_SEARCH_PROVIDER
     || isSearchApiProvider(normalized)
     || isFreeSearchApiProvider(normalized)
+    || isOauthSearchProvider(normalized)
     || isBrowserSearchProvider(normalized);
+}
+
+export function normalizeXaiOauthSearchTools(value: unknown): boolean {
+  if (value === false) return false;
+  if (value === true) return true;
+  return DEFAULT_XAI_OAUTH_SEARCH_TOOLS;
 }
 
 export function normalizeSearchApiKeys(raw: unknown): Record<string, string> {

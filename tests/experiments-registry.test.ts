@@ -6,6 +6,7 @@ import { PreferencesManager } from "../core/preferences-manager.ts";
 import {
   CACHE_SNAPSHOT_EXPERIMENT_ID,
   COMPACTION_MODE_EXPERIMENT_ID,
+  COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID,
   DEEPSEEK_ROLEPLAY_REASONING_PATCH_EXPERIMENT_ID,
   INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID,
   getExperimentDefinitions,
@@ -58,7 +59,21 @@ describe("experiment registry", () => {
       "auto",
       "cache_preserving",
       "pi_compatible",
+      "observational",
     ]);
+    const threshold = defs.find((def) => def.id === COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID);
+    expect(threshold).toMatchObject({
+      id: COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID,
+      owner: "session",
+      scope: "global",
+      defaultValue: 75,
+      valueSchema: {
+        type: "number",
+        min: 50,
+        max: 95,
+        presentation: { type: "input" },
+      },
+    });
     expect(instant).toMatchObject({
       id: INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID,
       owner: "session",

@@ -119,12 +119,13 @@ describe('AssistantMessage completion actions', () => {
     expect(within(footer).getByTitle('全选消息')).toBeInTheDocument();
     expect(within(footer).getByTitle('选择消息')).toBeInTheDocument();
 
-    const ordered = Array.from(footer.children).map(child => (
-      child.textContent?.trim() || child.getAttribute('title') || ''
+    const meta = footer.querySelector('[class*="messageFooterMeta"]');
+    const toolbar = footer.querySelector('[class*="messageFooterToolbar"]');
+    expect(meta?.textContent?.trim()).toBe('05:43');
+    const ordered = Array.from(toolbar?.children || []).map(child => (
+      child.getAttribute('title') || child.textContent?.trim() || ''
     ));
-
     expect(ordered).toEqual([
-      '05:43',
       '重新生成',
       '分支为新会话',
       '复制文本',

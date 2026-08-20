@@ -508,6 +508,29 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     getProviderCompatOptions: (sessionPath) => (
       engine.getProviderCompatOptionsForSession(sessionPath)
     ),
+    captureObservationalText: async ({ systemPrompt, prompt, ctx }) => {
+      const sessionPath = ctx?.sessionManager?.getSessionFile?.() || null;
+      const agentId = sessionPath ? engine.resolveSessionOwnership?.(sessionPath)?.agentId || null : null;
+      const utility = await engine.resolveUtilityConfigFresh({ agentId, sessionPath });
+      return callText({
+        ...callTextConfigFromUtilityConfig(utility),
+        systemPrompt,
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 800,
+        usageLedger: utility.usageLedger,
+        usageContext: {
+          source: {
+            subsystem: "compaction",
+            operation: "observational_capture",
+            surface: "desktop",
+            trigger: "turn",
+          },
+          attribution: sessionPath
+            ? { kind: "session", agentId, sessionPath }
+            : { kind: "utility", agentId },
+        },
+      });
+    },
     getRequestReasoningLevel: (ctx) => engine.resolveRequestReasoningLevel(ctx),
     buildUsageContext: ({ ctx }) => {
       const sessionPath = ctx?.sessionManager?.getSessionFile?.() || null;

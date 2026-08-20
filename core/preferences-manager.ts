@@ -48,6 +48,7 @@ import {
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { isValidAgentId } from "../shared/agent-id.ts";
 import { normalizeSessionThinkingLevel } from "./session-thinking-level.ts";
+import { normalizeXaiOauthSearchTools } from "../shared/search-providers.ts";
 
 const log = createModuleLogger("preferences");
 const RETIRED_EXPERIMENT_IDS = new Set([
@@ -472,6 +473,17 @@ export class PreferencesManager {
     prefs.computer_use = revokeComputerUseApp(prefs.computer_use || {}, approval);
     this.savePreferences(prefs);
     return prefs.computer_use;
+  }
+
+  getXaiOauthSearchTools() {
+    return normalizeXaiOauthSearchTools(this._cache.xai_oauth_search_tools);
+  }
+
+  setXaiOauthSearchTools(enabled) {
+    const prefs = this._mutableCopy();
+    prefs.xai_oauth_search_tools = normalizeXaiOauthSearchTools(enabled);
+    this.savePreferences(prefs);
+    return prefs.xai_oauth_search_tools;
   }
 
   /** 读取技能安装配置（全局，跨 agent） */

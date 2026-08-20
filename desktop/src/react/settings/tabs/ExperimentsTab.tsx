@@ -11,8 +11,12 @@ import { ComputerUseSection } from './ComputerUseSection';
 import {
   COMPACTION_MODE_EXPERIMENT_ID,
   COMPACTION_MODES,
+  COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID,
+  MAX_COMPACTION_TRIGGER_PERCENT,
+  MIN_COMPACTION_TRIGGER_PERCENT,
   INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID,
   normalizeCompactionMode,
+  normalizeCompactionTriggerPercent,
 } from '../../../../../shared/compaction-mode.ts';
 import styles from '../Settings.module.css';
 
@@ -318,6 +322,61 @@ function CompactionModeExperiment({ experiment, onValueChange }: {
   );
 }
 
+function CompactionTriggerPercentExperiment({ experiment, onValueChange }: {
+  experiment: ExperimentDefinition;
+  onValueChange: (id: string, value: number) => Promise<void>;
+}) {
+  const [saving, setSaving] = useState(false);
+  const [draft, setDraft] = useState(String(normalizeCompactionTriggerPercent(experiment.value)));
+
+  useEffect(() => {
+    setDraft(String(normalizeCompactionTriggerPercent(experiment.value)));
+  }, [experiment.value]);
+
+  const commit = async () => {
+    const next = normalizeCompactionTriggerPercent(draft);
+    setDraft(String(next));
+    if (next === normalizeCompactionTriggerPercent(experiment.value)) return;
+    setSaving(true);
+    try {
+      await onValueChange(experiment.id, next);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <SettingsRow
+      label={t(experiment.titleKey)}
+      hint={t(experiment.descriptionKey)}
+      control={(
+        <span className={styles['experiments-percent-control']}>
+          <input
+            className={styles['settings-input']}
+            type="number"
+            min={MIN_COMPACTION_TRIGGER_PERCENT}
+            max={MAX_COMPACTION_TRIGGER_PERCENT}
+            step={1}
+            value={draft}
+            disabled={saving}
+            aria-label={t(experiment.titleKey)}
+            onChange={(event) => setDraft(event.target.value)}
+            onBlur={() => { void commit(); }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                (event.currentTarget as HTMLInputElement).blur();
+              }
+            }}
+            style={{ width: 72, textAlign: 'right' }}
+          />
+          <span>%</span>
+        </span>
+      )}
+    />
+  );
+}
+
 function BooleanExperiment({ experiment, onValueChange }: {
   experiment: ExperimentDefinition;
   onValueChange: (id: string, value: boolean) => Promise<void>;
@@ -427,6 +486,12 @@ export function ExperimentsTab() {
           {sessionExperiments.map((experiment) => (
             experiment.id === COMPACTION_MODE_EXPERIMENT_ID ? (
               <CompactionModeExperiment
+                key={experiment.id}
+                experiment={experiment}
+                onValueChange={updateExperimentValue}
+              />
+            ) : experiment.id === COMPACTION_TRIGGER_PERCENT_EXPERIMENT_ID ? (
+              <CompactionTriggerPercentExperiment
                 key={experiment.id}
                 experiment={experiment}
                 onValueChange={updateExperimentValue}

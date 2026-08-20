@@ -39,6 +39,7 @@ function makeEngine(loginImpl: LoginImpl) {
 describe("auth oauth route", () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllGlobals();
   });
 
   it("reuses an in-flight callback-server flow for the same provider", async () => {
@@ -273,5 +274,31 @@ describe("auth oauth route", () => {
     expect(engine.providerRegistry.addModel).toHaveBeenCalledWith("openai-codex-oauth", "my-codex-model");
     expect(engine.onProviderChanged).toHaveBeenCalled();
     expect(engine.preferences.setOAuthCustomModels).not.toHaveBeenCalled();
+  });
+
+  it("returns weekly remaining quota for xai-oauth", async () => {
+    const engine = makeEngine(() => new Promise<void>(() => {}));
+    engine.providerRegistry.getAuthJsonKey = vi.fn(() => "xai-oauth");
+    engine.providerRegistry.resolveChatProvider = vi.fn(() => ({
+      sourceProviderId: "xai-oauth",
+      entry: { authType: "oauth" },
+    }));
+    engine.authStorage.get = vi.fn(() => ({ type: "oauth", access: "grok-access" }));
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      config: {
+        creditUsagePercent: 35,
+        currentPeriod: { end: "2026-08-23T04:13:07.884Z" },
+      },
+    }), { status: 200 })));
+
+    const app = new Hono();
+    app.route("/api", createAuthRoute(engine));
+    const response = await app.request("/api/auth/oauth/xai-oauth/usage");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      ok: true,
+      used: 35,
+      remaining: 65,
+    });
   });
 });

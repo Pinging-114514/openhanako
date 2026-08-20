@@ -5443,6 +5443,36 @@ a.about-link:hover {
     gap: var(--space-8);
 }
 
+.oauth-weekly-usage {
+    margin-top: 6px;
+    font-size: var(--fs-hint, 0.75rem);
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.oauth-search-tools {
+    margin-top: 10px;
+}
+
+.oauth-search-tools-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-8);
+}
+
+.oauth-search-tools-label {
+    font-size: 0.82rem;
+    color: var(--text);
+}
+
+.oauth-search-tools-hint {
+    margin-top: 4px;
+    font-size: var(--fs-hint, 0.75rem);
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
 /* ── 已收藏模型（紧凑列表） ── */
 .pv-fav-section {
     margin-bottom: var(--space-16);
@@ -6945,6 +6975,14 @@ a.about-link:hover {
     font-size: var(--fs-caption);
     line-height: 1.5;
     padding: var(--space-8) var(--space-16);
+}
+
+.experiments-percent-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
 }
 
 .experiments-clear-btn {

@@ -28,6 +28,7 @@ export const CORE_TOOL_NAMES = [
 ];
 
 export const STANDARD_TOOL_NAMES = [
+  "x_search",
   "web_fetch",
   "todo_write",
   "notify",
@@ -86,7 +87,7 @@ export const BUILT_IN_PERMISSION_GATEWAY_TOOL_NAMES = [
   // PI filesystem primitives are constrained by the session ResourceIO/sandbox.
   "read", "write", "edit", "grep", "find", "ls",
   // Existing read/network surfaces still use the host permission classifier.
-  "search_memory", "web_search", "web_fetch",
+  "search_memory", "web_search", "x_search", "web_fetch",
   // These tools own a deeper action/path/session gate at execution time.
   "file", "current_status", "session_folders", "computer",
   "session", "workflow",

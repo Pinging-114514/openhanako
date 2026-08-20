@@ -279,6 +279,7 @@ export function extractToolDetail(name: string, args: Record<string, unknown> | 
       return { text: extractHostname(url), href: url || undefined, hrefType: 'url' };
     }
     case 'web_search':
+    case 'x_search':
       return { text: truncateHead((args.query || '') as string, 40) };
     case 'browser': {
       const url = (args.url || '') as string;

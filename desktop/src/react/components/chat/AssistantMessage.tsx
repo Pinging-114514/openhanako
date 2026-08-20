@@ -19,6 +19,7 @@ import { SessionCollabDraftCard } from './SessionCollabDraftCard';
 import { useMessageFooterActions } from './MessageActions';
 import { MessageFooterActions, formatMessageTime } from './MessageFooterActions';
 import { formatTurnUsageLine } from '../../utils/turn-usage-format';
+import { scheduleTurnUsageBackfill } from '../../utils/turn-usage-backfill';
 import { ChatResourceCard } from './ChatResourceCard';
 import { FileResourceIcon, SkillResourceIcon } from './ChatResourceIcons';
 import { BLOCK_RENDERERS } from './block-renderers';
@@ -143,6 +144,14 @@ export const AssistantMessage = memo(function AssistantMessage({
   const shouldPersistCompletionTime = showTurnCompletionTime && isLatestAssistantMessage && !isStreaming;
   const timeText = showTurnCompletionTime && !isStreaming ? formatMessageTime(message.timestamp) : null;
   const usageText = showTurnCompletionTime && !isStreaming ? formatTurnUsageLine(message.turnUsage) : null;
+
+  useEffect(() => {
+    if (!shouldPersistCompletionTime || !sessionPath || !message.id) return;
+    const timer = window.setTimeout(() => {
+      scheduleTurnUsageBackfill(sessionPath, message.id, message.timestamp);
+    }, 800);
+    return () => window.clearTimeout(timer);
+  }, [shouldPersistCompletionTime, message.id, message.timestamp, sessionPath]);
   const standardMessageActions = useMessageFooterActions({
     messageId: message.id,
     selectionIds: assistantTurnSelectionIds,

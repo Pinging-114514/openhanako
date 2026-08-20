@@ -1,7 +1,7 @@
 export const EXPERIMENT_STATUSES = new Set(["alpha", "beta", "deprecated", "retired"]);
 export const EXPERIMENT_SCOPES = new Set(["global", "agent", "session"]);
 export const EXPERIMENT_VALUE_SCHEMA_TYPES = new Set(["boolean", "enum", "number"]);
-export const EXPERIMENT_PRESENTATION_TYPES = new Set(["toggle", "select", "segmented", "paired_toggles"]);
+export const EXPERIMENT_PRESENTATION_TYPES = new Set(["toggle", "select", "segmented", "paired_toggles", "input"]);
 
 export function cloneExperiment(value) {
   return structuredClone(value);
@@ -39,9 +39,11 @@ export function normalizeExperimentValue(definition, value) {
   const schema = definition.valueSchema || {};
   if (schema.type === "boolean") return value === true;
   if (schema.type === "number") {
-    const num = Number(value);
+    let num = Number(value);
     if (!Number.isFinite(num)) throw new Error(`invalid experiment value for ${definition.id}`);
-    return num;
+    if (typeof schema.min === "number") num = Math.max(schema.min, num);
+    if (typeof schema.max === "number") num = Math.min(schema.max, num);
+    return Math.round(num);
   }
   if (schema.type === "enum") {
     const allowed = new Set((schema.options || []).map((opt) => opt.value));

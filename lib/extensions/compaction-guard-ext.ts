@@ -60,6 +60,9 @@ import {
   COMPACTION_MODES,
   normalizeCompactionMode,
 } from "../../shared/compaction-mode.ts";
+import { foldObservationalNotes } from "../observational-compaction/ledger.ts";
+import { renderObservationalSummary } from "../observational-compaction/render.ts";
+import { captureObservationalNotes } from "../observational-compaction/capture-run.ts";
 import { convertAgentMessagesToLlm } from "../pi-sdk/index.ts";
 import { createModuleLogger } from "../debug-log.ts";
 import { normalizeRequestThinkingLevel } from "../../core/session-thinking-level.ts";
@@ -169,6 +172,10 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
   const getRequestReasoningLevel = typeof opts.getRequestReasoningLevel === "function"
     ? opts.getRequestReasoningLevel
     : null;
+  const captureObservationalText = typeof opts.captureObservationalText === "function"
+    ? opts.captureObservationalText
+    : null;
+  const observationalCaptureInFlight = new Set();
 
   function resolveReasoningLevelForRequest(ctx: any) {
     if (!getRequestReasoningLevel) {
@@ -202,6 +209,30 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
     pi.on("context", (event) => {
       const messages = projectMessagesToLatestCompactionUsageEpoch(event.messages);
       return messages === event.messages ? undefined : { messages };
+    });
+
+    pi.on("agent_end", (_event, ctx) => {
+      try {
+        if (readCompactionMode(_event, ctx) !== COMPACTION_MODES.OBSERVATIONAL) return;
+        if (typeof captureObservationalText !== "function") return;
+        const sessionManager = ctx?.sessionManager;
+        if (typeof sessionManager?.appendCustomEntry !== "function") return;
+        const sessionKey = sessionManager.getSessionFile?.() || sessionManager.getSessionId?.() || "unknown";
+        if (observationalCaptureInFlight.has(sessionKey)) return;
+        observationalCaptureInFlight.add(sessionKey);
+        const entries = typeof sessionManager.getBranch === "function" ? sessionManager.getBranch() : [];
+        void captureObservationalNotes({
+          entries,
+          completeText: (input) => captureObservationalText({ ...input, ctx }),
+          appendCustomEntry: (type, data) => sessionManager.appendCustomEntry(type, data),
+        }).catch((err) => {
+          log.warn(`[om] capture failed: ${err?.message || err}`);
+        }).finally(() => {
+          observationalCaptureInFlight.delete(sessionKey);
+        });
+      } catch (err) {
+        log.warn(`[om] agent_end hook error: ${err?.message || err}`);
+      }
     });
 
     // ── L1: tool_result 单条硬限 ──
@@ -244,7 +275,26 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           log.log("[L3] pi-compatible compaction selected; falling through to Pi SDK native summarizer");
           return undefined;
         }
-        allowNativeFallback = compactionMode === COMPACTION_MODES.AUTO;
+        if (compactionMode === COMPACTION_MODES.OBSERVATIONAL) {
+          const branchEntries = Array.isArray(event.branchEntries)
+            ? event.branchEntries
+            : (ctx.sessionManager?.getBranch?.() || []);
+          const folded = foldObservationalNotes(branchEntries);
+          const summary = renderObservationalSummary(folded.observations);
+          if (summary) {
+            log.log(`[L3] observational compaction using ${folded.observations.length} prepared notes`);
+            return {
+              compaction: {
+                summary,
+                firstKeptEntryId: rawPreparation.firstKeptEntryId,
+                tokensBefore: rawPreparation.tokensBefore,
+              },
+            };
+          }
+          log.log("[L3] observational notes empty; falling through to cache-preserving compaction");
+        }
+        allowNativeFallback = compactionMode === COMPACTION_MODES.AUTO
+          || compactionMode === COMPACTION_MODES.OBSERVATIONAL;
 
         const model = ctx?.model;
         if (!model) return { cancel: true };

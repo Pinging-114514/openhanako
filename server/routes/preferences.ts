@@ -40,6 +40,7 @@ import { normalizeBrowserPreferences } from "../../shared/browser-preferences.ts
 import {
   SEARCH_API_PROVIDER_IDS,
   normalizeSearchApiKeys,
+  normalizeXaiOauthSearchTools,
 } from "../../shared/search-providers.ts";
 import {
   normalizeSharedModelsPatch,
@@ -306,6 +307,38 @@ export function createPreferencesRoute(engine: any, options: Record<string, any>
       return c.json({ ok: true, appearance });
     } catch (err) {
       return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.get("/preferences/xai-oauth-search", async (c) => {
+    try {
+      const runtime = engine.getXaiOauthSearchRuntime?.() || {};
+      return c.json({
+        enabled: engine.getXaiOauthSearchTools?.() !== false,
+        loggedIn: runtime.loggedIn === true,
+      });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.put("/preferences/xai-oauth-search", async (c) => {
+    try {
+      const settingsDenied = denyWithoutScope(c, "settings.write");
+      if (settingsDenied) return settingsDenied;
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      if (typeof engine.setXaiOauthSearchTools !== "function") {
+        return c.json({ error: "xAI OAuth search preferences unavailable" }, 500);
+      }
+      const enabled = normalizeXaiOauthSearchTools(body.enabled);
+      const saved = engine.setXaiOauthSearchTools(enabled);
+      const runtime = engine.getXaiOauthSearchRuntime?.() || {};
+      return c.json({ ok: true, enabled: saved, loggedIn: runtime.loggedIn === true });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
     }
   });
 

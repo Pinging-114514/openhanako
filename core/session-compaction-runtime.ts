@@ -8,9 +8,9 @@
  *      reserve of 16384 tokens is meaningless once the model window is in the
  *      millions: the trigger point sits at 98%+ of the window, so in practice
  *      the session overflows before it ever compacts. The reserve is therefore
- *      derived from the live window as `max(16384, 10% of window)`, which puts
- *      the trigger at `min(90% of window, window - 16384)` — the smaller of a
- *      proportional headroom and the original absolute headroom.
+ *      derived from the live window as `max(16384, (100-P)% of window)`, which
+ *      puts the trigger at P% of the window (default 75%), never later than
+ *      `window - 16384`.
  *
  *   2. Mid-run compaction. The SDK only checks the threshold after a whole
  *      agentic run finishes and before a new prompt, so a single long tool loop
@@ -29,6 +29,10 @@
 import { calculateContextTokens, estimateTokens, shouldCompact } from "../lib/pi-sdk/index.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import {
+  DEFAULT_COMPACTION_TRIGGER_PERCENT,
+  normalizeCompactionTriggerPercent,
+} from "../shared/compaction-mode.ts";
+import {
   isDirectCompactionInProgress,
   runCachePreservingCompactionForSession,
 } from "./session-compactor.ts";
@@ -37,9 +41,6 @@ const log = createModuleLogger("midrun-compaction");
 
 /** Absolute floor, and the SDK's own default reserve. */
 export const MIN_COMPACTION_RESERVE_TOKENS = 16_384;
-
-/** Fraction of the context window kept free when it is larger than the floor implies. */
-const COMPACTION_RESERVE_RATIO = 0.1;
 
 const DYNAMIC_RESERVE_INSTALLED = Symbol("hanaDynamicCompactionReserve");
 const MIDRUN_COMPACTION_INSTALLED = Symbol("hanaMidRunCompaction");
@@ -51,11 +52,21 @@ const MIDRUN_COMPACTION_INSTALLED = Symbol("hanaMidRunCompaction");
 export const MIDRUN_COMPACTION_NOTICE = `[System compaction notice — not a user message]
 The conversation history above was compacted while you were actively working on the user's task. You are still mid-task. Continue the work described in the summary's "In Progress" and "Next Steps" sections without pausing to ask for confirmation, and do not redo work already listed as done. If any newer user message appears after this notice, it takes precedence over this notice.`;
 
-/** Reserve tokens for a model window: the larger of the floor and 10% of the window. */
-export function computeCompactionReserveTokens(contextWindow: any): number {
+let resolveTriggerPercent = () => DEFAULT_COMPACTION_TRIGGER_PERCENT;
+
+export function setCompactionTriggerPercentResolver(resolver) {
+  resolveTriggerPercent = typeof resolver === "function"
+    ? resolver
+    : () => DEFAULT_COMPACTION_TRIGGER_PERCENT;
+}
+
+/** Reserve tokens so compaction starts when usage reaches the configured percent. */
+export function computeCompactionReserveTokens(contextWindow: any, triggerPercent: any = resolveTriggerPercent()): number {
   const window = Number(contextWindow);
   if (!Number.isFinite(window) || window <= 0) return MIN_COMPACTION_RESERVE_TOKENS;
-  return Math.max(MIN_COMPACTION_RESERVE_TOKENS, Math.ceil(window * COMPACTION_RESERVE_RATIO));
+  const percent = normalizeCompactionTriggerPercent(triggerPercent);
+  const ratio = (100 - percent) / 100;
+  return Math.max(MIN_COMPACTION_RESERVE_TOKENS, Math.ceil(window * ratio));
 }
 
 /**

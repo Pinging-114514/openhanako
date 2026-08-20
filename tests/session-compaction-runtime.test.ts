@@ -67,9 +67,15 @@ function createAssistantTurn(totalTokens: number, overrides: Record<string, any>
 
 describe("computeCompactionReserveTokens", () => {
   it("scales the reserve with the context window but never below the floor", () => {
-    expect(computeCompactionReserveTokens(200_000)).toBe(20_000);
-    expect(computeCompactionReserveTokens(100_000)).toBe(16_384);
-    expect(computeCompactionReserveTokens(1_048_576)).toBe(104_858);
+    expect(computeCompactionReserveTokens(200_000)).toBe(50_000);
+    expect(computeCompactionReserveTokens(100_000)).toBe(25_000);
+    expect(computeCompactionReserveTokens(1_048_576)).toBe(262_144);
+  });
+
+  it("uses a lower trigger percent to start compaction earlier", () => {
+    expect(computeCompactionReserveTokens(200_000, 70)).toBe(60_000);
+    expect(computeCompactionReserveTokens(200_000, 50)).toBe(100_000);
+    expect(computeCompactionReserveTokens(200_000, 95)).toBe(16_384);
   });
 
   it("falls back to the floor for missing or nonsensical windows", () => {
@@ -80,10 +86,10 @@ describe("computeCompactionReserveTokens", () => {
     expect(computeCompactionReserveTokens(Number.POSITIVE_INFINITY)).toBe(16_384);
   });
 
-  it("places the trigger point at the smaller of 90% of the window and window minus the floor", () => {
+  it("places the trigger point at the configured percent, never later than window minus the floor", () => {
     for (const window of [200_000, 1_048_576]) {
       const triggerPoint = window - computeCompactionReserveTokens(window);
-      expect(triggerPoint).toBe(Math.min(Math.floor(0.9 * window), window - FLOOR_RESERVE));
+      expect(triggerPoint).toBe(Math.min(Math.floor(0.75 * window), window - FLOOR_RESERVE));
     }
   });
 });
@@ -95,10 +101,10 @@ describe("installDynamicCompactionReserve", () => {
 
     installDynamicCompactionReserve(session);
 
-    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(100_000);
+    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(250_000);
 
     session.model = { contextWindow: 120_000 };
-    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(16_384);
+    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(30_000);
   });
 
   it("is idempotent", () => {
@@ -110,7 +116,7 @@ describe("installDynamicCompactionReserve", () => {
     installDynamicCompactionReserve(session);
 
     expect(settingsManager.getCompactionReserveTokens).toBe(first);
-    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(100_000);
+    expect(settingsManager.getCompactionSettings().reserveTokens).toBe(250_000);
   });
 
   it("throws when the SDK no longer exposes the reserve accessor", () => {

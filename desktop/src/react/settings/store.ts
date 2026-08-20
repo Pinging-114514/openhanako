@@ -81,6 +81,10 @@ export interface SettingsSnapshot {
     imageGeneration?: Record<string, any>;
     speechRecognition: Record<string, any>;
     experiments: any[];
+    xaiOauthSearch?: {
+      enabled?: boolean;
+      loggedIn?: boolean;
+    };
   };
   access?: Record<string, any> | null;
   bridgeStatus?: Record<string, any> | null;

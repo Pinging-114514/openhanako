@@ -18,6 +18,7 @@ import { SessionSummaryManager } from "../lib/memory/session-summary.ts";
 import { createMemoryTicker } from "../lib/memory/memory-ticker.ts";
 import { createMemorySearchTool } from "../lib/memory/memory-search.ts";
 import { createWebSearchTool } from "../lib/tools/web-search.ts";
+import { createXSearchTool } from "../lib/tools/x-search.ts";
 import { createTodoTool } from "../lib/tools/todo.ts";
 import { createDeskManager } from "../lib/desk/desk-manager.ts";
 import { CronStore } from "../lib/desk/cron-store.ts";
@@ -143,6 +144,7 @@ export class Agent {
   declare _utilityModel: any;
   declare _webFetchTool: any;
   declare _webSearchTool: any;
+  declare _xSearchTool: any;
   declare _cardGuideTool: any;
   declare _showCardTool: any;
   declare _workflowTool: any;
@@ -209,6 +211,7 @@ export class Agent {
     this._memoryTicker = null;
     this._memorySearchTool = null;
     this._webSearchTool = null;
+    this._xSearchTool = null;
     this._webFetchTool = null;
     this._todoTool = null;
     this._pinnedMemoryTools = [];
@@ -501,6 +504,10 @@ export class Agent {
     this._webSearchTool = createWebSearchTool({
       configPath: this.configPath,
       searchConfigResolver: this._searchConfigResolver,
+      xaiOauthSearchResolver: () => this._cb?.getXaiOauthSearchRuntime?.() || { enabled: false },
+    });
+    this._xSearchTool = createXSearchTool({
+      xaiOauthSearchResolver: () => this._cb?.getXaiOauthSearchRuntime?.() || { enabled: false },
     });
     this._webFetchTool = createWebFetchTool();
     this._todoTool = createTodoTool();
@@ -930,6 +937,9 @@ export class Agent {
     const channelTools = (this._cb?.isChannelsEnabled?.() ?? false)
       ? [this._channelTool]
       : [];
+    const xSearchTools = this._cb?.isXaiOauthSearchEnabled?.() === true
+      ? [this._xSearchTool]
+      : [];
     const learnCfg = this._cb?.getLearnSkills?.() || this._config?.capabilities?.learn_skills || {};
     const installSkillTools = learnCfg.enabled === true
       ? [this._installSkillTool]
@@ -938,6 +948,7 @@ export class Agent {
       ...memTools,
       ...experienceTools,
       this._webSearchTool,
+      ...xSearchTools,
       this._webFetchTool,
       this._todoTool,
       this._automationTool,
@@ -1084,6 +1095,7 @@ export class Agent {
       this._webSearchTool = createWebSearchTool({
         configPath: this.configPath,
         searchConfigResolver: this._searchConfigResolver,
+        xaiOauthSearchResolver: () => this._cb?.getXaiOauthSearchRuntime?.() || { enabled: false },
       });
     }
 

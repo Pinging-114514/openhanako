@@ -15,11 +15,17 @@ import {
   AUTO_SEARCH_PROVIDER,
   BROWSER_SEARCH_PROVIDER_IDS,
   SEARCH_API_PROVIDER_IDS,
+  XAI_OAUTH_SEARCH_PROVIDER,
+  isOauthSearchProvider,
   isSearchApiProvider,
   mergeSearchApiKeys,
   normalizeSearchApiKeys,
   normalizeSearchProvider,
 } from "../../shared/search-providers.ts";
+import {
+  callXaiOauthNativeSearch,
+  resultsFromXaiSearch,
+} from "./xai-oauth-search.ts";
 import {
   SearchRateLimitError,
   createSearchRateLimiter,
@@ -288,9 +294,29 @@ async function searchAnySearchFree(query, maxResults) {
   return searchAnySearch(query, maxResults, "", ANYSEARCH_FREE_PROVIDER);
 }
 
+async function searchXaiOauth(query, maxResults, _apiKey, _provider, extras: Record<string, any> = {}) {
+  const runtime = extras.xaiOauth || {};
+  if (!runtime.enabled || !runtime.accessToken) {
+    throw new Error("xAI OAuth search is off or not logged in");
+  }
+  const image = runtime.understandImages !== false;
+  const result = await callXaiOauthNativeSearch({
+    prompt: query,
+    tools: [
+      { type: "web_search", enable_image_understanding: image },
+      { type: "x_search", enable_image_understanding: image },
+    ],
+    accessToken: runtime.accessToken,
+    modelId: runtime.modelId,
+  });
+  if (!result.ok) throw new Error(result.error || "xAI OAuth search failed");
+  return resultsFromXaiSearch(result, maxResults);
+}
+
 const PROVIDERS = {
   [ANYSEARCH_PROVIDER]: { search: searchAnySearch, requiresApiKey: true, sourceType: "api" },
   [ANYSEARCH_FREE_PROVIDER]: { search: searchAnySearchFree, requiresApiKey: false, sourceType: "api" },
+  [XAI_OAUTH_SEARCH_PROVIDER]: { search: searchXaiOauth, requiresApiKey: false, sourceType: "oauth" },
   tavily: { search: searchTavily, requiresApiKey: true, sourceType: "api" },
   brave: { search: searchBrave, requiresApiKey: true, sourceType: "api" },
   serper: { search: searchSerper, requiresApiKey: true, sourceType: "api" },
@@ -381,15 +407,18 @@ function normalizeProviderPayload(query, provider, meta, payload) {
   };
 }
 
-async function runProviderSearch({ provider, query, maxResults, apiKey, rateLimiter }) {
+async function runProviderSearch({ provider, query, maxResults, apiKey, rateLimiter, xaiOauth }) {
   const meta = providerMeta(provider);
   if (meta.requiresApiKey && !apiKey) {
+    throw new Error(t("error.searchProviderMissingKey", { provider }));
+  }
+  if (isOauthSearchProvider(provider) && (!xaiOauth?.enabled || !xaiOauth?.accessToken)) {
     throw new Error(t("error.searchProviderMissingKey", { provider }));
   }
   const providerMaxResults = maxResultsForProvider(provider, maxResults);
   const limiter = rateLimiter || defaultSearchRateLimiter;
   const payload = await limiter.run(provider, meta.sourceType, () => (
-    meta.search(query, providerMaxResults, apiKey, provider)
+    meta.search(query, providerMaxResults, apiKey, provider, { xaiOauth })
   ));
   return normalizeProviderPayload(query, provider, meta, payload);
 }
@@ -472,10 +501,13 @@ function attachAutoDiagnostics(payload, attempts, extra = {}) {
   };
 }
 
-async function doAutoSearch(query, maxResults, { apiKeys, rateLimiter }) {
+async function doAutoSearch(query, maxResults, { apiKeys, rateLimiter, xaiOauth }) {
   const attempts = [];
   const configuredApiProviders = SEARCH_API_PROVIDER_IDS.filter((provider) => !!apiKeys[provider]);
-  const chain = [...configuredApiProviders, ANYSEARCH_FREE_PROVIDER, ...BROWSER_SEARCH_PROVIDER_IDS];
+  const oauthProviders = (xaiOauth?.enabled && xaiOauth?.accessToken)
+    ? [XAI_OAUTH_SEARCH_PROVIDER]
+    : [];
+  const chain = [...oauthProviders, ...configuredApiProviders, ANYSEARCH_FREE_PROVIDER, ...BROWSER_SEARCH_PROVIDER_IDS];
   let firstLowQualityPayload = null;
 
   for (const provider of chain) {
@@ -488,6 +520,7 @@ async function doAutoSearch(query, maxResults, { apiKeys, rateLimiter }) {
         maxResults,
         apiKey: apiKeys[provider] || "",
         rateLimiter,
+        xaiOauth,
       });
       attempt.result_count = payload.results.length;
       if (payload.results.length === 0) {
@@ -532,7 +565,16 @@ async function doAutoSearch(query, maxResults, { apiKeys, rateLimiter }) {
   };
 }
 
-async function doSearch(query, maxResults, { configPath, searchConfigResolver, rateLimiter }: Record<string, any> = {}) {
+function resolveXaiOauthSearch(xaiOauthSearchResolver) {
+  if (typeof xaiOauthSearchResolver !== "function") return { enabled: false, accessToken: null };
+  try {
+    return xaiOauthSearchResolver() || { enabled: false, accessToken: null };
+  } catch {
+    return { enabled: false, accessToken: null };
+  }
+}
+
+async function doSearch(query, maxResults, { configPath, searchConfigResolver, xaiOauthSearchResolver, rateLimiter }: Record<string, any> = {}) {
   // Use explicitly passed args; fall back to module globals for backward compat
   const resolverFn = searchConfigResolver ?? _searchConfigResolver;
   const cfgPath = configPath ?? _configPath;
@@ -545,13 +587,14 @@ async function doSearch(query, maxResults, { configPath, searchConfigResolver, r
 
   // 优先从 resolver 获取搜索配置，否则从 agent config 读取。
   const { provider, apiKey, apiKeys } = buildSearchRuntimeConfig({ resolverFn, readConfig });
+  const xaiOauth = resolveXaiOauthSearch(xaiOauthSearchResolver);
 
   if (!provider) {
     throw new Error(t("error.searchProviderNotConfigured"));
   }
 
   if (provider === AUTO_SEARCH_PROVIDER) {
-    return doAutoSearch(query, maxResults, { apiKeys, rateLimiter });
+    return doAutoSearch(query, maxResults, { apiKeys, rateLimiter, xaiOauth });
   }
 
   let meta;
@@ -565,7 +608,7 @@ async function doSearch(query, maxResults, { configPath, searchConfigResolver, r
   }
 
   try {
-    return await runProviderSearch({ provider, query, maxResults, apiKey, rateLimiter });
+    return await runProviderSearch({ provider, query, maxResults, apiKey, rateLimiter, xaiOauth });
   } catch (err) {
     throw new Error(t("error.searchFailed", { msg: err.message }));
   }
@@ -581,9 +624,9 @@ async function doSearch(query, maxResults, { configPath, searchConfigResolver, r
  * @param {Function} [opts.searchConfigResolver] - per-agent resolver returning { provider, api_key }
  * @param {object} [opts.rateLimiter]          - test/advanced hook with run(provider, sourceType, op)
  */
-export function createWebSearchTool({ configPath, searchConfigResolver, rateLimiter }: Record<string, any> = {}) {
+export function createWebSearchTool({ configPath, searchConfigResolver, xaiOauthSearchResolver, rateLimiter }: Record<string, any> = {}) {
   // Capture per-agent config in the closure so each agent's tool reads its own config
-  const closureOpts = { configPath, searchConfigResolver, rateLimiter };
+  const closureOpts = { configPath, searchConfigResolver, xaiOauthSearchResolver, rateLimiter };
 
   return {
     name: "web_search",

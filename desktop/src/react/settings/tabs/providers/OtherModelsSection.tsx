@@ -12,8 +12,10 @@ import styles from '../../Settings.module.css';
 import {
   AUTO_SEARCH_PROVIDER,
   SEARCH_API_PROVIDER_IDS,
+  XAI_OAUTH_SEARCH_PROVIDER,
   isFreeSearchApiProvider,
   isBrowserSearchProvider,
+  isOauthSearchProvider,
   isSearchApiProvider,
   normalizeSearchApiKeys,
 } from '../../../../../../shared/search-providers.ts';
@@ -108,7 +110,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
 
   const searchProvider = globalModelsConfig?.search?.provider || AUTO_SEARCH_PROVIDER;
   const searchIsAutoProvider = searchProvider === AUTO_SEARCH_PROVIDER;
-  const searchIsKeylessProvider = isBrowserSearchProvider(searchProvider) || isFreeSearchApiProvider(searchProvider);
+  const searchIsKeylessProvider = isBrowserSearchProvider(searchProvider) || isFreeSearchApiProvider(searchProvider) || isOauthSearchProvider(searchProvider);
   const explicitSearchApiProvider = searchProviderNeedsApiKey(searchProvider) ? searchProvider : '';
 
   const verifySearch = async (provider: string) => {
@@ -252,7 +254,8 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
           <label className={styles['settings-form-label']}>{t('settings.api.searchProviderField')}</label>
           <SelectWidget
             options={[
-              { value: AUTO_SEARCH_PROVIDER, label: 'Auto (Paid API -> AnySearch free -> Browser)' },
+              { value: AUTO_SEARCH_PROVIDER, label: 'Auto (Grok OAuth -> Paid API -> AnySearch free -> Browser)' },
+              { value: XAI_OAUTH_SEARCH_PROVIDER, label: 'xAI Grok (OAuth)' },
               { value: 'anysearch', label: 'AnySearch' },
               { value: 'anysearch_free', label: 'AnySearch (free)' },
               { value: 'bing_browser', label: 'Bing (Browser)' },
@@ -265,7 +268,7 @@ export function OtherModelsSection({ providers }: { providers: Record<string, { 
             value={searchProvider}
             onChange={(val) => {
               setSearchKeyEdited({});
-              const keyless = val === AUTO_SEARCH_PROVIDER || isBrowserSearchProvider(val) || isFreeSearchApiProvider(val);
+              const keyless = val === AUTO_SEARCH_PROVIDER || isBrowserSearchProvider(val) || isFreeSearchApiProvider(val) || isOauthSearchProvider(val);
               autoSaveGlobalModels({ search: keyless ? { provider: val, api_key: '' } : { provider: val } });
             }}
             placeholder={t('settings.api.searchProviderField')}

@@ -193,14 +193,6 @@
   "titlebar": {
     "currentChatTitle": "当前对话标题"
   },
-  "chat": {
-    "turnUsage": {
-      "cache": "缓存 {rate}%",
-      "cacheUnknown": "缓存 —",
-      "io": "入 {input} / 出 {output}",
-      "speed": "{speed} tok/s"
-    }
-  },
   "session": {
     "untitled": "新对话",
     "messageCount": "{n} 条消息",
@@ -299,6 +291,13 @@
     "back": "返回"
   },
   "chat": {
+    "turnUsage": {
+      "calls": "{n} 次",
+      "cache": "缓存 {rate}%",
+      "cacheUnknown": "缓存 —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    },
     "find": {
       "locateFailed": "未能定位到该消息",
       "placeholder": "在会话中查找"
@@ -689,6 +688,11 @@
       "running": "🌐 {name} 正在互联网冲浪",
       "done": "🌐 {name} 冲浪回来了",
       "failed": "🌐 {name} 没冲到浪"
+    },
+    "x_search": {
+      "running": "𝕏 {name} 正在搜 X",
+      "done": "𝕏 {name} 搜完了",
+      "failed": "𝕏 {name} 没搜到"
     },
     "web_fetch": {
       "running": "📄 {name} 正在看网页",
@@ -1151,10 +1155,15 @@
       },
       "compaction": {
         "title": "压缩模式",
-        "description": "自动会优先使用缓存保护压缩；普通压缩会放行 Pi SDK 原生摘要。",
+        "description": "自动会优先使用缓存保护压缩；普通压缩走 Pi 原生摘要；观察记忆压缩在平时记下要点，压缩时直接装订，不再让主模型写长摘要。",
         "auto": "自动",
         "cachePreserving": "缓存保护压缩",
-        "piCompatible": "普通压缩"
+        "piCompatible": "普通压缩",
+        "observational": "观察记忆压缩"
+      },
+      "compactionThreshold": {
+        "title": "压缩阈值",
+        "description": "上下文用到这个百分比时开始自动压缩。默认 75%。"
       },
       "instantSimpleCompaction": {
         "title": "瞬时简易压缩",
@@ -1771,7 +1780,13 @@
       "clickToCopy": "点击复制",
       "codeCopied": "验证码已复制",
       "addModel": "添加模型",
-      "customModelPlaceholder": "输入模型 ID"
+      "customModelPlaceholder": "输入模型 ID",
+      "weeklyRemaining": "本周剩余 {remaining}%",
+      "weeklyUsed": "本周已用 {used}%",
+      "weeklyReset": "{when} 重置",
+      "weeklyUnknown": "周用量暂时读不到",
+      "searchTools": "搜索工具",
+      "searchToolsHint": "开启后，web_search 会用 Grok 同时搜网页和 X。用的是本周额度。"
     },
     "api": {
       "title": "模型与接口",

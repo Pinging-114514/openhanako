@@ -193,14 +193,6 @@
   "titlebar": {
     "currentChatTitle": "Current chat title"
   },
-  "chat": {
-    "turnUsage": {
-      "cache": "cache {rate}%",
-      "cacheUnknown": "cache —",
-      "io": "in {input} / out {output}",
-      "speed": "{speed} tok/s"
-    }
-  },
   "session": {
     "untitled": "New Chat",
     "messageCount": "{n} messages",
@@ -299,6 +291,13 @@
     "back": "Back"
   },
   "chat": {
+    "turnUsage": {
+      "calls": "{n} calls",
+      "cache": "cache {rate}%",
+      "cacheUnknown": "cache —",
+      "io": "in {input} / out {output}",
+      "speed": "{speed} tok/s"
+    },
     "find": {
       "locateFailed": "Could not locate that message",
       "placeholder": "Find in conversation"
@@ -689,6 +688,11 @@
       "running": "🌐 {name} is surfing the web",
       "done": "🌐 {name} is back from surfing",
       "failed": "🌐 {name} couldn't catch a wave"
+    },
+    "x_search": {
+      "running": "𝕏 {name} is searching X",
+      "done": "𝕏 {name} finished searching X",
+      "failed": "𝕏 {name} couldn't search X"
     },
     "web_fetch": {
       "running": "📄 {name} is peeking at a webpage",
@@ -1151,10 +1155,15 @@
       },
       "compaction": {
         "title": "Compaction mode",
-        "description": "Auto prefers cache-preserving compaction. Normal compaction uses Pi SDK's native summarizer.",
+        "description": "Auto prefers cache-preserving compaction. Normal compaction uses Pi SDK's native summarizer. Observational memory writes notes while you chat, then binds them at compact time without a long main-model summary.",
         "auto": "Auto",
         "cachePreserving": "Cache-preserving compaction",
-        "piCompatible": "Normal compaction"
+        "piCompatible": "Normal compaction",
+        "observational": "Observational memory compaction"
+      },
+      "compactionThreshold": {
+        "title": "Compaction threshold",
+        "description": "Auto-compaction starts when context usage reaches this percent. Default 75%."
       },
       "instantSimpleCompaction": {
         "title": "Instant simple compaction",
@@ -1771,7 +1780,13 @@
       "clickToCopy": "Click to copy",
       "codeCopied": "Code copied",
       "addModel": "Add Model",
-      "customModelPlaceholder": "Enter model ID"
+      "customModelPlaceholder": "Enter model ID",
+      "weeklyRemaining": "{remaining}% left this week",
+      "weeklyUsed": "{used}% used this week",
+      "weeklyReset": "resets {when}",
+      "weeklyUnknown": "Weekly quota unavailable",
+      "searchTools": "Search tools",
+      "searchToolsHint": "When on, Hana web_search uses Grok OAuth search and adds x_search for X. This uses the weekly quota."
     },
     "api": {
       "title": "Models & API",

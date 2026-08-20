@@ -193,14 +193,6 @@
   "titlebar": {
     "currentChatTitle": "現在のチャットタイトル"
   },
-  "chat": {
-    "turnUsage": {
-      "cache": "キャッシュ {rate}%",
-      "cacheUnknown": "キャッシュ —",
-      "io": "入 {input} / 出 {output}",
-      "speed": "{speed} tok/s"
-    }
-  },
   "session": {
     "untitled": "新しいチャット",
     "messageCount": "{n} 件のメッセージ",
@@ -299,6 +291,13 @@
     "back": "戻る"
   },
   "chat": {
+    "turnUsage": {
+      "calls": "{n} 回",
+      "cache": "キャッシュ {rate}%",
+      "cacheUnknown": "キャッシュ —",
+      "io": "入 {input} / 出 {output}",
+      "speed": "{speed} tok/s"
+    },
     "find": {
       "locateFailed": "メッセージを特定できませんでした",
       "placeholder": "会話内を検索"
@@ -1701,7 +1700,13 @@
       "clickToCopy": "クリックしてコピー",
       "codeCopied": "コードをコピーしました",
       "addModel": "モデルを追加",
-      "customModelPlaceholder": "モデル ID を入力"
+      "customModelPlaceholder": "モデル ID を入力",
+      "weeklyRemaining": "今週の残り {remaining}%",
+      "weeklyUsed": "今週の使用 {used}%",
+      "weeklyReset": "{when} にリセット",
+      "weeklyUnknown": "週間クォータを取得できません",
+      "searchTools": "検索ツール",
+      "searchToolsHint": "オンにすると Hana の web_search が Grok OAuth 検索を使い、x_search（X 検索）も追加されます。週間クォータを消費します。"
     },
     "api": {
       "title": "モデルと API",
@@ -2408,7 +2413,12 @@
         "description": "Auto はキャッシュ保持型コンパクションを優先します。通常コンパクションは Pi SDK のネイティブ要約を使用します。",
         "auto": "自動",
         "cachePreserving": "キャッシュ保持型コンパクション",
-        "piCompatible": "通常コンパクション"
+        "piCompatible": "通常コンパクション",
+        "observational": "観察記憶コンパクション"
+      },
+      "compactionThreshold": {
+        "title": "コンパクション閾値",
+        "description": "コンテキスト使用率がこの割合に達すると自動コンパクションを開始します。既定は 75%。"
       },
       "instantSimpleCompaction": {
         "title": "瞬時簡易コンパクション",

@@ -1178,6 +1178,11 @@ export class AgentManager {
       getLearnSkills:       () => getEngine()?.getLearnSkills?.() ?? {},
       getPreferences:       () => getEngine()?.preferences ?? null,
       isChannelsEnabled:    () => getEngine()?.isChannelsEnabled?.() ?? false,
+      getXaiOauthSearchRuntime: () => getEngine()?.getXaiOauthSearchRuntime?.() || { enabled: false, accessToken: null },
+      isXaiOauthSearchEnabled: () => {
+        const runtime = getEngine()?.getXaiOauthSearchRuntime?.() || {};
+        return runtime.enabled === true && !!runtime.accessToken;
+      },
       // 花名册唯一事实源：tombstone / 坏目录已在 AgentManager 层过滤
       listActiveAgents:     () => this.listActiveAgentsForRoster(),
       createChannelEntry:    (input) => getEngine()?.createChannelEntry?.(input),

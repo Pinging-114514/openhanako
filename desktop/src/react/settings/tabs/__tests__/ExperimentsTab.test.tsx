@@ -21,6 +21,10 @@ const hanaFetchMock = vi.fn(async (url: string, init?: RequestInit) => {
     const body = JSON.parse(String(init.body || '{}'));
     return new Response(JSON.stringify({ ok: true, value: body.value }));
   }
+  if (url === '/api/experiments/session.compaction_trigger_percent' && init?.method === 'PATCH') {
+    const body = JSON.parse(String(init.body || '{}'));
+    return new Response(JSON.stringify({ ok: true, value: body.value }));
+  }
   if (url === '/api/experiments/session.instant_simple_compaction' && init?.method === 'PATCH') {
     const body = JSON.parse(String(init.body || '{}'));
     return new Response(JSON.stringify({ ok: true, value: body.value }));
@@ -48,7 +52,24 @@ const hanaFetchMock = vi.fn(async (url: string, init?: RequestInit) => {
               { value: 'auto', labelKey: 'settings.experiments.compaction.auto' },
               { value: 'cache_preserving', labelKey: 'settings.experiments.compaction.cachePreserving' },
               { value: 'pi_compatible', labelKey: 'settings.experiments.compaction.piCompatible' },
+              { value: 'observational', labelKey: 'settings.experiments.compaction.observational' },
             ],
+          },
+        },
+        {
+          id: 'session.compaction_trigger_percent',
+          titleKey: 'settings.experiments.compactionThreshold.title',
+          descriptionKey: 'settings.experiments.compactionThreshold.description',
+          owner: 'session',
+          value: 75,
+          status: 'beta',
+          risk: 'low',
+          restartPolicy: 'immediate',
+          valueSchema: {
+            type: 'number',
+            min: 50,
+            max: 95,
+            presentation: { type: 'input' },
           },
         },
         {
@@ -126,6 +147,7 @@ describe('ExperimentsTab', () => {
 
     expect(screen.getByText('settings.experiments.compaction.title')).toBeTruthy();
     expect(screen.getByText('settings.experiments.compaction.description')).toBeTruthy();
+    expect(screen.getByLabelText('settings.experiments.compactionThreshold.title')).toBeTruthy();
     expect(screen.getByTitle('settings.experiments.compaction.auto')).toBeTruthy();
 
     fireEvent.click(screen.getByTitle('settings.experiments.compaction.auto'));

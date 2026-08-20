@@ -48,6 +48,7 @@ describe("search config preferences", () => {
     expect(SEARCH_CAPABILITY_PROVIDERS).toEqual([
       ...SEARCH_API_PROVIDER_IDS.map((id) => ({ id, source: "api", requiresApiKey: true })),
       ...SEARCH_FREE_API_PROVIDER_IDS.map((id) => ({ id, source: "api", requiresApiKey: false })),
+      { id: "xai_oauth", source: "oauth", requiresApiKey: false },
       ...BROWSER_SEARCH_PROVIDER_IDS.map((id) => ({ id, source: "browser", requiresApiKey: false })),
     ]);
   });

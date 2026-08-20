@@ -25,6 +25,7 @@ const INFORMATION_TOOLS = new Set([
   "find",
   "ls",
   "web_search",
+  "x_search",
   "web_fetch",
   "current_status",
   "search_memory",

@@ -214,6 +214,8 @@ import {
   translateSkillNamesWithCache,
 } from "../lib/skills/skill-name-translation-cache.ts";
 import { createUsageLedger } from "../lib/llm/usage-ledger.ts";
+import { setCompactionTriggerPercentResolver } from "./session-compaction-runtime.ts";
+import { getResolvedCompactionTriggerPercent } from "../shared/compaction-mode.ts";
 import {
   autoProjectIdForCwd,
   isAutoProjectId,
@@ -409,6 +411,7 @@ export class HanaEngine {
 
     // ── Core managers ──
     this._prefs = new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir });
+    setCompactionTriggerPercentResolver(() => getResolvedCompactionTriggerPercent(this._prefs));
     this._inputDrafts = new InputDraftsStore({ hanakoHome: this.hanakoHome });
     this._models = new ModelManager({ hanakoHome });
     this._speechRecognition = new SpeechRecognitionService({
@@ -1898,6 +1901,28 @@ export class HanaEngine {
   }
   getSearchConfig() { return this._configCoord.getSearchConfig(); }
   setSearchConfig(p) { return this._configCoord.setSearchConfig(p); }
+  getXaiOauthSearchTools() {
+    return this.preferences.getXaiOauthSearchTools();
+  }
+  setXaiOauthSearchTools(enabled) {
+    return this.preferences.setXaiOauthSearchTools(enabled);
+  }
+  getXaiOauthSearchRuntime() {
+    const enabled = this.getXaiOauthSearchTools();
+    const cred = this.authStorage?.get?.("xai-oauth") || null;
+    const access = typeof cred?.access === "string" ? cred.access.trim() : "";
+    const expires = Number(cred?.expires);
+    const expired = Number.isFinite(expires) && expires > 0 && Date.now() >= expires;
+    const modelId = this.currentModel?.provider === "xai-oauth" && this.currentModel?.id
+      ? this.currentModel.id
+      : "grok-4.6";
+    return {
+      enabled,
+      accessToken: enabled && access && !expired ? access : null,
+      modelId,
+      loggedIn: !!access && !expired,
+    };
+  }
   getUtilityApi() { return this._configCoord.getUtilityApi(); }
   setUtilityApi(p) { return this._configCoord.setUtilityApi(p); }
   resolveUtilityConfig( options: any = {}) {

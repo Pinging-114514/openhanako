@@ -55,6 +55,7 @@ describe("experiments route", () => {
       "auto",
       "cache_preserving",
       "pi_compatible",
+      "observational",
     ]);
     const instantEntry = body.experiments.find((item) => item.id === INSTANT_SIMPLE_COMPACTION_EXPERIMENT_ID);
     expect(instantEntry.value).toBe(false);

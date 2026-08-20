@@ -143,6 +143,29 @@
     transition: opacity var(--duration-fast) var(--ease-out);
 }
 
+.messageFooterActionsStacked {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.messageFooterActionsStacked.messageFooterActionsRight {
+    align-items: flex-end;
+}
+
+.messageFooterMeta,
+.messageFooterToolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 20px;
+}
+
+.messageFooterMeta {
+    flex-wrap: wrap;
+    max-width: 100%;
+}
+
 .messageFooterActionsRight {
     align-self: flex-end;
     justify-content: flex-end;

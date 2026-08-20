@@ -193,14 +193,6 @@
   "titlebar": {
     "currentChatTitle": "현재 대화 제목"
   },
-  "chat": {
-    "turnUsage": {
-      "cache": "캐시 {rate}%",
-      "cacheUnknown": "캐시 —",
-      "io": "입력 {input} / 출력 {output}",
-      "speed": "{speed} tok/s"
-    }
-  },
   "session": {
     "untitled": "새 대화",
     "messageCount": "{n}개의 메시지",
@@ -299,6 +291,13 @@
     "back": "뒤로"
   },
   "chat": {
+    "turnUsage": {
+      "calls": "{n}회",
+      "cache": "캐시 {rate}%",
+      "cacheUnknown": "캐시 —",
+      "io": "입력 {input} / 출력 {output}",
+      "speed": "{speed} tok/s"
+    },
     "find": {
       "locateFailed": "해당 메시지를 찾지 못했습니다",
       "placeholder": "대화에서 찾기"
@@ -1701,7 +1700,13 @@
       "clickToCopy": "클릭하여 복사",
       "codeCopied": "코드 복사됨",
       "addModel": "모델 추가",
-      "customModelPlaceholder": "모델 ID를 입력하세요"
+      "customModelPlaceholder": "모델 ID를 입력하세요",
+      "weeklyRemaining": "이번 주 남은 용량 {remaining}%",
+      "weeklyUsed": "이번 주 사용 {used}%",
+      "weeklyReset": "{when}에 초기화",
+      "weeklyUnknown": "주간 한도를 아직 읽지 못했어요",
+      "searchTools": "검색 도구",
+      "searchToolsHint": "켜면 Hana web_search가 Grok OAuth 검색을 쓰고, X 검색용 x_search도 추가됩니다. 주간 한도를 씁니다."
     },
     "api": {
       "title": "모델 & API",
@@ -2408,7 +2413,12 @@
         "description": "자동은 캐시 보존 압축을 우선해요. 일반 압축은 Pi SDK 기본 요약기를 사용해요.",
         "auto": "자동",
         "cachePreserving": "캐시 보존 압축",
-        "piCompatible": "일반 압축"
+        "piCompatible": "일반 압축",
+        "observational": "관찰 기억 압축"
+      },
+      "compactionThreshold": {
+        "title": "압축 임계값",
+        "description": "컨텍스트가 이 비율에 도달하면 자동 압축을 시작해요. 기본값은 75%예요."
       },
       "instantSimpleCompaction": {
         "title": "즉시 간이 압축",

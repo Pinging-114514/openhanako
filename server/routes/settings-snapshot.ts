@@ -256,6 +256,10 @@ export function createSettingsSnapshotRoute(engine: any, options: Record<string,
           imageGeneration: engine.media?.getImageConfig?.() || engine.preferences?.getImageGenerationConfig?.() || {},
           speechRecognition: engine.speechRecognition?.getConfig?.() || engine.getSpeechRecognitionConfig?.() || { enabled: false },
           experiments: listResolvedExperiments(engine.preferences),
+          xaiOauthSearch: {
+            enabled: engine.getXaiOauthSearchTools?.() !== false,
+            loggedIn: engine.getXaiOauthSearchRuntime?.()?.loggedIn === true,
+          },
         },
         access: buildAccessSnapshot(engine, canSeeLocalPaths, options),
         bridgeStatus: snapshotAgent

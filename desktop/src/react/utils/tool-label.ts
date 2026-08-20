@@ -50,7 +50,7 @@ export const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set([
   'read', 'write', 'edit', 'grep', 'find', 'ls', 'bash', 'terminal', 'materialize',
   'exec_command', 'write_stdin',
   'search_memory', 'pin_memory', 'unpin_memory', 'recall_experience', 'record_experience',
-  'web_search', 'web_fetch', 'todo_write', 'automation', 'stage_files', 'file', 'channel',
+  'web_search', 'x_search', 'web_fetch', 'todo_write', 'automation', 'stage_files', 'file', 'channel',
   'browser', 'computer', 'install_skill', 'notify', 'stop_task', 'update_settings',
   'session_folders', 'subagent', 'subagent_reply', 'subagent_close', 'workflow',
   'check_pending_tasks', 'loop_control', 'current_status', 'session',

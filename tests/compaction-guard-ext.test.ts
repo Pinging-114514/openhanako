@@ -175,6 +175,7 @@ describe("CompactionGuardExtension", () => {
     expect(pi.on).toHaveBeenCalledWith("context", expect.any(Function));
     expect(pi.on).toHaveBeenCalledWith("tool_result", expect.any(Function));
     expect(pi.on).toHaveBeenCalledWith("session_before_compact", expect.any(Function));
+    expect(pi.on).toHaveBeenCalledWith("agent_end", expect.any(Function));
     expect(pi.on).not.toHaveBeenCalledWith("message_end", expect.any(Function));
   });
 
@@ -1078,6 +1079,42 @@ describe("CompactionGuardExtension", () => {
           headers: { Authorization: "Bearer header-owned-token" },
         }),
       }));
+    });
+
+    it("uses prepared observational notes without calling the cache-preserving summarizer", async () => {
+      pi = createMockPi();
+      createCompactionGuardExtension({
+        getRequestReasoningLevel: sessionReasoningLevel,
+        cacheCompactor,
+        buildSessionCacheSnapshot,
+        getCompactionMode: () => "observational",
+      })(pi);
+
+      const res = await pi.trigger(
+        "session_before_compact",
+        {
+          preparation,
+          signal: { aborted: false },
+          branchEntries: [
+            {
+              type: "custom",
+              customType: "hana.om.notes",
+              data: {
+                schema: 1,
+                coveredThroughEntryId: "old",
+                observations: [
+                  { id: "om_test1", content: "User chose observational compaction", relevance: "high", timestamp: "2026-08-20" },
+                ],
+              },
+            },
+          ],
+        },
+        ctx,
+      );
+
+      expect(res?.compaction?.summary).toMatch(/User chose observational compaction/);
+      expect(res?.compaction?.firstKeptEntryId).toBe("uuid-42");
+      expect(cacheCompactor).not.toHaveBeenCalled();
     });
 
     it("lets Pi SDK native compaction run when pi-compatible mode is selected", async () => {
