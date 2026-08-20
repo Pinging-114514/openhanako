@@ -6,7 +6,7 @@
  * graceful shutdown，避免“重启更新”点击后长时间无反馈。
  * 频道：Stable（allowPrerelease=false）/ Preview（allowPrerelease=true）。
  */
-const { ipcMain, app, BrowserWindow } = require("electron");
+const { ipcMain, app, BrowserWindow, session } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const path = require("path");
 const fs = require("fs");
@@ -26,11 +26,14 @@ const DEFAULT_GITHUB_REPO = "openhanako";
 let _mainWindow = null;
 let _setIsUpdating = null;  // 由 main.cjs 注入
 let _hanakoHome = null;     // 由 main.cjs 注入
+let _getProxyUrl = null;    // 由 main.cjs 注入：与 artifact-ota 共用 resolveOtaProxyUrl
+let _proxiedFetch = null;   // 由 main.cjs 注入：走梯子的 fetch，digest 必须跟安装包同一条路
 let _checkTimer = null;
 let _ipcHandlersRegistered = false;
 let _updaterConfigured = false;
 let _installPromise = null;
 let _digestRequestId = 0;
+let _updaterSession = null;
 
 function trimTrailingSlash(value) {
   return String(value || "").replace(/\/+$/, "");
@@ -39,6 +42,65 @@ function trimTrailingSlash(value) {
 function ensureTrailingSlash(value) {
   const trimmed = trimTrailingSlash(value);
   return trimmed ? `${trimmed}/` : "";
+}
+
+function getUpdaterSession() {
+  if (typeof session?.fromPartition !== "function") return null;
+  try {
+    // ElectronHttpExecutor always opens partition "electron-updater". netSession on
+    // autoUpdater is a getter-only property, so assigning it throws and we never
+    // reach setProxy. Touch that partition directly.
+    const ses = session.fromPartition("electron-updater", { cache: false });
+    _updaterSession = ses;
+    return ses;
+  } catch (err) {
+    logUpdate(`updater session unavailable: ${err?.message || err}`);
+    return null;
+  }
+}
+
+async function applyUpdaterNetworkProxy() {
+  const ses = getUpdaterSession();
+  if (!ses || typeof ses.setProxy !== "function") return { mode: "unset" };
+  let proxyUrl = "";
+  try {
+    proxyUrl = _getProxyUrl ? String(await _getProxyUrl("https://github.com") || "").trim() : "";
+  } catch (err) {
+    logUpdate(`updater proxy resolve failed: ${err?.message || err}`);
+  }
+  try {
+    if (proxyUrl) {
+      await ses.setProxy({
+        mode: "fixed_servers",
+        proxyRules: proxyUrl,
+      });
+      logUpdate(`updater proxy applied: fixed_servers ${proxyUrl}`);
+      return { mode: "fixed_servers", proxyUrl };
+    }
+    await ses.setProxy({ mode: "system" });
+    logUpdate("updater proxy applied: system");
+    return { mode: "system" };
+  } catch (err) {
+    logUpdate(`updater proxy apply failed: ${err?.message || err}`);
+    return { mode: "error" };
+  }
+}
+
+function fetchReleaseDigest(url) {
+  if (typeof _proxiedFetch === "function") {
+    return _proxiedFetch(url, {
+      headers: { Accept: "application/json" },
+      timeoutMs: 20_000,
+    });
+  }
+  const ses = getUpdaterSession();
+  if (ses && typeof ses.fetch === "function") {
+    return ses.fetch(url, { headers: { Accept: "application/json" } });
+  }
+  if (typeof fetch === "function") {
+    return fetch(url, { headers: { Accept: "application/json" } });
+  }
+  return Promise.reject(new Error("release digest fetch is unavailable"));
 }
 
 function createGithubFeedConfig(digestBaseUrl = "") {
@@ -204,6 +266,7 @@ function applyUpdateFeedConfig(config) {
 async function checkForUpdatesOnce(source = "manual") {
   const config = resolveUpdateFeedConfig();
   applyUpdateFeedConfig(config);
+  await applyUpdaterNetworkProxy();
   try {
     return await autoUpdater.checkForUpdates();
   } finally {
@@ -379,11 +442,10 @@ function requestReleaseDigest(version) {
   const requestId = _digestRequestId + 1;
   _digestRequestId = requestId;
   setState({ digest: null, digestUrl, digestError: null });
-  if (!digestUrl || typeof fetch !== "function") return;
+  if (!digestUrl) return;
+  if (typeof _proxiedFetch !== "function" && typeof fetch !== "function") return;
 
-  fetch(digestUrl, {
-    headers: { Accept: "application/json" },
-  })
+  fetchReleaseDigest(digestUrl)
     .then(async (response) => {
       if (!response.ok) {
         throw new Error(`release digest request failed: ${response.status}`);
@@ -836,11 +898,13 @@ function startPolling() {
 // ── 公共 API ──
 
 function initAutoUpdater(mainWindow, {
-  setIsUpdating, hanakoHome,
+  setIsUpdating, hanakoHome, getProxyUrl, fetchImpl,
 } = {}) {
   _mainWindow = mainWindow;
   _setIsUpdating = setIsUpdating;
   _hanakoHome = hanakoHome;
+  if (typeof getProxyUrl === "function") _getProxyUrl = getProxyUrl;
+  if (typeof fetchImpl === "function") _proxiedFetch = fetchImpl;
 
   registerIpcHandlers(); // IPC handlers 是进程级单例，重复 init 时直接复用
 
@@ -860,6 +924,9 @@ function initAutoUpdater(mainWindow, {
   cleanUpdateCache().catch(() => {});
 
   setupAutoUpdater();
+  applyUpdaterNetworkProxy().catch((err) => {
+    logUpdate(`updater proxy init failed: ${err?.message || err}`);
+  });
   // 定时轮询 handler 自己判断开关，直接起 timer 不需要外层判断
   startPolling();
 }
@@ -891,4 +958,5 @@ module.exports = {
   resolveUpdateFeedConfig,
   buildReleaseDigestUrl,
   normalizeReleaseDigest,
+  applyUpdaterNetworkProxy,
 };

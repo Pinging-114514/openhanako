@@ -16,7 +16,7 @@ const { spawn, execFile } = require("child_process");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const { PNG } = require("pngjs");
-const { initAutoUpdater, checkForUpdatesAuto, setMainWindow: setUpdaterMainWindow, setUpdateChannel, installDownloadedUpdate, normalizeReleaseDigest } = require("./auto-updater.cjs");
+const { initAutoUpdater, checkForUpdatesAuto, setMainWindow: setUpdaterMainWindow, setUpdateChannel, installDownloadedUpdate, normalizeReleaseDigest, applyUpdaterNetworkProxy } = require("./auto-updater.cjs");
 const { createUpdateDigestHistoryLoader } = require("./src/shared/update-digest-history.cjs");
 const {
   getAutoLaunchStatus,
@@ -67,6 +67,7 @@ const {
 } = require("../shared/network-proxy.cjs");
 const {
   createOtaFetchOnce,
+  createProxiedFetch,
 } = require("./src/shared/ota-proxied-fetch.cjs");
 const {
   resolveWorkspaceOutputDir,
@@ -210,22 +211,57 @@ function readUpdateChannelPreference() {
  * browser already uses. Without this, artifact-ota bare-https requests
  * bypass the ladder and die with ECONNRESET while Chrome still works.
  */
+let lastResolvedOtaProxyUrl = "";
+
+function stampProcessProxyEnv(proxyUrl) {
+  const value = String(proxyUrl || "").trim();
+  if (!value) return;
+  process.env.HTTP_PROXY = process.env.HTTP_PROXY || value;
+  process.env.HTTPS_PROXY = process.env.HTTPS_PROXY || value;
+  process.env.http_proxy = process.env.http_proxy || value;
+  process.env.https_proxy = process.env.https_proxy || value;
+}
+
 async function resolveOtaProxyUrl(targetUrl) {
   const config = readNetworkProxyPreference();
-  if (config.mode === "direct") return "";
-  if (config.mode === "manual") {
-    return resolveProxyForUrl(targetUrl, config, process.env) || "";
+  if (config.mode === "direct") {
+    lastResolvedOtaProxyUrl = "";
+    return "";
   }
-  // system: Electron PAC/TUN often reports DIRECT for GitHub while the
-  // shell/server still have HTTPS_PROXY from the ladder. Prefer a real
-  // proxy URL from either source; never treat DIRECT as "no proxy needed".
+  if (config.mode === "manual") {
+    const url = resolveProxyForUrl(targetUrl, config, process.env) || "";
+    lastResolvedOtaProxyUrl = url;
+    stampProcessProxyEnv(url);
+    return url;
+  }
+  // system: Electron PAC/TUN often reports DIRECT for GitHub CDN while
+  // github.com/example.com still have a ladder proxy. Remember the last
+  // real proxy so objects.githubusercontent.com does not fall back to DIRECT.
   const fromElectron = await resolveElectronProxyUrl(targetUrl);
-  if (fromElectron) return fromElectron;
+  if (fromElectron) {
+    lastResolvedOtaProxyUrl = fromElectron;
+    stampProcessProxyEnv(fromElectron);
+    return fromElectron;
+  }
   const fromEnv = resolveProxyForUrl(targetUrl, { mode: "system" }, process.env) || "";
-  if (fromEnv) return fromEnv;
-  // Last resort: probe the same example.com resolution the server child uses.
+  if (fromEnv) {
+    lastResolvedOtaProxyUrl = fromEnv;
+    stampProcessProxyEnv(fromEnv);
+    return fromEnv;
+  }
   const fromExample = await resolveElectronProxyUrl("https://example.com");
-  return fromExample || "";
+  if (fromExample) {
+    lastResolvedOtaProxyUrl = fromExample;
+    stampProcessProxyEnv(fromExample);
+    return fromExample;
+  }
+  const fromGithub = await resolveElectronProxyUrl("https://github.com");
+  if (fromGithub) {
+    lastResolvedOtaProxyUrl = fromGithub;
+    stampProcessProxyEnv(fromGithub);
+    return fromGithub;
+  }
+  return lastResolvedOtaProxyUrl || "";
 }
 
 function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(msg))) {
@@ -234,6 +270,11 @@ function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(
     log,
   });
 }
+
+const desktopUpdateFetch = createProxiedFetch({
+  getProxyUrl: resolveOtaProxyUrl,
+  log: (msg) => console.log(redactMainLogText(`[update-fetch] ${msg}`)),
+});
 
 async function applyDesktopNetworkProxy(config, { reason = "runtime" } = {}) {
   const normalized = normalizeNetworkProxyConfig(config);
@@ -254,6 +295,11 @@ async function applyDesktopNetworkProxy(config, { reason = "runtime" } = {}) {
   }
 
   console.log(`[desktop] network proxy applied (${reason}): ${normalized.mode}`);
+  try {
+    await applyUpdaterNetworkProxy();
+  } catch (err) {
+    console.error("[desktop] updater proxy apply failed:", redactMainLogText(err?.message || err));
+  }
   return normalized;
 }
 
@@ -2842,6 +2888,8 @@ function createMainWindow() {
     initAutoUpdater(mainWindow, {
       setIsUpdating: (v) => { _isUpdating = v; },
       hanakoHome,
+      getProxyUrl: resolveOtaProxyUrl,
+      fetchImpl: desktopUpdateFetch,
     });
     _autoUpdaterInitialized = true;
   } else {
@@ -5189,6 +5237,7 @@ function readBundledUpdateDigestHistory() {
 // About 页的历史是“当前网站上最近发布的版本”，不能由安装时冻结的包内文件
 // 充当真相。包内 v2 史册只在网络不可用时显式回退，并由 renderer 标注来源。
 const loadUpdateDigestHistory = createUpdateDigestHistoryLoader({
+  fetchImpl: desktopUpdateFetch,
   normalize: normalizeReleaseDigest,
   readBundledEntries: readBundledUpdateDigestHistory,
   log: (message) => console.warn(`[update-history] ${redactMainLogText(message)}`),

@@ -6,8 +6,16 @@
  * releases published after they were built.
  */
 
-const DEFAULT_RELEASES_API = "https://api.github.com/repos/liliMozi/openhanako/releases?per_page=20&page=1";
-const DEFAULT_RELEASE_ASSET_BASE = "https://github.com/liliMozi/openhanako/releases/download";
+const DEFAULT_GITHUB_OWNER = "Pinging-114514";
+const DEFAULT_GITHUB_REPO = "openhanako";
+
+function releasesApiUrl(owner, repo) {
+  return `https://api.github.com/repos/${owner}/${repo}/releases?per_page=20&page=1`;
+}
+
+function releaseAssetBase(owner, repo) {
+  return `https://github.com/${owner}/${repo}/releases/download`;
+}
 const DIGEST_ASSET_NAME = "release-digest.v1.json";
 const HISTORY_LIMIT = 5;
 const RELEASE_SCAN_LIMIT = 10;
@@ -26,8 +34,8 @@ function hasDigestAsset(release) {
     && release.assets.some((asset) => asset?.name === DIGEST_ASSET_NAME);
 }
 
-function digestUrl(tag) {
-  return `${DEFAULT_RELEASE_ASSET_BASE}/${encodeURIComponent(tag)}/${DIGEST_ASSET_NAME}`;
+function digestUrl(tag, owner, repo) {
+  return `${releaseAssetBase(owner, repo)}/${encodeURIComponent(tag)}/${DIGEST_ASSET_NAME}`;
 }
 
 async function fetchJson(fetchImpl, url, { maxChars, timeoutMs }) {
@@ -54,8 +62,8 @@ async function fetchJson(fetchImpl, url, { maxChars, timeoutMs }) {
   }
 }
 
-async function loadOnlineEntries({ fetchImpl, normalize, timeoutMs }) {
-  const releases = await fetchJson(fetchImpl, DEFAULT_RELEASES_API, {
+async function loadOnlineEntries({ fetchImpl, normalize, timeoutMs, owner, repo }) {
+  const releases = await fetchJson(fetchImpl, releasesApiUrl(owner, repo), {
     maxChars: MAX_RELEASES_BODY_CHARS,
     timeoutMs,
   });
@@ -72,7 +80,7 @@ async function loadOnlineEntries({ fetchImpl, normalize, timeoutMs }) {
     const version = versionFromTag(release.tag_name);
     if (!version) return null;
     try {
-      const payload = await fetchJson(fetchImpl, digestUrl(release.tag_name), {
+      const payload = await fetchJson(fetchImpl, digestUrl(release.tag_name, owner, repo), {
         maxChars: MAX_DIGEST_BODY_CHARS,
         timeoutMs,
       });
@@ -93,6 +101,8 @@ function createUpdateDigestHistoryLoader({
   now = () => Date.now(),
   cacheTtlMs = CACHE_TTL_MS,
   timeoutMs = REQUEST_TIMEOUT_MS,
+  owner = DEFAULT_GITHUB_OWNER,
+  repo = DEFAULT_GITHUB_REPO,
 } = {}) {
   if (typeof fetchImpl !== "function") throw new TypeError("fetchImpl must be a function");
   if (typeof normalize !== "function") throw new TypeError("normalize must be a function");
@@ -108,7 +118,7 @@ function createUpdateDigestHistoryLoader({
 
     inFlight = (async () => {
       try {
-        const entries = await loadOnlineEntries({ fetchImpl, normalize, timeoutMs });
+        const entries = await loadOnlineEntries({ fetchImpl, normalize, timeoutMs, owner, repo });
         if (entries.length === 0) throw new Error("no valid release digests found");
         const result = {
           entries,
@@ -137,4 +147,6 @@ function createUpdateDigestHistoryLoader({
 module.exports = {
   createUpdateDigestHistoryLoader,
   versionFromTag,
+  DEFAULT_GITHUB_OWNER,
+  DEFAULT_GITHUB_REPO,
 };

@@ -5,11 +5,16 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // ── Mocks（必须在 import 之前声明）──
 
+const mockUpdaterSession = {
+  setProxy: vi.fn().mockResolvedValue(undefined),
+};
+
 const mockAutoUpdater = {
   autoDownload: true,
   autoInstallOnAppQuit: true,
   allowPrerelease: false,
   installDirectory: undefined,
+  netSession: undefined,
   checkForUpdates: vi.fn().mockResolvedValue({}),
   downloadUpdate: vi.fn().mockResolvedValue(null),
   quitAndInstall: vi.fn(),
@@ -23,6 +28,9 @@ let mockExePath = "/Applications/HanaAgent.app/Contents/MacOS/HanaAgent";
 vi.mock("electron", () => ({
   ipcMain: { handle: vi.fn() },
   BrowserWindow: { getAllWindows: vi.fn(() => mockWindows) },
+  session: {
+    fromPartition: vi.fn(() => mockUpdaterSession),
+  },
   app: {
     isPackaged: true,
     getVersion: () => "1.0.0",
@@ -77,6 +85,9 @@ describe("auto-updater", () => {
     mockAutoUpdater.autoInstallOnAppQuit = true;
     mockAutoUpdater.allowPrerelease = false;
     mockAutoUpdater.installDirectory = undefined;
+    mockAutoUpdater.netSession = undefined;
+    mockUpdaterSession.setProxy.mockClear();
+    mockUpdaterSession.setProxy.mockResolvedValue(undefined);
     mockExePath = "/Applications/HanaAgent.app/Contents/MacOS/HanaAgent";
     delete process.env.HANA_UPDATE_FEED_URL;
     delete process.env.HANA_UPDATE_SOURCE;
@@ -125,11 +136,25 @@ describe("auto-updater", () => {
     return win;
   }
 
+  it("routes the installer download session through a real proxy instead of PAC DIRECT", async () => {
+    initWithMockWindow({
+      getProxyUrl: async () => "http://127.0.0.1:10810",
+    });
+    await vi.waitFor(() => {
+      expect(mockUpdaterSession.setProxy).toHaveBeenCalledWith({
+        mode: "fixed_servers",
+        proxyRules: "http://127.0.0.1:10810",
+      });
+    });
+    const { session } = await import("electron");
+    expect(session.fromPartition).toHaveBeenCalledWith("electron-updater", { cache: false });
+  });
+
   it("should configure autoUpdater correctly", () => {
     initWithMockWindow();
     expect(mockAutoUpdater.setFeedURL).toHaveBeenCalledWith({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(mockAutoUpdater.autoDownload).toBe(false);
@@ -140,7 +165,7 @@ describe("auto-updater", () => {
     const config = mod.resolveUpdateFeedConfig({});
     expect(config.feedURL).toEqual({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(config).not.toHaveProperty("fallbackConfigs");
@@ -150,11 +175,11 @@ describe("auto-updater", () => {
     const config = mod.resolveUpdateFeedConfig({ HANA_UPDATE_SOURCE: source });
     expect(config.feedURL).toEqual({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(mod.buildReleaseDigestUrl("0.425.4", config)).toBe(
-      "https://github.com/liliMozi/openhanako/releases/download/v0.425.4/release-digest.v1.json",
+      "https://github.com/Pinging-114514/openhanako/releases/download/v0.425.4/release-digest.v1.json",
     );
   });
 
@@ -162,7 +187,7 @@ describe("auto-updater", () => {
     const config = mod.resolveUpdateFeedConfig({ HANA_UPDATE_SOURCE: "github" });
     expect(config.feedURL).toEqual({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(config).not.toHaveProperty("fallbackConfigs");
@@ -236,12 +261,12 @@ describe("auto-updater", () => {
     }));
     expect(mockAutoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(mod.getState().updateSource).toEqual({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
   });
@@ -266,14 +291,14 @@ describe("auto-updater", () => {
     expect(mockAutoUpdater.allowPrerelease).toBe(true);
     expect(mockAutoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     mod.setUpdateChannel("stable");
     expect(mockAutoUpdater.allowPrerelease).toBe(false);
     expect(mockAutoUpdater.setFeedURL).toHaveBeenLastCalledWith({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
   });
@@ -504,7 +529,7 @@ describe("auto-updater", () => {
     const config = mod.resolveUpdateFeedConfig({});
     expect(config.feedURL).toEqual({
       provider: "github",
-      owner: "liliMozi",
+      owner: "Pinging-114514",
       repo: "openhanako",
     });
     expect(config.channel).toBe("default");
@@ -710,3 +735,4 @@ describe("auto-updater", () => {
     }
   });
 });
+

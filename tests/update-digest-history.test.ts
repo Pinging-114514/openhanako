@@ -21,6 +21,21 @@ function response(body: unknown, status = 200) {
 }
 
 describe('update digest history loader', () => {
+  it('queries the fork GitHub releases API by default', async () => {
+    const fetchImpl = vi.fn().mockRejectedValue(new Error('offline'));
+    const { createUpdateDigestHistoryLoader } = await import('../desktop/src/shared/update-digest-history.cjs');
+    const load = createUpdateDigestHistoryLoader({
+      fetchImpl,
+      normalize: (value: ReturnType<typeof digest>) => value,
+      readBundledEntries: () => [],
+    });
+    await load();
+    expect(fetchImpl).toHaveBeenCalledWith(
+      expect.stringContaining('https://api.github.com/repos/Pinging-114514/openhanako/releases'),
+      expect.anything(),
+    );
+  });
+
   it('loads and validates the newest five published releases in website order', async () => {
     const releases = [
       ['0.500.5', false],
