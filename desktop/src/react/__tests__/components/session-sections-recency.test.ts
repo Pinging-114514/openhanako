@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  PROJECT_SESSION_RECENT_MS,
-  splitProjectSessionsByRecency,
+  PROJECT_SESSION_PREVIEW_LIMIT,
+  splitProjectSessionsByPreview,
 } from "../../components/session-sections";
 import type { Session } from "../../types";
 
@@ -17,55 +17,53 @@ function session(partial: Partial<Session> & Pick<Session, "path" | "modified">)
   };
 }
 
-describe("splitProjectSessionsByRecency", () => {
-  const now = Date.parse("2026-08-19T12:00:00.000Z");
+describe("splitProjectSessionsByPreview", () => {
+  it("does not fold when session count is at most the preview limit", () => {
+    const items = [
+      session({ path: "/s/1.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+      session({ path: "/s/2.jsonl", modified: "2026-08-18T12:00:00.000Z" }),
+      session({ path: "/s/3.jsonl", modified: "2026-08-17T12:00:00.000Z" }),
+    ];
 
-  it("keeps sessions from the last 3 days visible and hides older ones", () => {
-    const recent = session({
-      path: "/s/recent.jsonl",
-      modified: new Date(now - PROJECT_SESSION_RECENT_MS + 60_000).toISOString(),
-    });
-    const old = session({
-      path: "/s/old.jsonl",
-      modified: new Date(now - PROJECT_SESSION_RECENT_MS - 60_000).toISOString(),
-    });
-
-    expect(splitProjectSessionsByRecency([recent, old], { now })).toEqual({
-      visible: [recent],
-      hidden: [old],
+    expect(items.length).toBe(PROJECT_SESSION_PREVIEW_LIMIT);
+    expect(splitProjectSessionsByPreview(items)).toEqual({
+      visible: items,
+      hidden: [],
     });
   });
 
-  it("keeps the current session visible even when it is older than 3 days", () => {
-    const current = session({
-      path: "/s/current.jsonl",
-      sessionId: "sess_current",
-      modified: new Date(now - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    });
-    const old = session({
-      path: "/s/old.jsonl",
-      modified: new Date(now - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    });
+  it("keeps the first N sessions visible and hides the rest when over the limit", () => {
+    const items = [
+      session({ path: "/s/1.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+      session({ path: "/s/2.jsonl", modified: "2026-08-18T12:00:00.000Z" }),
+      session({ path: "/s/3.jsonl", modified: "2026-08-17T12:00:00.000Z" }),
+      session({ path: "/s/4.jsonl", modified: "2026-08-16T12:00:00.000Z" }),
+      session({ path: "/s/5.jsonl", modified: "2026-08-15T12:00:00.000Z" }),
+    ];
 
-    expect(splitProjectSessionsByRecency([current, old], {
-      now,
+    expect(splitProjectSessionsByPreview(items)).toEqual({
+      visible: items.slice(0, 3),
+      hidden: items.slice(3),
+    });
+  });
+
+  it("keeps the current session visible even when it falls outside the preview window", () => {
+    const items = [
+      session({ path: "/s/1.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+      session({ path: "/s/2.jsonl", modified: "2026-08-18T12:00:00.000Z" }),
+      session({ path: "/s/3.jsonl", modified: "2026-08-17T12:00:00.000Z" }),
+      session({
+        path: "/s/current.jsonl",
+        sessionId: "sess_current",
+        modified: "2026-08-10T12:00:00.000Z",
+      }),
+    ];
+
+    expect(splitProjectSessionsByPreview(items, {
       alwaysVisiblePaths: ["/s/current.jsonl"],
     })).toEqual({
-      visible: [current],
-      hidden: [old],
-    });
-  });
-
-  it("keeps sessions with missing timestamps visible", () => {
-    const unknown = session({ path: "/s/unknown.jsonl", modified: "" });
-    const old = session({
-      path: "/s/old.jsonl",
-      modified: new Date(now - 10 * 24 * 60 * 60 * 1000).toISOString(),
-    });
-
-    expect(splitProjectSessionsByRecency([unknown, old], { now })).toEqual({
-      visible: [unknown],
-      hidden: [old],
+      visible: [items[0], items[1], items[2], items[3]],
+      hidden: [],
     });
   });
 });

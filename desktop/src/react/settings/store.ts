@@ -183,7 +183,7 @@ export const useSettingsStore = create<SettingsStore>()((set, get) => ({
   // ui
   activeTab: 'agent',
   platformName: null,
-  ready: false,
+  ready: true,
 
   // pins
   currentPins: [],

@@ -90,21 +90,28 @@ function compareByModifiedDesc(a: Session, b: Session): number {
   return modifiedTime(b) - modifiedTime(a) || compareByPath(a, b);
 }
 
-/** 同项目下默认只展示最近 3 天活跃的会话；更早的藏在「加载更多」后面。 */
-export const PROJECT_SESSION_RECENT_MS = 3 * 24 * 60 * 60 * 1000;
+/** 同项目会话数不超过这个值时全展示；更多时只露出前 N 条（列表已按最近活动排好）。 */
+export const PROJECT_SESSION_PREVIEW_LIMIT = 3;
 
-export function splitProjectSessionsByRecency(
+/**
+ * 按条数折叠：少于等于 limit 不折叠；超过则露出前 limit 条，其余进「加载更多」。
+ * alwaysVisiblePaths 里的当前会话即使排在 limit 之外也强制露出，避免活聊天被埋掉。
+ */
+export function splitProjectSessionsByPreview(
   items: Session[],
   {
-    now = Date.now(),
-    recentMs = PROJECT_SESSION_RECENT_MS,
+    limit = PROJECT_SESSION_PREVIEW_LIMIT,
     alwaysVisiblePaths = [],
   }: {
-    now?: number;
-    recentMs?: number;
+    limit?: number;
     alwaysVisiblePaths?: Array<string | null | undefined>;
   } = {},
 ): { visible: Session[]; hidden: Session[] } {
+  const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : PROJECT_SESSION_PREVIEW_LIMIT;
+  if (items.length <= safeLimit) {
+    return { visible: items, hidden: [] };
+  }
+
   const alwaysVisible = new Set(
     alwaysVisiblePaths
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
@@ -113,14 +120,11 @@ export function splitProjectSessionsByRecency(
   const visible: Session[] = [];
   const hidden: Session[] = [];
 
-  for (const session of items) {
-    const modifiedMs = modifiedTime(session);
-    const hasKnownModified = modifiedMs > 0;
-    const isRecent = hasKnownModified && (now - modifiedMs) <= recentMs;
+  for (let index = 0; index < items.length; index += 1) {
+    const session = items[index];
     const forceVisible = alwaysVisible.has(session.path)
       || (typeof session.sessionId === 'string' && alwaysVisible.has(session.sessionId));
-    // Missing/invalid timestamps stay visible so bad metadata cannot bury a live chat.
-    if (!hasKnownModified || isRecent || forceVisible) visible.push(session);
+    if (index < safeLimit || forceVisible) visible.push(session);
     else hidden.push(session);
   }
 

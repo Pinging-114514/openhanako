@@ -5,7 +5,7 @@
  * 通过 portal 渲染到 #sessionList，从 Zustand sessions 状态驱动。
  */
 
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { Collapse } from '@/ui';
 import { useStore } from '../stores';
@@ -22,7 +22,7 @@ import {
   autoProjectIdForCwd,
   buildSessionProjectView,
   buildSessionSections,
-  splitProjectSessionsByRecency,
+  splitProjectSessionsByPreview,
   type SessionViewMode,
 } from './session-sections';
 import type { SessionProjectFolderGroup, SessionProjectGroup } from '../types/session-projects';
@@ -48,7 +48,29 @@ const SESSION_VIEW_MODE_KEY = 'hana-session-sidebar-view-mode';
 const SESSION_DRAG_MIME = 'application/x-hana-session-path';
 const PROJECT_DRAG_MIME = 'application/x-hana-project-id';
 const FOLDER_DRAG_MIME = 'application/x-hana-project-folder-id';
-// 同项目默认只露出最近 3 天的会话；更早的点「加载更多」再展开。
+// 同项目默认最多露出 3 条会话；更多的点「加载更多」再展开。展开状态只活在内存里，
+// 重启或折叠项目后重新回到折叠，不写进 preferences。
+
+let ephemeralShowAllProjectIds = new Set<string>();
+const ephemeralShowAllListeners = new Set<() => void>();
+
+function subscribeEphemeralShowAll(listener: () => void) {
+  ephemeralShowAllListeners.add(listener);
+  return () => {
+    ephemeralShowAllListeners.delete(listener);
+  };
+}
+
+function getEphemeralShowAllSnapshot() {
+  return ephemeralShowAllProjectIds;
+}
+
+function setEphemeralShowAllProjectIds(updater: (prev: Set<string>) => Set<string>) {
+  const next = updater(ephemeralShowAllProjectIds);
+  if (next === ephemeralShowAllProjectIds) return;
+  ephemeralShowAllProjectIds = next;
+  for (const listener of ephemeralShowAllListeners) listener();
+}
 
 type SidebarDragState =
   | { kind: 'session'; sessionPath: string }
@@ -206,9 +228,11 @@ function SessionListInner() {
     () => new Set(sidebarUiPrefs.projectView.collapsedFolderIds),
     [sidebarUiPrefs],
   );
-  const showAllProjectIds = useMemo(
-    () => new Set(sidebarUiPrefs.projectView.showAllProjectIds),
-    [sidebarUiPrefs],
+  // 「加载更多」只活在本次运行；主侧栏 / 悬浮侧栏共用同一份内存态。
+  const showAllProjectIds = useSyncExternalStore(
+    subscribeEphemeralShowAll,
+    getEphemeralShowAllSnapshot,
+    getEphemeralShowAllSnapshot,
   );
 
   const [browserSessions, setBrowserSessions] = useState<Record<string, BrowserSessionState>>({});
@@ -381,16 +405,19 @@ function SessionListInner() {
     const confirmed = window.confirm?.(t('sidebar.projects.deleteProjectConfirm', { name: project.name }));
     if (!confirmed) return;
     await deleteSessionProjectFromCatalog(project.id, project.items.map(item => item.path));
-    if (!collapsedProjectIds.has(project.id) && !showAllProjectIds.has(project.id)) return;
+    setEphemeralShowAllProjectIds(prev => {
+      if (!prev.has(project.id)) return prev;
+      const next = new Set(prev);
+      next.delete(project.id);
+      return next;
+    });
+    if (!collapsedProjectIds.has(project.id)) return;
     const nextCollapsed = new Set(collapsedProjectIds);
     nextCollapsed.delete(project.id);
-    const nextShowAll = new Set(showAllProjectIds);
-    nextShowAll.delete(project.id);
     setSidebarProjectViewPrefs({
       collapsedProjectIds: [...nextCollapsed],
-      showAllProjectIds: [...nextShowAll],
     });
-  }, [collapsedProjectIds, setSidebarProjectViewPrefs, showAllProjectIds, t]);
+  }, [collapsedProjectIds, setSidebarProjectViewPrefs, t]);
 
   const deleteFolder = useCallback(async (folder: SessionProjectFolderGroup) => {
     const confirmed = window.confirm?.(t('sidebar.projects.deleteFolderConfirm', { name: folder.name }));
@@ -671,9 +698,19 @@ function SessionListInner() {
   );
   const handleToggleProjectCollapsed = useCallback((projectId: string) => {
     const next = new Set(collapsedProjectIds);
-    if (next.has(projectId)) next.delete(projectId);
-    else next.add(projectId);
+    const willCollapse = !next.has(projectId);
+    if (willCollapse) next.add(projectId);
+    else next.delete(projectId);
     setSidebarProjectViewPrefs({ collapsedProjectIds: [...next] });
+    // 折叠项目时收回「加载更多」，下次展开重新按条数折叠。
+    if (willCollapse) {
+      setEphemeralShowAllProjectIds(prev => {
+        if (!prev.has(projectId)) return prev;
+        const cleared = new Set(prev);
+        cleared.delete(projectId);
+        return cleared;
+      });
+    }
   }, [collapsedProjectIds, setSidebarProjectViewPrefs]);
   const handleToggleFolderCollapsed = useCallback((folderId: string) => {
     const next = new Set(collapsedFolderIds);
@@ -682,10 +719,13 @@ function SessionListInner() {
     setSidebarProjectViewPrefs({ collapsedFolderIds: [...next] });
   }, [collapsedFolderIds, setSidebarProjectViewPrefs]);
   const handleShowAllProject = useCallback((projectId: string) => {
-    const next = new Set(showAllProjectIds);
-    next.add(projectId);
-    setSidebarProjectViewPrefs({ showAllProjectIds: [...next] });
-  }, [setSidebarProjectViewPrefs, showAllProjectIds]);
+    setEphemeralShowAllProjectIds(prev => {
+      if (prev.has(projectId)) return prev;
+      const next = new Set(prev);
+      next.add(projectId);
+      return next;
+    });
+  }, []);
   const handleProjectNameChange = useCallback((value: string) => {
     setProjectNameDialog(dialog => dialog ? { ...dialog, value } : dialog);
   }, []);
@@ -1111,7 +1151,7 @@ function ProjectBlock({
   const lastDragEndAtRef = useRef(0);
   const { t } = useI18n();
   const { visible, hidden } = useMemo(
-    () => splitProjectSessionsByRecency(project.items, {
+    () => splitProjectSessionsByPreview(project.items, {
       alwaysVisiblePaths: [currentSessionPath],
     }),
     [currentSessionPath, project.items],

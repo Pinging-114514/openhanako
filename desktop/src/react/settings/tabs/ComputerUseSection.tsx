@@ -137,7 +137,7 @@ export function ComputerUseSection() {
       };
       setData(nextData);
       rememberComputerUseSnapshot(nextData);
-      await load();
+      // 开关只存设置。UIA 探测只在进入本页（load）或点刷新时做。
     } catch (err: unknown) {
       showToast(t('settings.saveFailed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {

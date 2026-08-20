@@ -72,7 +72,10 @@ export function disabledComputerUseStatus(settings: any, { platform = process.pl
   };
 }
 
-export async function buildComputerUsePreferences(engine: any, { platform = process.platform } = {}) {
+export async function buildComputerUsePreferences(engine: any, {
+  platform = process.platform,
+  probe = true,
+}: { platform?: string, probe?: boolean } = {}) {
   const settings = effectiveComputerUseSettings(engine.getComputerUseSettings?.() || {}, { platform });
   if (settings?.enabled !== true) {
     const status = disabledComputerUseStatus(settings, { platform });
@@ -80,6 +83,23 @@ export async function buildComputerUsePreferences(engine: any, { platform = proc
       settings,
       status,
       selectedProviderId: status.selectedProviderId,
+    };
+  }
+  // 设置总快照只需要开关/选中的 provider，不要为了打开设置去拉起 ComputerHost。
+  // 实验页自己的 Computer Use 区块会再打 /api/preferences/computer-use 拿现场状态。
+  if (probe !== true) {
+    const selectedProviderId = selectedComputerProviderIdFromSettings(settings, platform);
+    return {
+      settings,
+      selectedProviderId,
+      status: {
+        enabled: true,
+        platform,
+        supported: isComputerUsePlatformSupported(platform),
+        selectedProviderId,
+        providers: [],
+        activeLease: null,
+      },
     };
   }
   const status = await engine.getComputerHost?.()?.getStatus?.({}) || null;

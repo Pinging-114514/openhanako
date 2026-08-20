@@ -125,8 +125,8 @@ export function SettingsContent({
   onActiveTabChange,
   listenToWindowTabSwitch = false,
 }: SettingsContentProps) {
-  const { activeTab, ready } = useSettingsStore(
-    useShallow(s => ({ activeTab: s.activeTab, ready: s.ready }))
+  const { activeTab } = useSettingsStore(
+    useShallow(s => ({ activeTab: s.activeTab }))
   );
   const set = useSettingsStore(s => s.set);
   const lastReportedActiveTabRef = useRef<string | null>(null);
@@ -275,46 +275,57 @@ export function SettingsContent({
         <WechatQrcodeOverlay />
         {/* 独立设置窗口需要自己的右键菜单；应用内 modal 复用 App 已挂载的那份，避免叠两层 */}
         {variant === 'window' && <InputContextMenu />}
-
-        {!ready && (
-          <div className="settings-loading-mask" id="settingsLoadingMask">
-            <div className={styles['settings-loading-text']}>
-              loading...
-            </div>
-          </div>
-        )}
       </div>
     </ErrorBoundary>
   );
 }
 
-/** 初始化：加载 port/token → i18n → agents → 头像 → config */
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve(fallback);
+    }, ms);
+    promise.then(
+      (value) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        resolve(fallback);
+      },
+    );
+  });
+}
+
+/** 先露出设置界面，再在后台拉 port / i18n / snapshot。全屏 loading 会把整页盖白。 */
 async function initSettings() {
   const platform = window.platform;
   const store = useSettingsStore.getState();
-  store.set({ ready: false });
-
-  // 超时保护：15 秒后强制显示，防止无限白屏
-  const timeout = setTimeout(() => {
-    if (!useSettingsStore.getState().ready) {
-      console.warn('[settings] init timeout (15s), forcing ready');
-      useSettingsStore.getState().set({ ready: true });
-    }
-  }, 15_000);
+  store.set({ ready: true });
 
   try {
     const rawServerPort = typeof platform?.getServerPort === 'function'
-      ? await platform.getServerPort()
+      ? await withTimeout(platform.getServerPort(), 2000, null)
       : null;
     const serverPort = rawServerPort === null || rawServerPort === undefined
       ? null
       : Number(rawServerPort);
     const serverToken = typeof platform?.getServerToken === 'function'
-      ? await platform.getServerToken()
+      ? await withTimeout(platform.getServerToken(), 2000, null)
       : null;
     let platformName: string | null = null;
     try {
-      platformName = typeof platform?.getPlatform === 'function' ? await platform.getPlatform() : null;
+      platformName = typeof platform?.getPlatform === 'function'
+        ? await withTimeout(platform.getPlatform(), 2000, null)
+        : null;
     } catch {
       platformName = null;
     }
@@ -325,7 +336,6 @@ async function initSettings() {
       ...connectionState(createLocalServerConnection({ serverPort, serverToken })),
     });
 
-    // i18n
     const i18n = window.i18n;
     try {
       const cfgRes = await hanaFetch('/api/config');
@@ -336,20 +346,10 @@ async function initSettings() {
       try { await i18n.load('zh-CN'); } catch { /* i18n fallback failed, continue */ }
     }
 
-    // agents
     await loadAgents();
-
-    // avatars
     await loadAvatars();
-
-    // Unified backend settings truth source.
     await loadSettingsSnapshot();
-
-    store.set({ ready: true });
   } catch (err) {
     console.error('[settings] init failed:', err);
-    store.set({ ready: true }); // 即使失败也移除 mask，让用户能操作
-  } finally {
-    clearTimeout(timeout);
   }
 }

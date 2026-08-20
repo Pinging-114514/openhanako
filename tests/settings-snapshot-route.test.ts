@@ -362,7 +362,7 @@ describe("settings snapshot route", () => {
     }
   });
 
-  it("includes first-frame Computer Use truth in the unified settings snapshot", async () => {
+  it("includes Computer Use settings in the snapshot without probing ComputerHost", async () => {
     const engine: any = await makeEngine();
     engine.getComputerUseSettings = vi.fn(() => ({
       enabled: true,
@@ -375,18 +375,9 @@ describe("settings snapshot route", () => {
       }],
     }));
     engine.getComputerHost = vi.fn(() => ({
-      getStatus: vi.fn(async () => ({
-        enabled: true,
-        selectedProviderId: "macos:cua",
-        providers: [{
-          providerId: "macos:cua",
-          status: {
-            available: true,
-            permissions: [{ name: "Accessibility", granted: true }],
-          },
-        }],
-        activeLease: null,
-      })),
+      getStatus: vi.fn(async () => {
+        throw new Error("snapshot must not probe ComputerHost");
+      }),
     }));
 
     const app = new Hono();
@@ -396,6 +387,7 @@ describe("settings snapshot route", () => {
     expect(res.status).toBe(200);
     const body = await res.json();
 
+    expect(engine.getComputerHost).not.toHaveBeenCalled();
     expect(body.preferences.computerUse).toMatchObject({
       selectedProviderId: "macos:cua",
       settings: {
@@ -410,13 +402,7 @@ describe("settings snapshot route", () => {
       status: {
         enabled: true,
         selectedProviderId: "macos:cua",
-        providers: [{
-          providerId: "macos:cua",
-          status: {
-            available: true,
-            permissions: [{ name: "Accessibility", granted: true }],
-          },
-        }],
+        providers: [],
         activeLease: null,
       },
     });
