@@ -12,6 +12,26 @@
       }
     }
   },
+  "xai-oauth": {
+    "grok-4.5": {
+      "name": "Grok 4.5",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true,
+      "thinkingLevels": ["low", "medium", "high"],
+      "defaultThinkingLevel": "high"
+    },
+    "grok-4.6": {
+      "name": "Grok 4.6",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
+      "defaultThinkingLevel": "high"
+    }
+  },
   "opencode-go": {
     "glm-5.2": {
       "name": "GLM-5.2",
@@ -19,7 +39,11 @@
       "maxOutput": 131072,
       "image": false,
       "reasoning": true,
-      "xhigh": true,
+      "thinkingLevels": ["high", "max"],
+      "thinkingLevelMap": {
+        "xhigh": "max"
+      },
+      "defaultThinkingLevel": "max",
       "compat": {
         "thinkingFormat": "zhipu",
         "reasoningProfile": "zhipu-openai"
@@ -38,9 +62,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -57,9 +79,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -76,9 +96,7 @@
       "maxOutput": 8192,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -95,9 +113,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -114,9 +130,7 @@
       "maxOutput": 8192,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -133,9 +147,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ],
+      "quirks": ["enable_thinking"],
       "visionCapabilities": {
         "grounding": true,
         "boxes": true,
@@ -152,9 +164,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-max": {
       "name": "Qwen 3 Max",
@@ -162,9 +172,7 @@
       "maxOutput": 32768,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-mini": {
       "name": "Qwen 3 Mini",
@@ -172,9 +180,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen-plus": {
       "name": "Qwen Plus",
@@ -583,18 +589,14 @@
       "maxOutput": 262144,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "kimi-k2": {
       "name": "Kimi K2",
       "context": 131072,
       "maxOutput": 8192,
       "image": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     }
   },
   "deepseek": {
@@ -623,7 +625,12 @@
       "maxOutput": 384000,
       "image": false,
       "reasoning": true,
-      "xhigh": true
+      "thinkingLevels": ["off", "low", "high", "max"],
+      "thinkingLevelMap": {
+        "medium": "high",
+        "xhigh": "high"
+      },
+      "defaultThinkingLevel": "high"
     },
     "deepseek-v4-flash": {
       "name": "DeepSeek V4 Flash",
@@ -631,7 +638,12 @@
       "maxOutput": 384000,
       "image": false,
       "reasoning": true,
-      "xhigh": true
+      "thinkingLevels": ["off", "low", "high", "max"],
+      "thinkingLevelMap": {
+        "medium": "high",
+        "xhigh": "high"
+      },
+      "defaultThinkingLevel": "high"
     },
     "deepseek-coder": {
       "name": "Deepseek Coder",
@@ -902,10 +914,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-responses",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -916,10 +927,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-responses",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -930,10 +940,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-responses",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -944,10 +953,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-responses",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -1811,7 +1819,8 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high",
       "compat": {
         "thinkingFormat": "anthropic",
         "reasoningProfile": "anthropic-adaptive-only"
@@ -1832,7 +1841,8 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high",
       "compat": {
         "thinkingFormat": "anthropic",
         "reasoningProfile": "anthropic-adaptive-only"
@@ -1853,7 +1863,8 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high",
       "compat": {
         "thinkingFormat": "anthropic",
         "reasoningProfile": "anthropic-adaptive-only"
@@ -1874,7 +1885,8 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high",
       "compat": {
         "thinkingFormat": "anthropic",
         "reasoningProfile": "anthropic-adaptive-only"
@@ -2691,7 +2703,8 @@
         "low": "low",
         "medium": "low",
         "high": "high",
-        "xhigh": "max"
+        "xhigh": "max",
+        "max": "max"
       },
       "defaultThinkingLevel": "max"
     },
@@ -2706,7 +2719,8 @@
         "low": "low",
         "medium": "low",
         "high": "high",
-        "xhigh": "max"
+        "xhigh": "max",
+        "max": "max"
       },
       "defaultThinkingLevel": "high"
     },
@@ -2722,7 +2736,8 @@
         "low": "low",
         "medium": "high",
         "high": "high",
-        "xhigh": "max"
+        "xhigh": "max",
+        "max": "max"
       },
       "defaultThinkingLevel": "high",
       "compat": {
@@ -3285,7 +3300,11 @@
       "maxOutput": 131072,
       "image": false,
       "reasoning": true,
-      "xhigh": true
+      "thinkingLevels": ["high", "max"],
+      "thinkingLevelMap": {
+        "xhigh": "max"
+      },
+      "defaultThinkingLevel": "max"
     },
     "glm-5.1": {
       "name": "GLM-5.1",
@@ -3342,7 +3361,11 @@
       "maxOutput": 131072,
       "image": false,
       "reasoning": true,
-      "xhigh": true
+      "thinkingLevels": ["high", "max"],
+      "thinkingLevelMap": {
+        "xhigh": "max"
+      },
+      "defaultThinkingLevel": "max"
     },
     "glm-5-turbo": {
       "name": "GLM-5 Turbo",
@@ -5508,14 +5531,27 @@
       "context": 500000,
       "maxOutput": 128000,
       "image": true,
-      "reasoning": true
+      "reasoning": true,
+      "thinkingLevels": ["low", "medium", "high"],
+      "defaultThinkingLevel": "high"
+    },
+    "grok-4.6": {
+      "name": "Grok 4.6",
+      "context": 500000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true,
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
+      "defaultThinkingLevel": "high"
     },
     "grok-4.5-latest": {
       "name": "Grok 4.5 Latest",
       "context": 500000,
       "maxOutput": 128000,
       "image": true,
-      "reasoning": true
+      "reasoning": true,
+      "thinkingLevels": ["low", "medium", "high"],
+      "defaultThinkingLevel": "high"
     },
     "grok-build-latest": {
       "name": "Grok Build Latest",
@@ -5677,10 +5713,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5691,10 +5726,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5705,10 +5739,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5719,10 +5752,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5733,10 +5765,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5747,10 +5778,9 @@
       "image": true,
       "reasoning": true,
       "api": "openai-completions",
-      "thinkingLevels": ["off", "low", "medium", "high", "max"],
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
-        "off": "none",
-        "xhigh": "max"
+        "off": "none"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -5821,11 +5851,12 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
       "compat": {
         "thinkingFormat": "openrouter",
         "reasoningProfile": "openrouter-anthropic-adaptive"
-      }
+      },
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high"
     },
     "anthropic/claude-sonnet-5": {
       "name": "Anthropic/Claude Sonnet 5",
@@ -5833,11 +5864,12 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
       "compat": {
         "thinkingFormat": "openrouter",
         "reasoningProfile": "openrouter-anthropic-adaptive"
-      }
+      },
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high"
     },
     "anthropic/claude-fable-5": {
       "name": "Anthropic/Claude Fable 5",
@@ -5845,11 +5877,12 @@
       "maxOutput": 128000,
       "image": true,
       "reasoning": true,
-      "xhigh": true,
       "compat": {
         "thinkingFormat": "openrouter",
         "reasoningProfile": "openrouter-anthropic-adaptive"
-      }
+      },
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "defaultThinkingLevel": "high"
     },
     "anthropic/claude-sonnet-4.5": {
       "name": "Anthropic/Claude Sonnet 4.5",
@@ -6425,9 +6458,7 @@
       "maxOutput": 32768,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-plus": {
       "name": "Qwen 3 Plus",
@@ -6435,9 +6466,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-mini": {
       "name": "Qwen 3 Mini",
@@ -6445,9 +6474,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3.5-plus": {
       "name": "Qwen 3.5 Plus",
@@ -6455,9 +6482,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3.5-max": {
       "name": "Qwen 3.5 Max",
@@ -6465,9 +6490,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3.5-flash": {
       "name": "Qwen 3.5 Flash",
@@ -6475,9 +6498,7 @@
       "maxOutput": 8192,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "kimi-k2.5": {
       "name": "Kimi K2.5",
@@ -6533,9 +6554,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3.5-max": {
       "name": "Qwen 3.5 Max",
@@ -6543,9 +6562,7 @@
       "maxOutput": 65536,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3.5-flash": {
       "name": "Qwen 3.5 Flash",
@@ -6553,9 +6570,7 @@
       "maxOutput": 8192,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-max": {
       "name": "Qwen 3 Max",
@@ -6563,9 +6578,7 @@
       "maxOutput": 32768,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-plus": {
       "name": "Qwen 3 Plus",
@@ -6573,9 +6586,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-mini": {
       "name": "Qwen 3 Mini",
@@ -6583,9 +6594,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen-plus": {
       "name": "Qwen Plus",
@@ -6751,9 +6760,7 @@
       "maxOutput": 32768,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     },
     "qwen3-plus": {
       "name": "Qwen 3 Plus",
@@ -6761,9 +6768,7 @@
       "maxOutput": 16384,
       "image": true,
       "reasoning": true,
-      "quirks": [
-        "enable_thinking"
-      ]
+      "quirks": ["enable_thinking"]
     }
   },
   "stepfun": {
@@ -6852,11 +6857,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": "low",
-        "xhigh": "xhigh"
+        "minimal": "low"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -6867,11 +6871,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": "low",
-        "xhigh": "xhigh"
+        "minimal": "low"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -6882,11 +6885,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": "low",
-        "xhigh": "xhigh"
+        "minimal": "low"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -6897,11 +6899,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": "low",
-        "xhigh": "xhigh"
+        "minimal": "low"
       },
       "defaultThinkingLevel": "medium"
     },
@@ -6912,11 +6913,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": "low",
-        "xhigh": "xhigh"
+        "minimal": "low"
       },
       "defaultThinkingLevel": "medium",
       "legacyCompatibility": true
@@ -6929,11 +6929,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": null,
-        "xhigh": "max"
+        "minimal": null
       },
       "defaultThinkingLevel": "low"
     },
@@ -6945,11 +6944,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": null,
-        "xhigh": "max"
+        "minimal": null
       },
       "defaultThinkingLevel": "medium"
     },
@@ -6961,11 +6959,10 @@
       "image": true,
       "reasoning": true,
       "api": "openai-codex-responses",
-      "thinkingLevels": ["low", "medium", "high", "max"],
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
       "thinkingLevelMap": {
         "off": null,
-        "minimal": null,
-        "xhigh": "max"
+        "minimal": null
       },
       "defaultThinkingLevel": "medium"
     }

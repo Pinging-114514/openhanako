@@ -417,8 +417,8 @@
       "auto": "自動",
       "medium": "中",
       "high": "深い",
-      "xhigh": "最大",
-      "max": "最大",
+      "xhigh": "xhigh",
+      "max": "Max",
       "low": "浅思"
     },
     "thinkingDesc": {
@@ -426,7 +426,7 @@
       "auto": "モデルが深さを判断",
       "medium": "バランス推論",
       "high": "深い推論",
-      "xhigh": "最大推論",
+      "xhigh": "より長い推論",
       "max": "最大推論",
       "low": "軽量推論"
     },
@@ -1766,9 +1766,12 @@
         "medium": "標準",
         "high": "高",
         "auto": "自動",
-        "max": "最大",
-        "xhigh": "最大"
+        "max": "Max",
+        "xhigh": "xhigh"
       },
+      "thinkingLevelsEdit": "使えるレベル",
+      "thinkingLevelsEditHint": "チャットで選べるレベルを選びます。変更しなければ内蔵リストのまま保存しません。",
+      "defaultThinkingLevel": "デフォルト",
       "addedModels": "追加済みモデル",
       "displayName": "表示名",
       "vision": "ビジョン",

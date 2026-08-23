@@ -5,7 +5,6 @@ export const DEFAULT_THINKING_LEVELS: ThinkingLevel[] = ['off', 'medium', 'high'
 
 export function normalizeThinkingLevel(level: ThinkingLevel): ThinkingLevel {
   if (level === 'auto') return 'medium';
-  if (level === 'xhigh') return 'max';
   return level;
 }
 
@@ -19,10 +18,21 @@ export function normalizeThinkingLevels(levels: readonly ThinkingLevel[] | null 
   return normalized.length > 0 ? normalized : null;
 }
 
-export function getModelThinkingLevels(model: { thinkingLevels?: readonly ThinkingLevel[]; xhigh?: boolean } | null | undefined): ThinkingLevel[] {
+export function getModelThinkingLevels(model: {
+  thinkingLevels?: readonly ThinkingLevel[];
+  xhigh?: boolean;
+  thinkingLevelMap?: Record<string, unknown>;
+} | null | undefined): ThinkingLevel[] {
   const explicit = normalizeThinkingLevels(model?.thinkingLevels);
   if (explicit) return explicit;
-  return model?.xhigh ? [...DEFAULT_THINKING_LEVELS, 'max'] : [...DEFAULT_THINKING_LEVELS];
+  const levels: ThinkingLevel[] = [...DEFAULT_THINKING_LEVELS];
+  if (model?.xhigh === true || typeof model?.thinkingLevelMap?.xhigh === 'string') {
+    levels.push('xhigh');
+  }
+  if (typeof model?.thinkingLevelMap?.max === 'string' && !levels.includes('max')) {
+    levels.push('max');
+  }
+  return levels;
 }
 
 export interface ModelSlice {

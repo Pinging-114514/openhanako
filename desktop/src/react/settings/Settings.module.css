@@ -5632,6 +5632,42 @@ a.about-link:hover {
     padding: 4px 8px;
 }
 
+.pv-model-edit-thinking {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-8);
+    padding-top: 2px;
+}
+
+.pv-model-edit-hint {
+    font-size: var(--fs-hint);
+    color: var(--text-muted);
+    line-height: 1.4;
+}
+
+.pv-model-edit-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.pv-model-edit-chip {
+    border: 1px solid var(--border);
+    background: var(--bg-input, transparent);
+    color: var(--text-secondary);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: var(--fs-hint);
+    line-height: 1.3;
+    cursor: pointer;
+}
+
+.pv-model-edit-chip.is-on {
+    border-color: var(--accent);
+    color: var(--text);
+    background: var(--accent-light, color-mix(in srgb, var(--accent) 14%, transparent));
+}
+
 /* ── 模型列表区（折叠式） ── */
 .pv-models {
     margin-bottom: var(--space-16);

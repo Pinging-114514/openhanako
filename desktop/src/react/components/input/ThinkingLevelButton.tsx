@@ -12,7 +12,7 @@ const THINKING_LEVEL_COPY: Record<ThinkingLevel, { label: string; description: s
   low: { label: 'Light', description: 'Light reasoning' },
   medium: { label: 'Medium', description: 'Balanced reasoning' },
   high: { label: 'Deep', description: 'Deep reasoning' },
-  xhigh: { label: 'Max', description: 'Maximum reasoning' },
+  xhigh: { label: 'xhigh', description: 'Extra-high reasoning' },
   max: { label: 'Max', description: 'Maximum reasoning' },
 };
 

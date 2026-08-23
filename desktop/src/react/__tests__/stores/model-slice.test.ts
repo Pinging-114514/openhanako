@@ -17,7 +17,8 @@ describe('model-slice thinking defaults', () => {
     expect(makeSlice().thinkingLevel).toBe('medium');
   });
 
-  it('normalizes legacy xhigh to the visible max tier', () => {
-    expect(normalizeThinkingLevel('xhigh')).toBe('max');
+  it('keeps xhigh distinct from max', () => {
+    expect(normalizeThinkingLevel('xhigh')).toBe('xhigh');
+    expect(normalizeThinkingLevel('max')).toBe('max');
   });
 });

@@ -423,7 +423,7 @@
       "low": "Light",
       "medium": "Medium",
       "high": "Deep",
-      "xhigh": "Max",
+      "xhigh": "xhigh",
       "max": "Max"
     },
     "thinkingDesc": {
@@ -432,7 +432,7 @@
       "low": "Light reasoning",
       "medium": "Balanced reasoning",
       "high": "Deep reasoning",
-      "xhigh": "Maximum reasoning",
+      "xhigh": "Extra-high reasoning",
       "max": "Maximum reasoning"
     },
     "contextWindow": "Context {windowK}k",
@@ -1847,8 +1847,11 @@
         "high": "High",
         "auto": "Auto",
         "max": "Max",
-        "xhigh": "Max"
+        "xhigh": "xhigh"
       },
+      "thinkingLevelsEdit": "Available levels",
+      "thinkingLevelsEditHint": "Choose which levels appear in chat. Unchanged models keep the built-in list and are not written back.",
+      "defaultThinkingLevel": "Default level",
       "addedModels": "Added models",
       "displayName": "Display name",
       "vision": "Vision",

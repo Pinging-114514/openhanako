@@ -4,6 +4,13 @@ import { t, lookupModelMeta, CONTEXT_PRESETS, OUTPUT_PRESETS } from '../../helpe
 import { hanaFetch } from '../../api';
 import { ComboInput } from '../../widgets/ComboInput';
 import { Toggle } from '@/ui';
+import {
+  EDITABLE_THINKING_LEVELS,
+  resolveEditorThinkingState,
+  snapDefaultThinkingLevel,
+  toggleEditorThinkingLevel,
+  type EditableThinkingLevel,
+} from './model-thinking-levels';
 import styles from '../../Settings.module.css';
 
 function finiteNumber(value: unknown): number | undefined {
@@ -51,6 +58,11 @@ export function ModelEditPanel({ modelId, providerId, modelMeta, anchorEl, onClo
   const [audio, setAudio] = useState<boolean>(meta.audio === true);
   const [reasoning, setReasoning] = useState<boolean>(meta.reasoning === true);
   const [dirtyCapabilities, setDirtyCapabilities] = useState<Record<string, boolean>>({});
+  const [initialThinking] = useState(() => resolveEditorThinkingState(userMeta, knownMeta));
+  const [thinkingLevels, setThinkingLevels] = useState<EditableThinkingLevel[]>(initialThinking.levels);
+  const [defaultThinkingLevel, setDefaultThinkingLevel] = useState<EditableThinkingLevel>(initialThinking.defaultLevel);
+  const [dirtyThinkingLevels, setDirtyThinkingLevels] = useState(false);
+  const [dirtyDefaultThinkingLevel, setDirtyDefaultThinkingLevel] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
 
@@ -61,7 +73,7 @@ export function ModelEditPanel({ modelId, providerId, modelMeta, anchorEl, onClo
       top: '50%',
       transform: 'translate(-50%, -50%)',
       zIndex: 9999,
-      width: 360,
+      width: 400,
     });
   }, [anchorEl]);
 
@@ -77,6 +89,13 @@ export function ModelEditPanel({ modelId, providerId, modelMeta, anchorEl, onClo
     if (dirtyCapabilities.video) entry.video = video;
     if (dirtyCapabilities.audio) entry.audio = audio;
     if (dirtyCapabilities.reasoning) entry.reasoning = reasoning;
+    if (dirtyThinkingLevels) {
+      entry.thinkingLevels = thinkingLevels;
+      entry.xhigh = thinkingLevels.includes('xhigh');
+      entry.defaultThinkingLevel = defaultThinkingLevel;
+    } else if (dirtyDefaultThinkingLevel) {
+      entry.defaultThinkingLevel = defaultThinkingLevel;
+    }
 
     try {
       await hanaFetch(`/api/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(modelId)}`, {
@@ -138,6 +157,54 @@ export function ModelEditPanel({ modelId, providerId, modelMeta, anchorEl, onClo
           <Toggle ariaLabel={t('settings.api.reasoning')} on={reasoning} onChange={(value) => { setReasoning(value); setDirtyCapabilities(prev => ({ ...prev, reasoning: true })); }} />
         </div>
       </div>
+      {reasoning && (
+        <div className={styles['pv-model-edit-thinking']}>
+          <div className={styles['pv-model-edit-field']}>
+            <label className={styles['pv-model-edit-label']}>{t('settings.api.thinkingLevelsEdit')}</label>
+            <span className={styles['pv-model-edit-hint']}>{t('settings.api.thinkingLevelsEditHint')}</span>
+            <div className={styles['pv-model-edit-chips']} role="group" aria-label={t('settings.api.thinkingLevelsEdit')}>
+              {EDITABLE_THINKING_LEVELS.map((level) => {
+                const on = thinkingLevels.includes(level);
+                return (
+                  <button
+                    key={level}
+                    type="button"
+                    className={`${styles['pv-model-edit-chip']}${on ? ` ${styles['is-on']}` : ''}`}
+                    aria-pressed={on}
+                    aria-label={t(`settings.api.thinkingLevels.${level}`)}
+                    onClick={() => {
+                      const next = toggleEditorThinkingLevel(thinkingLevels, level);
+                      setThinkingLevels(next);
+                      setDefaultThinkingLevel((current) => snapDefaultThinkingLevel(next, current));
+                      setDirtyThinkingLevels(true);
+                    }}
+                  >
+                    {t(`settings.api.thinkingLevels.${level}`)}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div className={styles['pv-model-edit-field']}>
+            <label className={styles['pv-model-edit-label']}>{t('settings.api.defaultThinkingLevel')}</label>
+            <select
+              className={styles['settings-input']}
+              value={defaultThinkingLevel}
+              aria-label={t('settings.api.defaultThinkingLevel')}
+              onChange={(event) => {
+                const next = event.target.value as EditableThinkingLevel;
+                if (!thinkingLevels.includes(next)) return;
+                setDefaultThinkingLevel(next);
+                setDirtyDefaultThinkingLevel(true);
+              }}
+            >
+              {thinkingLevels.map((level) => (
+                <option key={level} value={level}>{t(`settings.api.thinkingLevels.${level}`)}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      )}
       <div className={styles['pv-model-edit-actions']}>
         <button type="button" className={styles['pv-add-form-btn']} onClick={onClose}>{t('settings.api.cancel')}</button>
         <button type="button" className={`${styles['pv-add-form-btn']} ${styles['primary']}`} onClick={save}>{t('settings.api.save')}</button>

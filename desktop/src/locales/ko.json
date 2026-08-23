@@ -417,8 +417,8 @@
       "auto": "자동",
       "medium": "중간",
       "high": "깊은",
-      "xhigh": "최대",
-      "max": "최대",
+      "xhigh": "xhigh",
+      "max": "Max",
       "low": "얕은 사고"
     },
     "thinkingDesc": {
@@ -426,7 +426,7 @@
       "auto": "모델이 깊이를 결정",
       "medium": "균형 추론",
       "high": "깊은 추론",
-      "xhigh": "최대 추론",
+      "xhigh": "더 긴 추론",
       "max": "최대 추론",
       "low": "가벼운 추론"
     },
@@ -1766,9 +1766,12 @@
         "medium": "보통",
         "high": "높음",
         "auto": "자동",
-        "max": "최대",
-        "xhigh": "최대"
+        "max": "Max",
+        "xhigh": "xhigh"
       },
+      "thinkingLevelsEdit": "사용 가능한 수준",
+      "thinkingLevelsEditHint": "채팅에서 고를 수준을 고르세요. 안 바꾸면 내장 목록을 유지하고 이 모델에는 쓰지 않아요.",
+      "defaultThinkingLevel": "기본 수준",
       "addedModels": "추가된 모델",
       "displayName": "표시 이름",
       "vision": "비전",

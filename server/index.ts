@@ -89,7 +89,8 @@ import { Hub } from "../hub/index.ts";
 import { startCLI } from "./cli.ts";
 import { fromRoot } from "../shared/hana-root.ts";
 import { callText } from "../core/llm-client.ts";
-import { callTextConfigFromUtilityConfig } from "../core/model-execution-config.ts";
+import { callTextConfigFromResolvedModel, callTextConfigFromUtilityConfig } from "../core/model-execution-config.ts";
+import { observationalCaptureModelRef } from "../lib/observational-compaction/capture-run.ts";
 
 const productDir = fromRoot("lib");
 
@@ -511,13 +512,21 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     captureObservationalText: async ({ systemPrompt, prompt, ctx }) => {
       const sessionPath = ctx?.sessionManager?.getSessionFile?.() || null;
       const agentId = sessionPath ? engine.resolveSessionOwnership?.(sessionPath)?.agentId || null : null;
-      const utility = await engine.resolveUtilityConfigFresh({ agentId, sessionPath });
+      const modelRef = observationalCaptureModelRef(ctx);
+      if (!modelRef) {
+        throw new Error("observational capture needs the current session model");
+      }
+      const resolved = await engine.resolveModelWithCredentialsFresh(modelRef);
+      if (!resolved) {
+        throw new Error(`observational capture could not resolve ${modelRef.provider}/${modelRef.id}`);
+      }
       return callText({
-        ...callTextConfigFromUtilityConfig(utility),
+        ...callTextConfigFromResolvedModel(resolved),
         systemPrompt,
         messages: [{ role: "user", content: prompt }],
-        maxTokens: 800,
-        usageLedger: utility.usageLedger,
+        maxTokens: 2000,
+        timeoutMs: 120_000,
+        usageLedger: engine.usageLedger,
         usageContext: {
           source: {
             subsystem: "compaction",
@@ -527,7 +536,7 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
           },
           attribution: sessionPath
             ? { kind: "session", agentId, sessionPath }
-            : { kind: "utility", agentId },
+            : { kind: "session", agentId },
         },
       });
     },

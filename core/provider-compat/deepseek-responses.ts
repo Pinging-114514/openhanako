@@ -69,8 +69,8 @@ function isThinkingOff(level) {
 /**
  * 收敛到 DeepSeek 的 effort 词汇表：low / high / max，外加关思考用的 none。
  *
- * medium 和 xhigh 服务端自己会映射到 high / max，原样透传即可；minimal 是
- * OpenAI 专有档位，DeepSeek 不认，归到最接近的 low。
+ * 官方兼容表：medium → high，xhigh → high，max 保持 max。这里只把
+ * OpenAI 专有的 minimal 归到 low；xhigh 不再被改成 max。
  * 文档：https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
  */
 function translateEffort(effort) {

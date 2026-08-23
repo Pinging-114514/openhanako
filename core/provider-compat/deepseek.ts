@@ -7,7 +7,8 @@
  *
  * 解决的协议问题：
  *   1. 思考模式开启字段：thinking: {type: "enabled" | "disabled"}
- *   2. reasoning_effort 归一化：low/medium → high；xhigh → max
+ *   2. reasoning_effort 归一化：官方只有 low / high / max。
+ *      medium → high，xhigh → high，max → max。
  *      Anthropic 格式下对应 output_config.effort
  *   3. max_tokens 抬升：思考模式下需 ≥ 32768
  *   4. utility mode 主动关思考（短输出场景思考链既无意义又耗光预算）
@@ -90,18 +91,15 @@ function isThinkingOff(level) {
 /**
  * Hana 思考档位 → DeepSeek reasoning_effort。
  *
- * 官方取值只有 low / high（默认）/ max，且服务端自己会把 medium 归到 high、
- * xhigh 归到 max，所以这里只需要处理 DeepSeek 词汇表里没有的档位：minimal
- * 归到最接近的 low。低档不再被吞成 high —— low 是官方有效档位。
- *
- * 注意 deepseek-v4-pro 目前把 low 当 high 处理，那是服务端的降级，不在这里预判。
- * 文档：https://api-docs.deepseek.com/zh-cn/api/create-chat-completion
+ * 官方取值只有 low / high（默认）/ max。兼容表：medium → high，xhigh → high，
+ * max 保持 max。minimal 归到最接近的 low。
+ * 文档：https://api-docs.deepseek.com/guides/thinking_mode/
  */
 function reasoningEffortForLevel(level) {
   if (!level) return null;
-  if (level === "xhigh" || level === "max") return "max";
+  if (level === "max") return "max";
+  if (level === "xhigh" || level === "medium" || level === "high") return "high";
   if (level === "minimal" || level === "low") return "low";
-  if (level === "medium" || level === "high") return "high";
   return null;
 }
 

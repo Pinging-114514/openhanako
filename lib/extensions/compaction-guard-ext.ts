@@ -62,7 +62,7 @@ import {
 } from "../../shared/compaction-mode.ts";
 import { foldObservationalNotes } from "../observational-compaction/ledger.ts";
 import { renderObservationalSummary } from "../observational-compaction/render.ts";
-import { captureObservationalNotes } from "../observational-compaction/capture-run.ts";
+import { captureObservationalNotes, observationalCaptureModelRef } from "../observational-compaction/capture-run.ts";
 import { convertAgentMessagesToLlm } from "../pi-sdk/index.ts";
 import { createModuleLogger } from "../debug-log.ts";
 import { normalizeRequestThinkingLevel } from "../../core/session-thinking-level.ts";
@@ -225,6 +225,13 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           entries,
           completeText: (input) => captureObservationalText({ ...input, ctx }),
           appendCustomEntry: (type, data) => sessionManager.appendCustomEntry(type, data),
+        }).then((result) => {
+          if (result?.recorded) {
+            const modelRef = observationalCaptureModelRef(ctx);
+            log.log(`[om] capture recorded ${result.recorded} notes` + (modelRef ? ` via ${modelRef.provider}/${modelRef.id}` : ""));
+          } else if (result?.skipped) {
+            log.warn(`[om] capture skipped (${result.skipped}, kept cursor): ${result.preview || "(no model text)"}`);
+          }
         }).catch((err) => {
           log.warn(`[om] capture failed: ${err?.message || err}`);
         }).finally(() => {
@@ -276,10 +283,13 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
           return undefined;
         }
         if (compactionMode === COMPACTION_MODES.OBSERVATIONAL) {
-          const branchEntries = Array.isArray(event.branchEntries)
-            ? event.branchEntries
-            : (ctx.sessionManager?.getBranch?.() || []);
-          const folded = foldObservationalNotes(branchEntries);
+          const sessionManager = ctx.sessionManager;
+          const noteSources = [
+            ...(Array.isArray(sessionManager?.getEntries?.()) ? sessionManager.getEntries() : []),
+            ...(Array.isArray(sessionManager?.getBranch?.()) ? sessionManager.getBranch() : []),
+            ...(Array.isArray(event.branchEntries) ? event.branchEntries : []),
+          ];
+          const folded = foldObservationalNotes(noteSources);
           const summary = renderObservationalSummary(folded.observations);
           if (summary) {
             log.log(`[L3] observational compaction using ${folded.observations.length} prepared notes`);

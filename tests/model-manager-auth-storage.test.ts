@@ -192,9 +192,9 @@ describe("ModelManager AuthStorage ownership", () => {
     expect(sol).toMatchObject({
       contextWindow: 353400,
       maxTokens: 128000,
-      thinkingLevels: ["low", "medium", "high", "max"],
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       defaultThinkingLevel: "low",
-      thinkingLevelMap: { off: null, minimal: null, xhigh: "max" },
+      thinkingLevelMap: { off: null, minimal: null },
       maxContext: 372000,
     });
     const projectionRaw = fs.readFileSync(path.join(tmpDir, "models.json"), "utf-8");

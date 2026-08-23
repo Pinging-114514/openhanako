@@ -417,7 +417,7 @@
       "auto": "自动",
       "medium": "中等",
       "high": "深度",
-      "xhigh": "Max",
+      "xhigh": "超高",
       "max": "Max",
       "low": "浅思"
     },
@@ -426,8 +426,8 @@
       "auto": "模型决定深度",
       "medium": "平衡推理",
       "high": "深度推理",
-      "xhigh": "极致推理",
-      "max": "极致推理",
+      "xhigh": "更长推理",
+      "max": "最高推理",
       "low": "轻量推理"
     },
     "contextWindow": "上下文 {windowK}k",
@@ -1847,8 +1847,11 @@
         "high": "深思",
         "auto": "自动",
         "max": "Max",
-        "xhigh": "Max"
+        "xhigh": "超高"
       },
+      "thinkingLevelsEdit": "可用档位",
+      "thinkingLevelsEditHint": "勾选聊天里能选的档。没改过就跟内置名单走，不会写进这个模型。",
+      "defaultThinkingLevel": "默认档",
       "addedModels": "已添加的模型",
       "displayName": "显示名称",
       "vision": "视觉",

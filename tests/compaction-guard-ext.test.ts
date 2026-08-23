@@ -479,9 +479,8 @@ describe("CompactionGuardExtension", () => {
       provider: "deepseek",
       api: "openai-completions",
       reasoning: true,
-      // Reaches the top effort, so a preference asking for it survives provider
-      // normalization instead of being folded back down to "high".
-      xhigh: true,
+      thinkingLevels: ["off", "low", "high", "max"],
+      thinkingLevelMap: { medium: "high", xhigh: "high" },
     };
     const identityModels = {
       getModelDefaultThinkingLevel: (_model, preferenceLevel) => preferenceLevel,
@@ -1114,6 +1113,49 @@ describe("CompactionGuardExtension", () => {
 
       expect(res?.compaction?.summary).toMatch(/User chose observational compaction/);
       expect(res?.compaction?.firstKeptEntryId).toBe("uuid-42");
+      expect(cacheCompactor).not.toHaveBeenCalled();
+    });
+
+    it("uses observational notes from the full session file after a cache-preserving boundary", async () => {
+      pi = createMockPi();
+      createCompactionGuardExtension({
+        getRequestReasoningLevel: sessionReasoningLevel,
+        cacheCompactor,
+        buildSessionCacheSnapshot,
+        getCompactionMode: () => "observational",
+      })(pi);
+
+      const res = await pi.trigger(
+        "session_before_compact",
+        {
+          preparation,
+          signal: { aborted: false },
+          branchEntries: [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+        },
+        {
+          ...ctx,
+          sessionManager: {
+            ...ctx.sessionManager,
+            getBranch: () => [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+            getEntries: () => [
+              {
+                type: "custom",
+                customType: "hana.om.notes",
+                data: {
+                  schema: 1,
+                  coveredThroughEntryId: "old",
+                  observations: [
+                    { id: "om_kept", content: "Notes survived behind the compaction boundary", relevance: "high", timestamp: "2026-08-23" },
+                  ],
+                },
+              },
+              { id: "tail", type: "message", message: { role: "user", content: "continue" } },
+            ],
+          },
+        },
+      );
+
+      expect(res?.compaction?.summary).toMatch(/Notes survived behind the compaction boundary/);
       expect(cacheCompactor).not.toHaveBeenCalled();
     });
 

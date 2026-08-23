@@ -11,7 +11,8 @@ Rules:
 - Preserve user assertions as assertions, questions as questions.
 - Mark completed work with "completed:".
 - Group similar tool calls.
-- If nothing new, return [].`;
+- Prefer short facts over none. If the chunk contains a user message, return at least one observation about what the user asked, decided, or rejected.
+- Return [] only when the chunk has no user or assistant substance.`;
 
 export function buildObservationalCapturePrompt({
   existing,
@@ -33,6 +34,8 @@ Return JSON array only.`;
 export function observationsFromCaptureText(text: string): Observation[] {
   return parseObservationsJson(text).slice(0, 16);
 }
+
+export { parseObservationsJsonResult } from "./ledger.ts";
 
 export function shouldCaptureObservationalNotes({
   sourceCount,

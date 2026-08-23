@@ -197,7 +197,7 @@ const SETTINGS_REGISTRY = {
   thinking_level: {
     type: "list",
     get label() { return t("toolDef.updateSettings.thinkingBudget"); },
-    options: ["off", "low", "medium", "high", "max"],
+    options: ["off", "low", "medium", "high", "xhigh", "max"],
     get optionLabels() { return i18nLabels(THINKING_I18N); },
     searchTerms: ["reasoning", "推理", "思考", "推論"],
     get: (engine, _agent) => {

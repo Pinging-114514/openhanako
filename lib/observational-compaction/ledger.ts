@@ -53,23 +53,90 @@ export function foldObservationalNotes(entries: any[]): ObservationalNotesData {
   return { schema: 1, observations, coveredThroughEntryId };
 }
 
-export function parseObservationsJson(text: string, fallbackTimestamp = new Date().toISOString()): Observation[] {
-  const raw = String(text || "").trim();
-  if (!raw) return [];
-  const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-  const body = (fenced ? fenced[1] : raw).trim();
-  const start = body.indexOf("[");
-  const end = body.lastIndexOf("]");
-  if (start < 0 || end <= start) return [];
-  try {
-    const parsed = JSON.parse(body.slice(start, end + 1));
-    if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((item) => normalizeObservation(item, fallbackTimestamp))
-      .filter(Boolean) as Observation[];
-  } catch {
-    return [];
+function scanJsonValues(text: string): unknown[] {
+  const values: unknown[] = [];
+  const s = String(text || "");
+  for (let i = 0; i < s.length; i++) {
+    const open = s[i];
+    if (open !== "[" && open !== "{") continue;
+    const close = open === "[" ? "]" : "}";
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    for (let j = i; j < s.length; j++) {
+      const c = s[j];
+      if (inStr) {
+        if (esc) {
+          esc = false;
+          continue;
+        }
+        if (c === "\\") {
+          esc = true;
+          continue;
+        }
+        if (c === "\"") inStr = false;
+        continue;
+      }
+      if (c === "\"") {
+        inStr = true;
+        continue;
+      }
+      if (c === open) depth++;
+      else if (c === close) {
+        depth--;
+        if (depth === 0) {
+          try {
+            values.push(JSON.parse(s.slice(i, j + 1)));
+          } catch {
+            // keep scanning later candidates
+          }
+          i = j;
+          break;
+        }
+      }
+    }
   }
+  return values;
+}
+
+function observationsFromParsed(parsed: unknown, fallbackTimestamp: string): Observation[] {
+  const list = Array.isArray(parsed)
+    ? parsed
+    : (parsed && typeof parsed === "object" && Array.isArray((parsed as { observations?: unknown }).observations)
+      ? (parsed as { observations: unknown[] }).observations
+      : (parsed && typeof parsed === "object" && typeof (parsed as { content?: unknown }).content === "string"
+        ? [parsed]
+        : null));
+  if (!list) return [];
+  return list
+    .map((item) => normalizeObservation(item, fallbackTimestamp))
+    .filter(Boolean) as Observation[];
+}
+
+export function parseObservationsJsonResult(text: string, fallbackTimestamp = new Date().toISOString()): {
+  status: "ok" | "empty" | "invalid";
+  observations: Observation[];
+} {
+  const raw = String(text || "").trim();
+  if (!raw) return { status: "invalid", observations: [] };
+  const values = scanJsonValues(raw);
+  let sawEmptyArray = false;
+  let observations: Observation[] = [];
+  for (const value of values) {
+    if (Array.isArray(value) && value.length === 0) {
+      sawEmptyArray = true;
+      continue;
+    }
+    const next = observationsFromParsed(value, fallbackTimestamp);
+    if (next.length > 0) observations = next;
+  }
+  if (observations.length > 0) return { status: "ok", observations };
+  if (sawEmptyArray) return { status: "empty", observations: [] };
+  return { status: "invalid", observations: [] };
+}
+
+export function parseObservationsJson(text: string, fallbackTimestamp = new Date().toISOString()): Observation[] {
+  return parseObservationsJsonResult(text, fallbackTimestamp).observations;
 }
 
 export function sourceEntriesAfter(entries: any[], coveredThroughEntryId: string | null): any[] {

@@ -16,7 +16,6 @@
     "maxOutput": 128000,
     "image": true,
     "reasoning": true,
-    "xhigh": true,
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -25,7 +24,9 @@
       "boxOrder": "xyxy",
       "outputFormat": "anchor",
       "groundingMode": "prompted"
-    }
+    },
+    "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+    "defaultThinkingLevel": "high"
   },
   "claude-sonnet-5": {
     "name": "Claude Sonnet 5",
@@ -33,7 +34,6 @@
     "maxOutput": 128000,
     "image": true,
     "reasoning": true,
-    "xhigh": true,
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -42,7 +42,9 @@
       "boxOrder": "xyxy",
       "outputFormat": "anchor",
       "groundingMode": "prompted"
-    }
+    },
+    "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+    "defaultThinkingLevel": "high"
   },
   "claude-fable-5": {
     "name": "Claude Fable 5",
@@ -50,7 +52,6 @@
     "maxOutput": 128000,
     "image": true,
     "reasoning": true,
-    "xhigh": true,
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -59,7 +60,9 @@
       "boxOrder": "xyxy",
       "outputFormat": "anchor",
       "groundingMode": "prompted"
-    }
+    },
+    "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+    "defaultThinkingLevel": "high"
   },
   "claude-mythos-5": {
     "name": "Claude Mythos 5",
@@ -67,7 +70,6 @@
     "maxOutput": 128000,
     "image": true,
     "reasoning": true,
-    "xhigh": true,
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -76,7 +78,9 @@
       "boxOrder": "xyxy",
       "outputFormat": "anchor",
       "groundingMode": "prompted"
-    }
+    },
+    "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+    "defaultThinkingLevel": "high"
   },
   "claude-opus-4-7": {
     "name": "Claude Opus 4.7",
@@ -132,7 +136,12 @@
     "maxOutput": 384000,
     "image": false,
     "reasoning": true,
-    "xhigh": true
+    "thinkingLevels": ["off", "low", "high", "max"],
+    "thinkingLevelMap": {
+      "medium": "high",
+      "xhigh": "high"
+    },
+    "defaultThinkingLevel": "high"
   },
   "deepseek-v4-flash": {
     "name": "DeepSeek V4 Flash",
@@ -140,7 +149,12 @@
     "maxOutput": 384000,
     "image": false,
     "reasoning": true,
-    "xhigh": true
+    "thinkingLevels": ["off", "low", "high", "max"],
+    "thinkingLevelMap": {
+      "medium": "high",
+      "xhigh": "high"
+    },
+    "defaultThinkingLevel": "high"
   },
   "gemini-3.1-pro-preview": {
     "name": "Gemini 3.1 Pro Preview",
@@ -171,7 +185,11 @@
     "maxOutput": 131072,
     "image": false,
     "reasoning": true,
-    "xhigh": true
+    "thinkingLevels": ["high", "max"],
+    "thinkingLevelMap": {
+      "xhigh": "max"
+    },
+    "defaultThinkingLevel": "max"
   },
   "glm-5v-turbo": {
     "name": "GLM-5V Turbo",
@@ -419,9 +437,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -438,9 +454,7 @@
     "maxOutput": 8192,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -457,9 +471,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -640,9 +652,7 @@
     "maxOutput": 32768,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ]
+    "quirks": ["enable_thinking"]
   },
   "qwen3-max-2026-01-23": {
     "name": "Qwen3 Max 2026.01.23",
@@ -663,9 +673,7 @@
     "maxOutput": 16384,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ]
+    "quirks": ["enable_thinking"]
   },
   "qwen3-next-80b-a3b-instruct": {
     "name": "Qwen3 Next 80b A3b Instruct",
@@ -684,9 +692,7 @@
     "maxOutput": 16384,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ]
+    "quirks": ["enable_thinking"]
   },
   "qwen3.5-flash": {
     "name": "Qwen 3.5 Flash",
@@ -694,9 +700,7 @@
     "maxOutput": 8192,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -713,9 +717,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -756,9 +758,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -5117,9 +5117,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -5136,9 +5134,7 @@
     "maxOutput": 8192,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ]
+    "quirks": ["enable_thinking"]
   },
   "qwen3.5-plus-2026-02-15": {
     "name": "Qwen 3.5 Plus (2026-02-15)",
@@ -5146,9 +5142,7 @@
     "maxOutput": 65536,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,
@@ -5165,9 +5159,7 @@
     "maxOutput": 8192,
     "image": true,
     "reasoning": true,
-    "quirks": [
-      "enable_thinking"
-    ]
+    "quirks": ["enable_thinking"]
   },
   "qwen3-vl-flash-2026-01-22": {
     "name": "Qwen3 VL Flash (2026-01-22)",
@@ -5175,9 +5167,7 @@
     "maxOutput": 32768,
     "image": true,
     "video": true,
-    "quirks": [
-      "enable_thinking"
-    ],
+    "quirks": ["enable_thinking"],
     "visionCapabilities": {
       "grounding": true,
       "boxes": true,

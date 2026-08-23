@@ -23,7 +23,7 @@ import { validateProviderModels } from "../shared/provider-model-validation.ts";
 import { buildRuntimeApiKeyRef } from "../shared/runtime-api-key-ref.ts";
 import { inferOllamaModelMetadata } from "../shared/ollama-model-metadata.ts";
 import { normalizeProviderBaseUrlForApi } from "../lib/llm/provider-client.ts";
-import { normalizeThinkingLevelForModel } from "./session-thinking-level.ts";
+import { normalizeThinkingLevelChoices, normalizeThinkingLevelForModel } from "./session-thinking-level.ts";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const PI_BUILTIN_METADATA_PROVIDERS = new Set(["kimi-coding", "opencode", "opencode-go"]);
@@ -61,7 +61,7 @@ function resolveModelApi(modelEntry, provider, providerApi) {
   return explicitApi || lookupKnownProvider(provider, getModelId(modelEntry))?.api || providerApi;
 }
 
-const THINKING_LEVEL_MAP_KEYS = ["off", "minimal", "low", "medium", "high", "xhigh"];
+const THINKING_LEVEL_MAP_KEYS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 function normalizeThinkingLevelMap(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -196,6 +196,11 @@ function buildModelOverride(modelEntry, modelDefaults = {}, executionHeaders = {
   }
   if (modelEntry.reasoning !== undefined) override.reasoning = modelEntry.reasoning;
   if (modelEntry.xhigh !== undefined) override.xhigh = modelEntry.xhigh;
+  const thinkingLevels = normalizeThinkingLevelChoices(modelEntry.thinkingLevels);
+  if (thinkingLevels) {
+    override.thinkingLevels = thinkingLevels;
+    if (modelEntry.xhigh === undefined && thinkingLevels.includes("xhigh")) override.xhigh = true;
+  }
   const thinkingLevelMap = normalizeThinkingLevelMap(modelEntry.thinkingLevelMap);
   if (thinkingLevelMap) override.thinkingLevelMap = thinkingLevelMap;
   const compat = normalizeModelProtocolCompat(modelEntry.compat);
@@ -261,7 +266,11 @@ function buildModelEntry(
   const knownAudio = known?.audio;
   const audio = userAudio !== undefined ? userAudio : (knownAudio === true);
   const userXhigh = isObj ? modelEntry.xhigh : undefined;
-  const xhigh = userXhigh !== undefined ? userXhigh : (known?.xhigh === true);
+  const rawThinkingLevels = (isObj && modelEntry.thinkingLevels) || providerKnown?.thinkingLevels || known?.thinkingLevels;
+  const thinkingLevels = normalizeThinkingLevelChoices(rawThinkingLevels);
+  const xhigh = userXhigh !== undefined
+    ? userXhigh
+    : (known?.xhigh === true || thinkingLevels?.includes("xhigh") === true);
   const entry: Record<string, any> = {
     id,
     name: (isObj && modelEntry.name) || piProtocolBaseline?.name || known?.name || humanizeName(id),
@@ -279,6 +288,7 @@ function buildModelEntry(
       ),
   };
   if (baseUrl !== providerBaseUrl) entry.baseUrl = baseUrl;
+  if (thinkingLevels) entry.thinkingLevels = thinkingLevels;
   if (xhigh === true) entry.xhigh = true;
 
   const rawThinkingLevelMap = isObj && modelEntry.thinkingLevelMap !== undefined

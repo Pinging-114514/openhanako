@@ -623,7 +623,7 @@ describe("syncModels", () => {
           id: "local-max-capable-model",
           name: "Local Max Capable Model",
           reasoning: true,
-          xhigh: true,
+          thinkingLevels: ["off", "medium", "high", "max"],
           defaultThinkingLevel: "max",
         }],
       },
@@ -635,7 +635,7 @@ describe("syncModels", () => {
     const model = result.providers.zhipu.models[0];
     expect(model.id).toBe("local-max-capable-model");
     expect(model.reasoning).toBe(true);
-    expect(model.xhigh).toBe(true);
+    expect(model.thinkingLevels).toEqual(["off", "medium", "high", "max"]);
     expect(model.defaultThinkingLevel).toBe("max");
   });
 

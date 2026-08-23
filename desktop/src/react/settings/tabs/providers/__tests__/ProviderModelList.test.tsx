@@ -483,4 +483,132 @@ describe('ProviderModelList', () => {
     });
     },
   );
+
+  it('shows inherited thinking levels but does not write them back unless changed', async () => {
+    mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
+    mocks.lookupModelMeta.mockReturnValue({
+      name: 'Grok 4.6',
+      reasoning: true,
+    });
+
+    render(
+      <ProviderModelList
+        providerId="xai-oauth"
+        summary={{
+          type: 'oauth',
+          auth_type: 'oauth',
+          display_name: 'xAI',
+          base_url: 'https://cli-chat-proxy.grok.com/v1',
+          api: 'openai-responses',
+          models: [{ id: 'grok-4.6', name: 'Grok 4.6', reasoning: true }],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: true,
+          can_delete: false,
+        }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.editModel' }));
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.off' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.low' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.medium' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.high' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.max' })).toHaveAttribute('aria-pressed', 'false');
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.save' }));
+    await waitFor(() => {
+      const updateCall = mocks.hanaFetch.mock.calls.find(([url, options]) => (
+        String(url).includes('/api/providers/xai-oauth/models/grok-4.6')
+        && options?.method === 'PUT'
+      ));
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
+        name: 'Grok 4.6',
+      });
+    });
+  });
+
+  it('writes thinking levels only after the user changes a chip', async () => {
+    mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
+    mocks.lookupModelMeta.mockReturnValue({
+      name: 'Grok 4.6',
+      reasoning: true,
+    });
+
+    render(
+      <ProviderModelList
+        providerId="xai-oauth"
+        summary={{
+          type: 'oauth',
+          auth_type: 'oauth',
+          display_name: 'xAI',
+          base_url: 'https://cli-chat-proxy.grok.com/v1',
+          api: 'openai-responses',
+          models: [{ id: 'grok-4.6', name: 'Grok 4.6', reasoning: true }],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: true,
+          can_delete: false,
+        }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.editModel' }));
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.thinkingLevels.low' }));
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.save' }));
+
+    await waitFor(() => {
+      const updateCall = mocks.hanaFetch.mock.calls.find(([url, options]) => (
+        String(url).includes('/api/providers/xai-oauth/models/grok-4.6')
+        && options?.method === 'PUT'
+      ));
+      expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
+        name: 'Grok 4.6',
+        thinkingLevels: ['off', 'low', 'medium', 'high'],
+        xhigh: false,
+        defaultThinkingLevel: 'medium',
+      });
+    });
+  });
+
+  it('backfills a saved thinking-level list when reopening the editor', async () => {
+    mocks.hanaFetch.mockResolvedValue(jsonResponse({ models: [] }));
+    mocks.lookupModelMeta.mockReturnValue({
+      name: 'Grok 4.6',
+      reasoning: true,
+    });
+
+    render(
+      <ProviderModelList
+        providerId="xai-oauth"
+        summary={{
+          type: 'oauth',
+          auth_type: 'oauth',
+          display_name: 'xAI',
+          base_url: 'https://cli-chat-proxy.grok.com/v1',
+          api: 'openai-responses',
+          models: [{
+            id: 'grok-4.6',
+            name: 'Grok 4.6',
+            reasoning: true,
+            thinkingLevels: ['low', 'high'],
+            defaultThinkingLevel: 'high',
+          }],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: true,
+          can_delete: false,
+        }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.editModel' }));
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.off' })).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.low' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('button', { name: 'settings.api.thinkingLevels.high' })).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByRole('combobox', { name: 'settings.api.defaultThinkingLevel' })).toHaveValue('high');
+  });
 });

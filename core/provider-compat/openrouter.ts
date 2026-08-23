@@ -45,7 +45,7 @@ function isThinkingOff(value) {
 }
 
 function adaptiveEffortForLevel(level) {
-  if (level === "xhigh" || level === "max") return "max";
+  if (level === "xhigh" || level === "max") return level;
   if (level === "low" || level === "medium" || level === "high") return level;
   return "high";
 }

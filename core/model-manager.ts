@@ -10,12 +10,13 @@
  */
 import path from "path";
 import {
-  AuthStorage,
   FileAuthStorageBackend,
   createModelRegistry,
   registerModelProvider,
   unregisterModelProvider,
 } from "../lib/pi-sdk/index.ts";
+import { createAuthStorageWithRetry } from "../lib/auth/auth-storage-boot.ts";
+import { createModuleLogger } from "../lib/debug-log.ts";
 import { forceRefreshOAuthApiKey } from "./oauth-force-refresh.ts";
 import { t } from "../lib/i18n.ts";
 import { ProviderRegistry } from "./provider-registry.ts";
@@ -35,6 +36,8 @@ import {
   normalizeThinkingLevelForModel,
   resolveModelDefaultThinkingLevel,
 } from "./session-thinking-level.ts";
+
+const log = createModuleLogger("model-manager");
 
 function isRecord(value): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
@@ -95,7 +98,7 @@ function buildProviderModelMetadataMap(projectionPlans: unknown) {
       if (typeof known?.maxContext === "number") meta.maxContext = known.maxContext;
       const defaultThinkingLevel = providerModelDefault(rawProvider, modelId);
       if (defaultThinkingLevel !== undefined) meta.defaultThinkingLevel = defaultThinkingLevel;
-      if ((Array.isArray(meta.thinkingLevels) && meta.thinkingLevels.includes("max"))
+      if ((Array.isArray(meta.thinkingLevels) && meta.thinkingLevels.includes("xhigh"))
         || isRecord(meta.thinkingLevelMap) && typeof meta.thinkingLevelMap.xhigh === "string") {
         if (meta.xhigh === undefined) meta.xhigh = true;
       }
@@ -115,7 +118,7 @@ function applyProviderModelMetadata(model, metadataByModel) {
   const thinkingLevels = normalizeThinkingLevelChoices(merged.thinkingLevels);
   if (thinkingLevels) {
     merged.thinkingLevels = thinkingLevels;
-    if (thinkingLevels.includes("max")) merged.xhigh = true;
+    if (thinkingLevels.includes("xhigh")) merged.xhigh = true;
   } else {
     delete merged.thinkingLevels;
   }
@@ -155,7 +158,9 @@ export class ModelManager {
 
   /** 初始化 AuthStorage + ModelRegistry + 新架构模块 */
   init() {
-    this._authStorage = AuthStorage.create(path.join(this._hanakoHome, "auth.json"));
+    this._authStorage = createAuthStorageWithRetry(path.join(this._hanakoHome, "auth.json"), {
+      log: (line) => log.warn(line),
+    });
     // Same file, same lock: forced OAuth rotation writes through this backend.
     this._authBackend = new FileAuthStorageBackend(path.join(this._hanakoHome, "auth.json"));
     this.providerRegistry.reload();

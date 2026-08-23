@@ -548,7 +548,8 @@ describe("model sync related routes", () => {
       toolResultFormat: "message",
       supportsParallelToolCalls: true,
     });
-    expect(allData.models[1].xhigh).toBe(true);
+    expect(allData.models[1].thinkingLevels).toEqual(["off", "low", "high", "max"]);
+    expect(allData.models[1].xhigh).toBeUndefined();
     expect(allData.models[2]).toMatchObject({
       id: "gpt-audio-mini",
       audio: true,

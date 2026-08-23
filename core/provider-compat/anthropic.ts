@@ -157,7 +157,7 @@ function usesAnthropicCacheControl(model) {
   return model.compat?.cacheControlFormat === "anthropic";
 }
 
-function shouldUseAnthropicMaxEffort(model, options) {
+function shouldUseAnthropicExtendedEffort(model, options) {
   return (options?.reasoningLevel === "xhigh" || options?.reasoningLevel === "max")
     && modelSupportsAnthropicMaxEffort(model);
 }
@@ -171,7 +171,7 @@ function isThinkingOff(level) {
 }
 
 function adaptiveEffortForLevel(level) {
-  if (level === "xhigh" || level === "max") return "max";
+  if (level === "xhigh" || level === "max") return level;
   if (level === "low" || level === "medium" || level === "high") return level;
   return "high";
 }
@@ -189,7 +189,7 @@ function normalizeAdaptiveThinking(thinking) {
   };
 }
 
-function withMaxEffort(payload) {
+function withEffort(payload, effort) {
   const next = { ...payload };
   const thinking = payload.thinking && typeof payload.thinking === "object"
     ? payload.thinking
@@ -200,7 +200,7 @@ function withMaxEffort(payload) {
       display: thinking.display || "summarized",
     };
   }
-  next.output_config = { ...(payload.output_config || {}), effort: "max" };
+  next.output_config = { ...(payload.output_config || {}), effort };
   return next;
 }
 
@@ -218,8 +218,9 @@ function withMaxEffortOutputBudget(payload, model, options) {
 }
 
 function normalizeMaxEffort(payload, model, options) {
-  if (!shouldUseAnthropicMaxEffort(model, options)) return payload;
-  return withMaxEffortOutputBudget(withMaxEffort(payload), model, options);
+  if (!shouldUseAnthropicExtendedEffort(model, options)) return payload;
+  const effort = options?.reasoningLevel === "xhigh" ? "xhigh" : "max";
+  return withMaxEffortOutputBudget(withEffort(payload, effort), model, options);
 }
 
 function normalizeAdaptiveOnlyThinking(payload, model, options) {
@@ -239,7 +240,9 @@ function normalizeAdaptiveOnlyThinking(payload, model, options) {
   p.output_config = { ...(payload.output_config || {}), effort };
   delete p.reasoning_effort;
 
-  return effort === "max" ? withMaxEffortOutputBudget(next, model, options) : next;
+  return (effort === "max" || effort === "xhigh")
+    ? withMaxEffortOutputBudget(next, model, options)
+    : next;
 }
 
 function shouldDisableThinking(payload, options) {

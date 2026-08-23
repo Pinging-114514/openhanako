@@ -3,6 +3,7 @@ import {
   normalizeRequestThinkingLevel,
   normalizeSessionThinkingLevel,
   modelSupportsAnthropicMaxEffort,
+  modelSupportsMax,
   modelSupportsXhigh,
   normalizePiSdkThinkingLevel,
   normalizeThinkingLevelForModel,
@@ -47,18 +48,27 @@ describe("session thinking level capabilities", () => {
     expect(normalizeThinkingLevelForModel("max", model)).toBe("max");
   });
 
-  it("accepts Max as the canonical deep thinking level", () => {
-    const model = { id: "glm-5.2", provider: "zhipu", reasoning: true };
+  it("keeps GLM max distinct from xhigh", () => {
+    const model = {
+      id: "glm-5.2",
+      provider: "zhipu",
+      reasoning: true,
+      thinkingLevels: ["high", "max"],
+      thinkingLevelMap: { xhigh: "max" },
+      defaultThinkingLevel: "max",
+    };
 
     expect(normalizeSessionThinkingLevel("max")).toBe("max");
     expect(normalizeRequestThinkingLevel("max")).toBe("max");
-    expect(modelSupportsXhigh(model)).toBe(true);
+    expect(modelSupportsXhigh(model)).toBe(false);
+    expect(modelSupportsMax(model)).toBe(true);
     expect(normalizeThinkingLevelForModel("max", model)).toBe("max");
+    expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("max");
     expect(normalizeThinkingLevelForModel("max", { id: "plain-model", provider: "test" })).toBe("high");
   });
 
-  it("maps Hana-visible max to Pi SDK xhigh only at the SDK boundary", () => {
-    expect(normalizePiSdkThinkingLevel("max")).toBe("xhigh");
+  it("keeps max and xhigh distinct at the SDK boundary", () => {
+    expect(normalizePiSdkThinkingLevel("max")).toBe("max");
     expect(normalizePiSdkThinkingLevel("xhigh")).toBe("xhigh");
     expect(normalizePiSdkThinkingLevel("auto")).toBe("medium");
   });
@@ -67,8 +77,8 @@ describe("session thinking level capabilities", () => {
     const sol = {
       id: "gpt-5.6-sol",
       provider: "openai-codex",
-      thinkingLevels: ["low", "medium", "high", "max"],
-      thinkingLevelMap: { off: null, minimal: null, xhigh: "max" },
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: null, minimal: null },
       defaultThinkingLevel: "low",
     };
     const terra = { ...sol, id: "gpt-5.6-terra", defaultThinkingLevel: "medium" };
@@ -79,18 +89,17 @@ describe("session thinking level capabilities", () => {
     expect(modelSupportsXhigh(sol)).toBe(true);
   });
 
-  it("shows the unified Max level for GPT-5.5", () => {
+  it("keeps GPT-5.5 on xhigh rather than collapsing it to max", () => {
     const model = { id: "gpt-5.5", provider: "openai", reasoning: true };
 
     expect(modelSupportsXhigh(model)).toBe(true);
     expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("xhigh");
+    expect(normalizeThinkingLevelForModel("max", model)).toBe("xhigh");
   });
 
-  it("shows the unified Max level for Claude models with Anthropic max effort", () => {
+  it("keeps xhigh and max distinct on Anthropic 5-series", () => {
     const models = [
       { id: "claude-opus-4-7", provider: "anthropic", reasoning: true },
-      { id: "claude-opus-4-6", provider: "anthropic", reasoning: true },
-      { id: "claude-sonnet-4-6", provider: "anthropic", reasoning: true },
       { id: "claude-fable-5", provider: "anthropic", reasoning: true },
       { id: "claude-mythos-5", provider: "anthropic", reasoning: true },
       { id: "claude-opus-5", provider: "anthropic", reasoning: true },
@@ -100,8 +109,20 @@ describe("session thinking level capabilities", () => {
 
     for (const model of models) {
       expect(modelSupportsXhigh(model)).toBe(true);
+      expect(modelSupportsMax(model)).toBe(true);
       expect(modelSupportsAnthropicMaxEffort(model)).toBe(true);
       expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("xhigh");
+      expect(normalizeThinkingLevelForModel("max", model)).toBe("max");
+    }
+  });
+
+  it("keeps Claude 4.6 on max without inventing a separate xhigh chip", () => {
+    for (const id of ["claude-opus-4-6", "claude-sonnet-4-6"]) {
+      const model = { id, provider: "anthropic", reasoning: true };
+      expect(modelSupportsMax(model)).toBe(true);
+      expect(modelSupportsAnthropicMaxEffort(model)).toBe(true);
+      expect(normalizeThinkingLevelForModel("max", model)).toBe("max");
+      expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("high");
     }
   });
 
@@ -157,7 +178,13 @@ describe("session thinking level capabilities", () => {
     )).toBe("high");
 
     expect(resolveModelDefaultThinkingLevel(
-      { id: "glm-5.2", provider: "zhipu", defaultThinkingLevel: "max" },
+      {
+        id: "glm-5.2",
+        provider: "zhipu",
+        thinkingLevels: ["high", "max"],
+        thinkingLevelMap: { xhigh: "max" },
+        defaultThinkingLevel: "max",
+      },
       "medium",
     )).toBe("max");
 

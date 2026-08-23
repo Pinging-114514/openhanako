@@ -43,7 +43,7 @@ describe("Anthropic Max effort normalization", () => {
       maxTokens: 128000,
     }, { mode: "chat", reasoningLevel: "xhigh" });
 
-    expect(result.output_config).toEqual({ effort: "max" });
+    expect(result.output_config).toEqual({ effort: "xhigh" });
     expect(result.max_tokens).toBe(64000);
   });
 
@@ -60,7 +60,7 @@ describe("Anthropic Max effort normalization", () => {
       api: "anthropic-messages",
       reasoning: true,
       maxTokens: 64000,
-    }, { mode: "chat", reasoningLevel: "xhigh" });
+    }, { mode: "chat", reasoningLevel: "max" });
 
     expect(result.output_config).toEqual({ effort: "max" });
     expect(result.max_tokens).toBe(12000);
@@ -87,13 +87,13 @@ describe("Anthropic Max effort normalization", () => {
 
     expect(result).not.toBe(payload);
     expect(result.thinking).toEqual({ type: "adaptive", display: "omitted" });
-    expect(result.output_config).toEqual({ effort: "max" });
+    expect(result.output_config).toEqual({ effort: "xhigh" });
     expect(result.max_tokens).toBe(64000);
     expect(payload.thinking).toEqual({ type: "enabled", budget_tokens: 8192, display: "omitted" });
   });
 
   it.each(["claude-opus-5", "claude-sonnet-5"])(
-    "maps %s Max to native Anthropic adaptive max effort",
+    "maps %s xhigh to native Anthropic adaptive xhigh effort",
     (modelId) => {
       const result = normalizeProviderPayload({
         model: modelId,
@@ -109,7 +109,7 @@ describe("Anthropic Max effort normalization", () => {
       }, { mode: "chat", reasoningLevel: "xhigh" });
 
       expect(result.thinking).toEqual({ type: "adaptive", display: "summarized" });
-      expect(result.output_config).toEqual({ effort: "max" });
+      expect(result.output_config).toEqual({ effort: "xhigh" });
       expect(result.max_tokens).toBe(64000);
     },
   );
@@ -807,7 +807,7 @@ describe("normalizeProviderPayload — 通用层", () => {
     });
 
     expect(result).not.toBe(payload);
-    expect(result.verbosity).toBe("max");
+    expect(result.verbosity).toBe("xhigh");
     expect(result.reasoning).toEqual({ enabled: true });
     expect(result).not.toHaveProperty("thinking");
     expect(result).not.toHaveProperty("reasoning_effort");
@@ -1100,7 +1100,7 @@ describe("normalizeProviderPayload — DeepSeek Anthropic 模式", () => {
     compat: { thinkingFormat: "anthropic", reasoningProfile: "deepseek-v4-anthropic" },
   };
 
-  it("xhigh 映射到 Anthropic 格式 output_config.effort=max，且不泄漏 OpenAI reasoning_effort", () => {
+  it("xhigh 映射到 Anthropic 格式 output_config.effort=high，max 才是 max，且不泄漏 OpenAI reasoning_effort", () => {
     const payload = {
       model: "deepseek-v4-pro",
       messages: [{ role: "user", content: "hi" }],
@@ -1114,7 +1114,7 @@ describe("normalizeProviderPayload — DeepSeek Anthropic 模式", () => {
     });
     expect(result).not.toBe(payload);
     expect(result.thinking).toEqual({ type: "enabled", budget_tokens: 16384 });
-    expect(result.output_config).toEqual({ effort: "max" });
+    expect(result.output_config).toEqual({ effort: "high" });
     expect(result).not.toHaveProperty("reasoning_effort");
     expect(result.max_tokens).toBe(32000);
     expect(payload).toHaveProperty("reasoning_effort", "high");
@@ -1329,6 +1329,8 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     provider: "deepseek",
     reasoning: true,
     maxTokens: 384000,
+    thinkingLevels: ["off", "low", "high", "max"],
+    thinkingLevelMap: { medium: "high", xhigh: "high" },
   };
 
   it("非 DeepSeek 模型不动 DeepSeek 专用字段", () => {
@@ -1380,7 +1382,7 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     expect(payload).toHaveProperty("max_completion_tokens", 32000);
   });
 
-  it("DeepSeek V4 xhigh 会按官方兼容规则转成 max", () => {
+  it("DeepSeek V4 xhigh 按官方兼容表转成 high，max 保持 max", () => {
     const payload = {
       model: "deepseek-v4-pro",
       messages: [{ role: "user", content: "hello" }],
@@ -1393,9 +1395,18 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     });
     expect(result).toMatchObject({
       thinking: { type: "enabled" },
-      reasoning_effort: "max",
+      reasoning_effort: "high",
       max_tokens: 32000,
     });
+    const maxResult = normalizeProviderPayload({
+      model: "deepseek-v4-pro",
+      messages: [{ role: "user", content: "hello" }],
+      max_completion_tokens: 32000,
+    }, deepseekModel, {
+      mode: "chat",
+      reasoningLevel: "max",
+    });
+    expect(maxResult.reasoning_effort).toBe("max");
   });
 
   it("DeepSeek low 是官方有效档位，不被吞成 high", () => {
@@ -1426,7 +1437,7 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     // SDK 的 clampMaxTokensToContext 已经取过 min(模型上限, 剩余窗口 - 安全余量)，
     // 兼容层拿不到真实 token 数。放大只会把请求推过 1M 总窗口的边界，而且恰好
     // 发生在剩余窗口最紧张的时候。思考档位与能输出多长是两个正交的维度。
-    for (const [level, effort] of [["high", "high"], ["xhigh", "max"]]) {
+    for (const [level, effort] of [["high", "high"], ["xhigh", "high"], ["max", "max"]]) {
       for (const cap of [20_000, 65_536, 384_000]) {
         const result = normalizeProviderPayload({
           model: "deepseek-v4-pro",
@@ -1454,7 +1465,7 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     });
     expect(result).toMatchObject({
       thinking: { type: "enabled" },
-      reasoning_effort: "max",
+      reasoning_effort: "high",
       max_tokens: 8000,
     });
   });
@@ -1508,7 +1519,7 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     });
     expect(result).toMatchObject({
       thinking: { type: "enabled" },
-      reasoning_effort: "max",
+      reasoning_effort: "high",
       max_tokens: 32000,
     });
     expect(result).not.toHaveProperty("max_completion_tokens");

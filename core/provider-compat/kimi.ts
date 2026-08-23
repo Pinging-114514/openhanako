@@ -46,10 +46,9 @@ function omitsTemperature(model) {
 
 function reasoningEffortForLevel(level, model = null) {
   const normalized = lower(level);
-  const mapKey = normalized === "max" ? "xhigh" : normalized;
   const levelMap = model?.thinkingLevelMap;
-  if (levelMap && typeof levelMap === "object" && hasOwn(levelMap, mapKey)) {
-    const mapped = levelMap[mapKey];
+  if (levelMap && typeof levelMap === "object" && hasOwn(levelMap, normalized)) {
+    const mapped = levelMap[normalized];
     if (mapped === null) return null;
     if (typeof mapped === "string" && mapped.trim()) return mapped.trim();
   }

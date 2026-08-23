@@ -38,8 +38,8 @@ describe("known-models dictionary", () => {
       image: true,
       reasoning: true,
       api: "openai-codex-responses",
-      thinkingLevels: ["low", "medium", "high", "max"],
-      thinkingLevelMap: { off: null, minimal: "low", xhigh: "xhigh" },
+      thinkingLevels: ["low", "medium", "high", "xhigh"],
+      thinkingLevelMap: { off: null, minimal: "low" },
       defaultThinkingLevel: "medium",
     });
   });
@@ -50,8 +50,8 @@ describe("known-models dictionary", () => {
         context: 272000,
         maxOutput: 128000,
         api: "openai-codex-responses",
-        thinkingLevels: ["low", "medium", "high", "max"],
-        thinkingLevelMap: { off: null, minimal: "low", xhigh: "xhigh" },
+        thinkingLevels: ["low", "medium", "high", "xhigh"],
+        thinkingLevelMap: { off: null, minimal: "low" },
         defaultThinkingLevel: "medium",
       });
     }
@@ -74,8 +74,8 @@ describe("known-models dictionary", () => {
       context: 1050000,
       maxOutput: 128000,
       api: "openai-responses",
-      thinkingLevels: ["off", "low", "medium", "high", "max"],
-      thinkingLevelMap: { off: "none", xhigh: "max" },
+      thinkingLevels: ["off", "low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: "none" },
       defaultThinkingLevel: "medium",
     });
     expect(lookupKnownProvider("openai-codex-oauth", "gpt-5.6-sol")).toMatchObject({
@@ -83,8 +83,8 @@ describe("known-models dictionary", () => {
       maxContext: 372000,
       maxOutput: 128000,
       api: "openai-codex-responses",
-      thinkingLevels: ["low", "medium", "high", "max"],
-      thinkingLevelMap: { off: null, minimal: null, xhigh: "max" },
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: null, minimal: null },
       defaultThinkingLevel: "low",
     });
     expect(lookupKnownWithSource("unknown-proxy", "gpt-5.6-sol")).toEqual({
@@ -150,7 +150,7 @@ describe("known-models dictionary", () => {
         maxOutput: 128000,
         image: true,
         reasoning: true,
-        xhigh: true,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
         compat: {
           thinkingFormat: "anthropic",
           reasoningProfile: "anthropic-adaptive-only",
@@ -162,7 +162,7 @@ describe("known-models dictionary", () => {
         maxOutput: 128000,
         image: true,
         reasoning: true,
-        xhigh: true,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       });
     }
     expect(lookupKnown("anthropic", "claude-fable-5")).toMatchObject({
@@ -171,7 +171,7 @@ describe("known-models dictionary", () => {
       maxOutput: 128000,
       image: true,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       compat: {
         thinkingFormat: "anthropic",
         reasoningProfile: "anthropic-adaptive-only",
@@ -183,7 +183,7 @@ describe("known-models dictionary", () => {
       maxOutput: 128000,
       image: true,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       compat: {
         thinkingFormat: "anthropic",
         reasoningProfile: "anthropic-adaptive-only",
@@ -195,7 +195,7 @@ describe("known-models dictionary", () => {
       maxOutput: 128000,
       image: true,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       compat: {
         thinkingFormat: "openrouter",
         reasoningProfile: "openrouter-anthropic-adaptive",
@@ -211,7 +211,7 @@ describe("known-models dictionary", () => {
         maxOutput: 128000,
         image: true,
         reasoning: true,
-        xhigh: true,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
         compat: {
           thinkingFormat: "openrouter",
           reasoningProfile: "openrouter-anthropic-adaptive",
@@ -224,7 +224,7 @@ describe("known-models dictionary", () => {
       maxOutput: 128000,
       image: true,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(lookupKnown("dashscope", "qwen3.6-plus")).toMatchObject({
       context: 1000000,
@@ -245,7 +245,7 @@ describe("known-models dictionary", () => {
       maxOutput: 131072,
       image: false,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["high", "max"],
     });
     expect(lookupKnown("zhipu", "glm-4.7-flash")).toMatchObject({
       context: 200000,
@@ -294,7 +294,7 @@ describe("known-models dictionary", () => {
       maxOutput: 131072,
       image: false,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["high", "max"],
       compat: {
         thinkingFormat: "zhipu",
         reasoningProfile: "zhipu-openai",
@@ -320,7 +320,7 @@ describe("known-models dictionary", () => {
       maxOutput: 131072,
       image: false,
       reasoning: true,
-      xhigh: true,
+      thinkingLevels: ["high", "max"],
     });
     for (const id of ["glm-5-turbo", "glm-4.7", "glm-4.5-air"]) {
       expect(lookupKnown("zhipu-coding", id)).toMatchObject({

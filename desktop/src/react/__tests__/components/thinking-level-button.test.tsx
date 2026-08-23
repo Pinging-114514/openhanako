@@ -110,8 +110,8 @@ describe('ThinkingLevelButton', () => {
     fireEvent.click(container.querySelector('button') as HTMLButtonElement);
 
     expect(screen.getByRole('option', { name: /Max/ })).toBeTruthy();
-    expect(screen.getByText('极致推理')).toBeTruthy();
-    expect(screen.queryByRole('option', { name: 'xhigh' })).toBeNull();
+    expect(screen.getByText('最高推理')).toBeTruthy();
+    expect(screen.queryByRole('option', { name: '超高' })).toBeNull();
 
     fireEvent.click(optionForText('Max'));
 

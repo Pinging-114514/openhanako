@@ -417,7 +417,7 @@
       "auto": "自動",
       "medium": "中等",
       "high": "深度",
-      "xhigh": "Max",
+      "xhigh": "超高",
       "max": "Max",
       "low": "浅思"
     },
@@ -426,8 +426,8 @@
       "auto": "模型決定深度",
       "medium": "平衡推理",
       "high": "深度推理",
-      "xhigh": "極致推理",
-      "max": "極致推理",
+      "xhigh": "更長推理",
+      "max": "最高推理",
       "low": "轻量推理"
     },
     "contextWindow": "上下文 {windowK}k",
@@ -1767,8 +1767,11 @@
         "high": "深思",
         "auto": "自動",
         "max": "Max",
-        "xhigh": "Max"
+        "xhigh": "超高"
       },
+      "thinkingLevelsEdit": "可用檔位",
+      "thinkingLevelsEditHint": "勾選聊天裡能選的檔。沒改過就跟內建名單走，不會寫進這個模型。",
+      "defaultThinkingLevel": "預設檔",
       "addedModels": "已新增的模型",
       "displayName": "顯示名稱",
       "vision": "視覺",
