@@ -3,6 +3,169 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.447.9",
+      "version": "0.447.9",
+      "previousTag": "v0.447.8",
+      "generatedAt": "2026-08-23T10:50:00.000Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "超高和 Max 拆成两档，观察压缩改从会话文件装订笔记并用当前对话模型记账。顺带修好 OTA 代理、Codex 额度和开机空登录。",
+        "en": "Extra High and Max are separate thinking levels. Observational compaction binds notes from the session file and captures with the current chat model. Also fixes OTA proxy, Codex quota, and empty OAuth at boot."
+      },
+      "counts": {
+        "feature": 2,
+        "fix": 4,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.8..v0.447.9",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.9",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "split-xhigh-max",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "超高和 Max 分成两档",
+            "en": "Split Extra High and Max"
+          },
+          "summary": {
+            "zh": "芯片和发送不再把 Max 偷偷改成超高。Grok 4.6 只有超高，DeepSeek 的 Max 发出去就是 max，Claude 5 和 GPT-5.6 两档都能选。模型编辑页可以勾档位。",
+            "en": "The UI and request path no longer alias Max to Extra High. Grok 4.6 only has Extra High, DeepSeek Max sends max, and Claude 5 plus GPT-5.6 can pick both. The model editor can toggle the chips."
+          },
+          "details": [
+            {
+              "zh": "旧会话里存的 Max，在只有超高的模型上会认成超高，不会凭空多一档。",
+              "en": "A stored Max on a model that only has Extra High is read back as Extra High."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "observational-bind-chat-model",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "观察压缩从会话文件装订笔记",
+            "en": "Observational compaction binds notes from the session file"
+          },
+          "summary": {
+            "zh": "压缩界线后面的笔记不再被丢掉。记账改用当前对话模型，不再走工具模型。JSON 带围栏或写到一半也能尽量收下。",
+            "en": "Notes behind a compaction boundary are no longer dropped. Capture uses the current chat model instead of the utility model, and messy or truncated JSON is parsed more strictly."
+          },
+          "details": [
+            {
+              "zh": "实验页仍要选「观察记忆压缩」。刚重启的第一次若还没新笔记，也可能先走缓存保护。",
+              "en": "Keep Observational memory compaction selected in Experiments. The first compact after a restart may still use cache-preserving if no notes are visible yet."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "codex-oauth-quota",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "Codex OAuth 额度",
+            "en": "Codex OAuth quota"
+          },
+          "summary": {
+            "zh": "Provider 页登录后显示 Codex 额度，记忆任务超时加长，减少日记和深记忆半路断掉。",
+            "en": "The provider page shows Codex quota after login. Memory job timeouts are longer so diary and deep-memory runs are less likely to die mid-way."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "713ab84",
+              "title": "Codex OAuth quota and longer memory job timeouts"
+            }
+          ]
+        },
+        {
+          "id": "ota-proxy-all-paths",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "OTA 全走梯子代理",
+            "en": "OTA uses the ladder proxy on every GitHub path"
+          },
+          "summary": {
+            "zh": "检查更新、下摘要、下安装包都走同一条代理，避免有的请求直连失败。",
+            "en": "Update checks, digest fetches, and installer downloads all use the same proxy so mixed direct requests stop failing."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "3fa4721",
+              "title": "send every GitHub update path through the ladder proxy"
+            }
+          ]
+        },
+        {
+          "id": "auth-storage-boot-retry",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "开机重试空的 OAuth 存储",
+            "en": "Retry empty OAuth storage at boot"
+          },
+          "summary": {
+            "zh": "auth.json 被锁或时钟没对上时，开机不再显示未登录且退出也写不进去。",
+            "en": "If auth.json is locked or the clock has not settled, boot no longer shows signed-out with a no-op logout."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "memory-timeouts",
+          "kind": "improvement",
+          "importance": "low",
+          "title": {
+            "zh": "记忆任务超时加长",
+            "en": "Longer memory job timeouts"
+          },
+          "summary": {
+            "zh": "Dream、日记编译、深记忆和滚动摘要的等待时间加长。",
+            "en": "Dream, diary compile, deep-memory, and rolling summary waits are longer."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "713ab84",
+              "title": "Codex OAuth quota and longer memory job timeouts"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.447.8",
       "version": "0.447.8",
       "previousTag": "v0.447.7",
