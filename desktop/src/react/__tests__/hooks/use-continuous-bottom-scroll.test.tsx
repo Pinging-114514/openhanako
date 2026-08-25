@@ -206,6 +206,50 @@ describe('useContinuousBottomScroll', () => {
     expect(metrics.scrollTop).toBeGreaterThan(700);
   });
 
+  it('jumps to the top and clears sticky so later growth does not yank the view back down', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 420 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+
+    act(() => {
+      fireEvent.scroll(scrollEl);
+      controller?.scrollToTop({ mode: 'instant' });
+    });
+
+    expect(metrics.scrollTop).toBe(0);
+    expect(controller?.isStickyRef.current).toBe(false);
+
+    act(() => {
+      metrics.scrollHeight = 1200;
+      MockResizeObserver.instances[0].trigger();
+      flushRaf(16);
+    });
+
+    expect(metrics.scrollTop).toBe(0);
+  });
+
+  it('smooth-scrolls to the bottom when the user clicks jump-to-bottom', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 120 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    const scrollTo = vi.fn((options?: ScrollToOptions) => {
+      metrics.scrollTop = Number(options?.top || 0);
+    });
+    (scrollEl as HTMLElement & { scrollTo: typeof scrollTo }).scrollTo = scrollTo;
+
+    act(() => {
+      controller?.scrollToBottom({ mode: 'smooth', forceSticky: true });
+    });
+
+    expect(scrollTo).toHaveBeenCalledWith({ top: 700, behavior: 'smooth' });
+    expect(metrics.scrollTop).toBe(700);
+    expect(controller?.isStickyRef.current).toBe(true);
+  });
+
   it('snaps instantly (no animation) on the first content growth after arming an instant landing', () => {
     let controller: ContinuousBottomScrollController | null = null;
     const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };

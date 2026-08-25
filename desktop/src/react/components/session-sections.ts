@@ -95,7 +95,7 @@ export const PROJECT_SESSION_PREVIEW_LIMIT = 3;
 
 /**
  * 按条数折叠：少于等于 limit 不折叠；超过则露出前 limit 条，其余进「加载更多」。
- * alwaysVisiblePaths 里的当前会话即使排在 limit 之外也强制露出，避免活聊天被埋掉。
+ * alwaysVisiblePaths 里的当前会话如果落在窗口外，挤进最后一格，不把折叠区撑开。
  */
 export function splitProjectSessionsByPreview(
   items: Session[],
@@ -117,18 +117,37 @@ export function splitProjectSessionsByPreview(
       .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
       .map(value => value.trim()),
   );
+  const isForced = (session: Session): boolean => (
+    alwaysVisible.has(session.path)
+    || (typeof session.sessionId === 'string' && alwaysVisible.has(session.sessionId))
+  );
+
   const visible: Session[] = [];
   const hidden: Session[] = [];
+  const forcedOutside: Session[] = [];
 
   for (let index = 0; index < items.length; index += 1) {
     const session = items[index];
-    const forceVisible = alwaysVisible.has(session.path)
-      || (typeof session.sessionId === 'string' && alwaysVisible.has(session.sessionId));
-    if (index < safeLimit || forceVisible) visible.push(session);
+    if (index < safeLimit) visible.push(session);
+    else if (isForced(session)) forcedOutside.push(session);
     else hidden.push(session);
   }
 
-  return { visible, hidden };
+  if (forcedOutside.length === 0 || safeLimit === 0) {
+    return {
+      visible: safeLimit === 0 ? [] : visible,
+      hidden: safeLimit === 0 ? items.slice() : hidden.concat(forcedOutside),
+    };
+  }
+
+  const overflow = Math.min(forcedOutside.length, safeLimit);
+  const pinned = forcedOutside.slice(0, overflow);
+  const keep = visible.slice(0, Math.max(0, safeLimit - overflow));
+  const displaced = visible.slice(keep.length);
+  return {
+    visible: [...keep, ...pinned],
+    hidden: [...displaced, ...forcedOutside.slice(overflow), ...hidden],
+  };
 }
 
 /**

@@ -532,4 +532,38 @@ describe("known-models dictionary", () => {
   it("does not treat arbitrary provider-specific entries as generic fallbacks", () => {
     expect(lookupKnown("unknown-provider", "openrouter/auto")).toBeNull();
   });
+
+  it("declares DeepSeek V4 Flash Vision (Exp) as image-capable on the official DeepSeek provider", () => {
+    expect(lookupKnown("deepseek", "deepseek-v4-flash-vision-exp")).toMatchObject({
+      name: "DeepSeek V4 Flash Vision (Exp)",
+      context: 1000000,
+      maxOutput: 384000,
+      image: true,
+      reasoning: true,
+      thinkingLevels: ["off", "low", "high", "max"],
+      defaultThinkingLevel: "high",
+    });
+  });
+
+  it("declares DeepSeek V4's official three-tier thinking ladder, dropping the unsupported medium", () => {
+    for (const id of ["deepseek-v4-pro", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"]) {
+      expect(lookupKnown("deepseek", id)).toMatchObject({
+        thinkingLevels: ["off", "low", "high", "max"],
+        defaultThinkingLevel: "high",
+      });
+    }
+  });
+
+  it("also reaches DeepSeek V4 Flash Vision (Exp) through the generic fallback table, without inheriting DeepSeek's protocol-level thinking ladder", () => {
+    expect(lookupKnownWithSource("unknown-proxy", "deepseek-v4-flash-vision-exp")).toEqual({
+      source: "fallback",
+      metadata: {
+        name: "DeepSeek V4 Flash Vision (Exp)",
+        context: 1000000,
+        maxOutput: 384000,
+        image: true,
+        reasoning: true,
+      },
+    });
+  });
 });

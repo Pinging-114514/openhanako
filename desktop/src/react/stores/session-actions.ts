@@ -469,7 +469,7 @@ function buildInflightAssistantMessage(snap: StreamBufferSnapshot): ChatMessage 
 }
 
 /** 上滑加载更早的消息（分页） */
-export async function loadMoreMessages(forPath?: string): Promise<void> {
+export async function loadMoreMessages(forPath?: string, opts?: { limit?: number }): Promise<void> {
   const targetPath = forPath || useStore.getState().currentSessionPath;
   if (!targetPath) return;
   const session = sessionScopedValue(useStore.getState() as Record<string, any>, useStore.getState().chatSessions, targetPath);
@@ -478,7 +478,10 @@ export async function loadMoreMessages(forPath?: string): Promise<void> {
   useStore.getState().setLoadingMore(targetPath, true);
   try {
     const before = session.oldestId ?? '';
-    const res = await hanaFetch(sessionMessagesUrl(targetPath, { before }));
+    const extra: Record<string, string> = { before };
+    const limit = Number(opts?.limit);
+    if (Number.isFinite(limit) && limit > 0) extra.limit = String(Math.min(Math.floor(limit), 200));
+    const res = await hanaFetch(sessionMessagesUrl(targetPath, extra));
     const data = await res.json();
     if (Array.isArray(data.sessionFiles)) {
       useStore.getState().setSessionRegistryFiles(targetPath, data.sessionFiles);
@@ -493,6 +496,48 @@ export async function loadMoreMessages(forPath?: string): Promise<void> {
     console.error('[loadMoreMessages] error:', err);
     useStore.getState().setLoadingMore(targetPath, false);
   }
+}
+
+const LOAD_ALL_OLDER_PAGE_LIMIT = 200;
+const LOAD_ALL_OLDER_MAX_PAGES = 50;
+
+/** 把当前窗口之前的历史翻完。翻页时 prepend 会保住视口，调用方再滚到真正开头。 */
+export async function loadAllOlderMessages(forPath?: string): Promise<boolean> {
+  const targetPath = typeof forPath === 'string' && forPath.trim()
+    ? forPath
+    : useStore.getState().currentSessionPath;
+  if (!targetPath) return false;
+  for (let page = 0; page < LOAD_ALL_OLDER_MAX_PAGES; page += 1) {
+    const session = sessionScopedValue(
+      useStore.getState() as Record<string, any>,
+      useStore.getState().chatSessions,
+      targetPath,
+    );
+    if (!session) return false;
+    if (!session.hasMore) return true;
+    if (session.loadingMore) {
+      await new Promise((resolve) => setTimeout(resolve, 40));
+      continue;
+    }
+    const oldest = session.oldestId;
+    await loadMoreMessages(targetPath, { limit: LOAD_ALL_OLDER_PAGE_LIMIT });
+    const after = sessionScopedValue(
+      useStore.getState() as Record<string, any>,
+      useStore.getState().chatSessions,
+      targetPath,
+    );
+    if (!after) return false;
+    if (!after.hasMore) return true;
+    if (after.oldestId === oldest) return false;
+    await new Promise<void>((resolve) => {
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => resolve());
+        return;
+      }
+      setTimeout(resolve, 0);
+    });
+  }
+  return false;
 }
 
 // ══════════════════════════════════════════════════════

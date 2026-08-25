@@ -48,6 +48,13 @@ vi.mock('../../services/stream-key-dispatcher', () => ({
   dispatchStreamKey: vi.fn(),
 }));
 
+const playChatCompletionSound = vi.hoisted(() => vi.fn());
+vi.mock('../../services/chat-completion-sound', () => ({
+  playChatCompletionSound,
+  setChatCompletionSoundEnabled: vi.fn(),
+  hydrateChatCompletionSound: vi.fn(),
+}));
+
 import { streamBufferManager } from '../../hooks/use-stream-buffer';
 import { useStore } from '../../stores';
 import { applyStreamingStatus, configureWsMessageHandler, handleServerMessage } from '../../services/ws-message-handler';
@@ -78,6 +85,7 @@ afterEach(() => {
 describe('ws-message-handler applyStreamingStatus', () => {
   beforeEach(() => {
     vi.mocked(loadSessions).mockClear();
+    playChatCompletionSound.mockClear();
     useStore.setState({
       currentSessionPath: '/focused.jsonl',
       pendingNewSession: false,
@@ -144,6 +152,18 @@ describe('ws-message-handler applyStreamingStatus', () => {
     useStore.setState({ streamingSessions: ['/focused.jsonl'], unreadOutputSessionPaths: [] } as never);
     applyStreamingStatus(false, '/focused.jsonl');
     expect(useStore.getState().unreadOutputSessionPaths).toEqual([]);
+  });
+
+  it('plays the completion chime when a streaming turn ends', () => {
+    useStore.setState({ streamingSessions: ['/focused.jsonl'] } as never);
+    applyStreamingStatus(false, '/focused.jsonl');
+    expect(playChatCompletionSound).toHaveBeenCalledOnce();
+  });
+
+  it('does not play the completion chime when the turn is aborted', () => {
+    useStore.setState({ streamingSessions: ['/focused.jsonl'] } as never);
+    applyStreamingStatus(false, '/focused.jsonl', { streamId: null }, { playSound: false });
+    expect(playChatCompletionSound).not.toHaveBeenCalled();
   });
 
   it('收到 isStreaming=true 只维护运行集合，不产生未读输出标记', () => {
@@ -1499,6 +1519,54 @@ describe('ws-message-handler turn_end side effects', () => {
       turnId: 'turn_mid',
     });
     expect(useStore.getState().inputFocusTrigger).toBe(0);
+  });
+
+  it('intermediate turn_end does not refresh the session list while still streaming', async () => {
+    vi.useFakeTimers();
+    vi.mocked(loadSessions).mockClear();
+    useStore.setState({
+      streamingSessions: ['/session/a.jsonl'],
+      activeSessionStreams: {
+        '/session/a.jsonl': { streamId: 'stream_mid', turnId: 'turn_mid' },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'turn_end',
+      sessionPath: '/session/a.jsonl',
+      streamId: 'stream_mid',
+      turnId: 'turn_mid',
+    });
+
+    await vi.advanceTimersByTimeAsync(300);
+    expect(loadSessions).not.toHaveBeenCalled();
+  });
+
+  it('status=false after streaming refreshes the session list once', async () => {
+    vi.useFakeTimers();
+    vi.mocked(loadSessions).mockClear();
+    useStore.setState({
+      streamingSessions: ['/session/a.jsonl'],
+      activeSessionStreams: {
+        '/session/a.jsonl': { streamId: 'stream_done', turnId: null },
+      },
+    } as never);
+
+    handleServerMessage({
+      type: 'turn_end',
+      sessionPath: '/session/a.jsonl',
+      streamId: 'stream_done',
+    });
+    handleServerMessage({
+      type: 'status',
+      sessionPath: '/session/a.jsonl',
+      streamId: 'stream_done',
+      isStreaming: false,
+    });
+
+    expect(loadSessions).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(300);
+    expect(loadSessions).toHaveBeenCalledTimes(1);
   });
 
   it('stale turn_end does not clear a newer stream identity', () => {

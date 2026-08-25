@@ -1,0 +1,542 @@
+{
+  "schema": 2,
+  "entries": [
+    {
+      "schemaVersion": 1,
+      "tag": "v0.447.9",
+      "version": "0.447.9",
+      "previousTag": "v0.447.8",
+      "generatedAt": "2026-08-23T10:50:00.000Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "超高和 Max 拆成两档，观察压缩改从会话文件装订笔记并用当前对话模型记账。顺带修好 OTA 代理、Codex 额度和开机空登录。",
+        "en": "Extra High and Max are separate thinking levels. Observational compaction binds notes from the session file and captures with the current chat model. Also fixes OTA proxy, Codex quota, and empty OAuth at boot."
+      },
+      "counts": {
+        "feature": 2,
+        "fix": 4,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.8..v0.447.9",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.9",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "split-xhigh-max",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "超高和 Max 分成两档",
+            "en": "Split Extra High and Max"
+          },
+          "summary": {
+            "zh": "芯片和发送不再把 Max 偷偷改成超高。Grok 4.6 只有超高，DeepSeek 的 Max 发出去就是 max，Claude 5 和 GPT-5.6 两档都能选。模型编辑页可以勾档位。",
+            "en": "The UI and request path no longer alias Max to Extra High. Grok 4.6 only has Extra High, DeepSeek Max sends max, and Claude 5 plus GPT-5.6 can pick both. The model editor can toggle the chips."
+          },
+          "details": [
+            {
+              "zh": "旧会话里存的 Max，在只有超高的模型上会认成超高，不会凭空多一档。",
+              "en": "A stored Max on a model that only has Extra High is read back as Extra High."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "observational-bind-chat-model",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "观察压缩从会话文件装订笔记",
+            "en": "Observational compaction binds notes from the session file"
+          },
+          "summary": {
+            "zh": "压缩界线后面的笔记不再被丢掉。记账改用当前对话模型，不再走工具模型。JSON 带围栏或写到一半也能尽量收下。",
+            "en": "Notes behind a compaction boundary are no longer dropped. Capture uses the current chat model instead of the utility model, and messy or truncated JSON is parsed more strictly."
+          },
+          "details": [
+            {
+              "zh": "实验页仍要选「观察记忆压缩」。刚重启的第一次若还没新笔记，也可能先走缓存保护。",
+              "en": "Keep Observational memory compaction selected in Experiments. The first compact after a restart may still use cache-preserving if no notes are visible yet."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "codex-oauth-quota",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "Codex OAuth 额度",
+            "en": "Codex OAuth quota"
+          },
+          "summary": {
+            "zh": "Provider 页登录后显示 Codex 额度，记忆任务超时加长，减少日记和深记忆半路断掉。",
+            "en": "The provider page shows Codex quota after login. Memory job timeouts are longer so diary and deep-memory runs are less likely to die mid-way."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "713ab84",
+              "title": "Codex OAuth quota and longer memory job timeouts"
+            }
+          ]
+        },
+        {
+          "id": "ota-proxy-all-paths",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "OTA 全走梯子代理",
+            "en": "OTA uses the ladder proxy on every GitHub path"
+          },
+          "summary": {
+            "zh": "检查更新、下摘要、下安装包都走同一条代理，避免有的请求直连失败。",
+            "en": "Update checks, digest fetches, and installer downloads all use the same proxy so mixed direct requests stop failing."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "3fa4721",
+              "title": "send every GitHub update path through the ladder proxy"
+            }
+          ]
+        },
+        {
+          "id": "auth-storage-boot-retry",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "开机重试空的 OAuth 存储",
+            "en": "Retry empty OAuth storage at boot"
+          },
+          "summary": {
+            "zh": "auth.json 被锁或时钟没对上时，开机不再显示未登录且退出也写不进去。",
+            "en": "If auth.json is locked or the clock has not settled, boot no longer shows signed-out with a no-op logout."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "aff25e4",
+              "title": "split xhigh from max and bind observational notes from the session file"
+            }
+          ]
+        },
+        {
+          "id": "memory-timeouts",
+          "kind": "improvement",
+          "importance": "low",
+          "title": {
+            "zh": "记忆任务超时加长",
+            "en": "Longer memory job timeouts"
+          },
+          "summary": {
+            "zh": "Dream、日记编译、深记忆和滚动摘要的等待时间加长。",
+            "en": "Dream, diary compile, deep-memory, and rolling summary waits are longer."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "713ab84",
+              "title": "Codex OAuth quota and longer memory job timeouts"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "tag": "v0.447.8",
+      "version": "0.447.8",
+      "previousTag": "v0.447.7",
+      "generatedAt": "2026-08-20T07:20:47.953Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "观察记忆压缩、Grok OAuth 搜索和周额度、以及原生回合用量页脚。压缩阈值默认可调。",
+        "en": "Observational memory compaction, Grok OAuth search with weekly quota, and native turn usage. Auto-compaction threshold is configurable."
+      },
+      "counts": {
+        "feature": 4,
+        "fix": 1,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.7..v0.447.8",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.8",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "observational-compaction",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "观察记忆压缩",
+            "en": "Observational memory compaction"
+          },
+          "summary": {
+            "zh": "平时用工具模型记下要点，压缩时直接装订，不再让 Grok 写长摘要。没笔记时退回缓存保护。手动压缩和自动阈值走同一条钩子。",
+            "en": "Record notes with the utility model while chatting, then bind them at compact time instead of asking Grok to write a long summary. Empty notes fall back to cache-preserving. Manual compact and the auto threshold share the same hook."
+          },
+          "details": [
+            {
+              "zh": "实验页手动选中「观察记忆压缩」。刚切过去的第一次若还没笔记，仍可能走缓存保护。",
+              "en": "Select Observational memory compaction in Experiments. The first compact after switching may still use cache-preserving if no notes exist yet."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "grok-oauth-search",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "Grok OAuth 搜索收进 Hana web_search",
+            "en": "Grok OAuth search inside Hana web_search"
+          },
+          "summary": {
+            "zh": "登录 Grok OAuth 后，网页搜和 X 搜走同一刀。Auto 顺序是 OAuth → 付费 API → AnySearch 免费 → 浏览器。Provider 页有搜索开关。",
+            "en": "After Grok OAuth login, web and X search run in one request. Auto order is OAuth, paid APIs, free AnySearch, then browser. Provider page has a search toggle."
+          },
+          "details": [
+            {
+              "zh": "不往聊天请求里注入原生 web_search / x_search，避免吞回复和工具重名。",
+              "en": "Native web_search / x_search are not injected into chat requests, which avoids swallowed replies and duplicate tool names."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "grok-weekly-quota",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "Grok OAuth 周额度",
+            "en": "Grok OAuth weekly quota"
+          },
+          "summary": {
+            "zh": "Provider 页已登录下方显示本周剩余额度。",
+            "en": "The provider page shows remaining weekly quota under the signed-in state."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "native-turn-usage",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "原生回合用量页脚",
+            "en": "Native turn usage footer"
+          },
+          "summary": {
+            "zh": "回复时间旁显示缓存、入、出、tok/s。Grok 不写 assistant.usage，改从账本按整轮加总。",
+            "en": "Cache, input, output, and tok/s appear next to the reply time. Grok does not write assistant.usage, so the footer sums the whole turn from the ledger."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4e825fc",
+              "title": "show turn cache, tokens, and speed next to the reply time"
+            }
+          ]
+        },
+        {
+          "id": "compaction-threshold",
+          "kind": "improvement",
+          "importance": "medium",
+          "title": {
+            "zh": "可调自动压缩阈值",
+            "en": "Configurable auto-compaction threshold"
+          },
+          "summary": {
+            "zh": "实验页可设 50–95%，默认 75%。",
+            "en": "Experiments can set 50–95%, default 75%."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "017eab3",
+              "title": "observational compaction, Grok OAuth search, and turn usage backfill"
+            }
+          ]
+        },
+        {
+          "id": "session-fold-settings",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "会话按条数折叠，设置不再整页转圈",
+            "en": "Fold sessions by count and stop settings from blocking"
+          },
+          "summary": {
+            "zh": "忙项目折叠改成按条数，不再按 3 天。打开设置不再整页 loading，Computer Use 探测只在该页跑。",
+            "en": "Busy projects fold by count instead of 3 days. Settings no longer show a full-page loader, and Computer Use probing stays on that page."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "be9fc1a",
+              "title": "fold busy projects by count and stop settings from blocking on probes"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "tag": "v0.447.7",
+      "version": "0.447.7",
+      "previousTag": "v0.447.6",
+      "generatedAt": "2026-08-19T06:50:04.442Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "这一版只构建 Windows，并把 Release 发成正式最新版，热更新直接写入 stable 频道，避免 pre-release 只进 beta 的坑。",
+        "en": "Windows-only builds, published as the formal latest release so hot updates write the stable channel instead of beta-only prereleases."
+      },
+      "counts": {
+        "feature": 0,
+        "fix": 1,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.6..v0.447.7",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.7",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "windows-only-stable-release",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "只发 Windows 正式版并写入 stable",
+            "en": "Windows-only formal release into stable"
+          },
+          "summary": {
+            "zh": "去掉 Linux 构建；Release 不再标 pre-release，publish-train 会更新 stable.json。",
+            "en": "Drop Linux builds; releases are no longer prerelease, so publish-train updates stable.json."
+          },
+          "details": [
+            {
+              "zh": "train 是热更新班次；channels/stable.json 是站牌。正式版才会改主站牌。",
+              "en": "A train is a hot-update batch; channels/stable.json is the pointer clients poll."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "workflow",
+              "title": "formal windows-only release"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "tag": "v0.447.6",
+      "version": "0.447.6",
+      "previousTag": "v0.447.5",
+      "generatedAt": "2026-08-19T06:27:10.667Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "这一版继续完善 Pinging fork 发版链路：没有 Apple 签名证书时跳过 macOS 构建，不再挡住 Windows/Linux 安装包和热更新发布。",
+        "en": "Keeps the Pinging fork release pipeline moving: skip macOS builds when Apple signing certs are absent so Windows/Linux installers and hot updates can still publish."
+      },
+      "counts": {
+        "feature": 0,
+        "fix": 1,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.5..v0.447.6",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.6",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "fork-skip-mac-signing",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "无 Apple 证书时跳过 macOS，放行 Windows 发版",
+            "en": "Skip macOS without Apple certs so Windows releases can ship"
+          },
+          "summary": {
+            "zh": "fork 没有 CSC_LINK 时不再因 macOS keychain 步骤失败而跳过 release/publish-train。",
+            "en": "Without CSC_LINK, macOS keychain failures no longer skip release/publish-train on this fork."
+          },
+          "details": [
+            {
+              "zh": "矩阵暂时只保留 Windows 与 Linux；校验清单也改为不强制要求 mac 产物。",
+              "en": "Matrix temporarily keeps Windows and Linux only; release verification no longer requires mac assets."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "workflow",
+              "title": "build.yml fork mac skip"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
+      "tag": "v0.447.5",
+      "version": "0.447.5",
+      "previousTag": "v0.447.4",
+      "generatedAt": "2026-08-19T05:58:49.335Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "这一版是 Pinging fork 的首个自建发版：热更新会走系统/手动代理并在连接失败时重试；xAI capacity 失败会自动重试三次并在对话里给出明确提示；项目视图里超过三天的会话默认收进「加载更多」。",
+        "en": "First self-hosted release of the Pinging fork: hot updates honor system/manual proxy with retries; xAI capacity failures retry three times and show a visible chat error; project view hides sessions older than three days behind Load more."
+      },
+      "counts": {
+        "feature": 1,
+        "fix": 2,
+        "improvement": 0,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.4..v0.447.5",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.447.5",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "ota-proxy-retry",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "热更新走代理并重试瞬态失败",
+            "en": "Hot updates use proxy and retry transient failures"
+          },
+          "summary": {
+            "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+            "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
+          },
+          "details": [
+            {
+              "zh": "artifact-ota 不再裸连 GitHub；会使用设置里的网络代理，并对 ECONNRESET 等错误短退避重试。",
+              "en": "artifact-ota no longer bare-connects to GitHub; it uses Settings > Network proxy and retries transient errors like ECONNRESET."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Hot updates use proxy and retry transient failures"
+            }
+          ]
+        },
+        {
+          "id": "capacity-retry-visible",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "capacity 静默中断改为重试并明牌提示",
+            "en": "Capacity failures retry and surface visibly"
+          },
+          "summary": {
+            "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+            "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
+          },
+          "details": [
+            {
+              "zh": "把 xAI at capacity 纳入可重试错误，默认重试 3 次；最终失败时在对话气泡写出说明，不再留空白。",
+              "en": "Treat xAI at-capacity as retryable with 3 attempts; on final failure inject a visible chat explanation instead of an empty bubble."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Capacity failures retry and surface visibly"
+            }
+          ]
+        },
+        {
+          "id": "project-session-recency",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "项目会话超过三天默认隐藏",
+            "en": "Hide project sessions older than 3 days by default"
+          },
+          "summary": {
+            "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+            "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
+          },
+          "details": [
+            {
+              "zh": "同一项目下只默认显示近三天活跃会话，更早的点「加载更多」再展开。",
+              "en": "Within a project, only recently active sessions stay visible; older ones expand via Load more."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "4af97a0",
+              "title": "Hide project sessions older than 3 days by default"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

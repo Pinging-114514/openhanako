@@ -114,6 +114,7 @@ function installHana(overrides: Record<string, unknown> = {}) {
       autoUpdateInstall: vi.fn(),
       autoUpdateSetChannel: vi.fn(),
       openExternal: vi.fn(),
+      getAppVersion: vi.fn().mockResolvedValue('0.447.9'),
       getUpdateDigestHistory: vi.fn().mockResolvedValue({ entries: [], source: 'none', complete: false }),
       ...overrides,
     },

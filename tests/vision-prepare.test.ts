@@ -20,28 +20,26 @@ const customImageDeclaredModel = {
 const passthroughPrepareModelImages = async ({ text, opts }) => ({ text, opts });
 
 describe("prepareVisionInputForTextOnlyModel", () => {
-  it("uses auxiliary vision for official DeepSeek even when the model is user-declared image capable", async () => {
+  it("passes images through directly for official DeepSeek when the model is user-declared image capable", async () => {
     const prepare = vi.fn(async () => ({
       text: "vision notes\n\nwhat is this?",
       images: undefined,
     }));
 
+    const images = [{ type: "image", data: "b64", mimeType: "image/png" }];
     const result = await prepareVisionInputForTextOnlyModel({
       targetModel: deepseekImageDeclaredModel,
       text: "what is this?",
-      opts: { images: [{ type: "image", data: "b64", mimeType: "image/png" }] },
+      opts: { images },
       sessionPath: "/tmp/session.jsonl",
       getVisionBridge: () => ({ prepare }),
       visionPolicyTarget: { isVisionAuxiliaryEnabled: () => true },
       prepareModelImages: passthroughPrepareModelImages,
     } as any);
 
-    expect(prepare).toHaveBeenCalledWith(expect.objectContaining({
-      targetModel: deepseekImageDeclaredModel,
-      images: [{ type: "image", data: "b64", mimeType: "image/png" }],
-    }));
-    expect(result.text).toBe("vision notes\n\nwhat is this?");
-    expect(result.opts.images).toBeUndefined();
+    expect(prepare).not.toHaveBeenCalled();
+    expect(result.text).toBe("what is this?");
+    expect(result.opts.images).toBe(images);
   });
 
   it("prepares image inputs before sending them to auxiliary vision", async () => {

@@ -1840,10 +1840,10 @@ describe("SessionCoordinator", () => {
       getSessionFile: () => sessionPath,
     };
     const model = {
-      id: "deepseek-vision",
-      provider: "deepseek",
-      name: "DeepSeek Vision",
-      input: ["image"],
+      id: "text-only-model",
+      provider: "openai",
+      name: "Text Only",
+      input: ["text"],
     };
     const session = {
       sessionManager,
@@ -2325,7 +2325,7 @@ describe("SessionCoordinator", () => {
         subscribe: vi.fn(() => vi.fn()),
         setActiveToolsByName: vi.fn(),
         setThinkingLevel,
-        model: { id: "deepseek-v4-pro", provider: "deepseek", name: "DeepSeek V4 Pro" },
+        model: { id: "grok-4.6", provider: "xai-oauth", name: "Grok 4.6" },
       },
     });
 
@@ -2334,8 +2334,8 @@ describe("SessionCoordinator", () => {
       getAgent: () => agent,
       getActiveAgentId: () => "hana",
       getModels: () => ({
-        currentModel: { id: "deepseek-v4-pro", provider: "deepseek", name: "DeepSeek V4 Pro" },
-        availableModels: [{ id: "deepseek-v4-pro", provider: "deepseek", name: "DeepSeek V4 Pro" }],
+        currentModel: { id: "grok-4.6", provider: "xai-oauth", name: "Grok 4.6" },
+        availableModels: [{ id: "grok-4.6", provider: "xai-oauth", name: "Grok 4.6" }],
         authStorage: {},
         modelRegistry: {},
         resolveThinkingLevel: (level) => level,

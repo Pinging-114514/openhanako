@@ -163,15 +163,17 @@ describe('InputArea layout', () => {
     expect(footerBlock).toMatch(/height:\s*calc\(var\(--chat-scrollbar-bottom-inset\) \+ var\(--space-24\) \+ 5rem\)/);
   });
 
-  it('floats the scroll-to-bottom FAB above the measured input card instead of a fixed offset (#1297)', () => {
+  it('floats the conversation scroll buoy above the measured input card instead of a fixed offset (#1297)', () => {
     const css = fs.readFileSync(
       path.join(process.cwd(), 'desktop/src/react/components/chat/Chat.module.css'),
       'utf8',
     );
-    const fabBlock = cssBlock(css, String.raw`\.scrollToBottomFab`);
+    const fabBlock = cssBlock(css, String.raw`\.scrollFab`);
 
-    // FAB 必须跟随输入卡片实时高度（--input-card-h），不能写死固定 bottom，
-    // 否则多行输入时输入框升高会盖住 FAB（#1297）。
+    // 浮标必须跟随输入卡片实时高度（--input-card-h），不能写死固定 bottom，
+    // 否则多行输入时输入框升高会盖住按钮（#1297）。
     expect(fabBlock).toMatch(/bottom:\s*calc\(var\(--input-card-h[^)]*\)\s*\+\s*var\(--space-16\)\)/);
+    expect(fabBlock).toMatch(/right:\s*var\(--space-16\)/);
+    expect(fabBlock).not.toMatch(/left:\s*50%/);
   });
 });

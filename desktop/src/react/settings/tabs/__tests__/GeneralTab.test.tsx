@@ -25,6 +25,19 @@ vi.mock('../../helpers', () => ({
   autoSaveConfig: (...args: unknown[]) => autoSaveConfig(...args),
 }));
 
+vi.mock('../../../services/chat-completion-sound', () => ({
+  playChatCompletionSound: vi.fn(),
+  setChatCompletionSoundEnabled: vi.fn(),
+  hydrateChatCompletionSound: vi.fn(),
+  readStoredChatCompletionSound: vi.fn(() => null),
+  resolveChatCompletionSoundFlag: (source: unknown, fallback = false) => {
+    if (source && typeof source === 'object' && Object.prototype.hasOwnProperty.call(source, 'chatCompletionSound')) {
+      return (source as { chatCompletionSound?: unknown }).chatCompletionSound === true;
+    }
+    return fallback;
+  },
+}));
+
 vi.mock('../../actions', () => ({
   loadSettingsConfig: (...args: unknown[]) => loadSettingsConfig(...args),
   updateSettingsSnapshot: (...args: unknown[]) => updateSettingsSnapshot(...args),
@@ -257,6 +270,56 @@ describe('GeneralTab', () => {
       body: JSON.stringify({ notifications: { chatCompletion: 'when_session_unfocused' } }),
     }));
     await waitFor(() => expect((select as HTMLSelectElement).value).toBe('when_session_unfocused'));
+  });
+
+  it('saves the reply completion chime toggle', async () => {
+    installHana();
+    hanaFetch
+      .mockResolvedValueOnce(jsonResponse({ quickChat: { shortcut: 'Alt+Space' } }))
+      .mockResolvedValueOnce(jsonResponse({ notifications: { chatCompletion: 'never', chatCompletionSound: false } }))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        notifications: {
+          chatCompletion: 'never',
+          scheduledTaskCompletion: 'never',
+          patrolCompletion: 'never',
+          chatCompletionSound: true,
+        },
+      }));
+
+    render(<GeneralTab />);
+
+    const toggle = await screen.findByTestId('settings.general.notifications.chatCompletionSound-off');
+    fireEvent.click(toggle);
+
+    await waitFor(() => expect(hanaFetch).toHaveBeenLastCalledWith('/api/preferences/notifications', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ notifications: { chatCompletionSound: true } }),
+    }));
+    expect(await screen.findByTestId('settings.general.notifications.chatCompletionSound-on')).toBeTruthy();
+  });
+
+  it('keeps the chime toggle on when the server omits the new field', async () => {
+    installHana();
+    hanaFetch
+      .mockResolvedValueOnce(jsonResponse({ quickChat: { shortcut: 'Alt+Space' } }))
+      .mockResolvedValueOnce(jsonResponse({ notifications: { chatCompletion: 'never' } }))
+      .mockResolvedValueOnce(jsonResponse({
+        ok: true,
+        notifications: {
+          chatCompletion: 'never',
+          scheduledTaskCompletion: 'never',
+          patrolCompletion: 'never',
+        },
+      }));
+
+    render(<GeneralTab />);
+
+    const toggle = await screen.findByTestId('settings.general.notifications.chatCompletionSound-off');
+    fireEvent.click(toggle);
+
+    expect(await screen.findByTestId('settings.general.notifications.chatCompletionSound-on')).toBeTruthy();
   });
 
   it('records and registers the quick chat shortcut', async () => {

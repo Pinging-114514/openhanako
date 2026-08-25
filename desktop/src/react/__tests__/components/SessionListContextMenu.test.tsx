@@ -51,7 +51,7 @@ vi.mock('../../hooks/use-i18n', () => ({
   }),
 }));
 
-import { SessionList } from '../../components/SessionList';
+import { resetEphemeralShowAllProjectIdsForTest, SessionList } from '../../components/SessionList';
 import { useStore } from '../../stores';
 
 function jsonResponse(data: unknown) {
@@ -183,6 +183,7 @@ describe('SessionList context menu', () => {
 
   afterEach(() => {
     cleanup();
+    resetEphemeralShowAllProjectIdsForTest();
     vi.useRealTimers();
   });
 
@@ -900,7 +901,7 @@ describe('SessionList context menu', () => {
     });
   });
 
-  it('shows five project sessions by default and persists the show-all expansion', async () => {
+  it('shows three project sessions by default and keeps show-all ephemeral', async () => {
     useStore.setState({
       sessions: Array.from({ length: 6 }, (_, index) => ({
         path: `/tmp/agents/hana/sessions/project-${index + 1}.jsonl`,
@@ -936,23 +937,18 @@ describe('SessionList context menu', () => {
     await switchToProjectView();
 
     await waitFor(() => {
-      expect(screen.getByText('Project item 5')).toBeInTheDocument();
+      expect(screen.getByText('Project item 3')).toBeInTheDocument();
     });
+    expect(screen.queryByText('Project item 4')).not.toBeInTheDocument();
     expect(screen.queryByText('Project item 6')).not.toBeInTheDocument();
     fireEvent.click(await screen.findByText('sidebar.projects.showMore'));
     await waitFor(() => {
       expect(screen.getByText('Project item 6')).toBeInTheDocument();
-      expect(hanaFetchMock).toHaveBeenCalledWith('/api/preferences/sidebar-ui', expect.objectContaining({
-        method: 'PUT',
-        body: JSON.stringify({
-          projectView: {
-            collapsedProjectIds: [],
-            collapsedFolderIds: [],
-            showAllProjectIds: ['project-root'],
-          },
-        }),
-      }));
     });
+    expect(hanaFetchMock).not.toHaveBeenCalledWith(
+      '/api/preferences/sidebar-ui',
+      expect.objectContaining({ method: 'PUT' }),
+    );
   });
 
   it('persists project row collapse state through sidebar UI preferences', async () => {

@@ -42,7 +42,7 @@ function devWebPreviewState(): AutoUpdateState | null {
     },
     digestUrl: null,
     digestError: null,
-    updateSource: { provider: 'github', owner: 'liliMozi', repo: 'openhanako' },
+    updateSource: { provider: 'github', owner: 'Pinging-114514', repo: 'openhanako' },
   };
 }
 

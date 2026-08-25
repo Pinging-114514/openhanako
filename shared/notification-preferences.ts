@@ -5,6 +5,7 @@ export interface NotificationPreferences {
   chatCompletion: ChatCompletionNotificationMode;
   scheduledTaskCompletion: BackgroundCompletionNotificationMode;
   patrolCompletion: BackgroundCompletionNotificationMode;
+  chatCompletionSound: boolean;
 }
 
 const NEVER = "never" as const;
@@ -33,6 +34,10 @@ export function normalizeBackgroundCompletionNotificationMode(value: unknown): B
     : NEVER;
 }
 
+export function normalizeChatCompletionSound(value: unknown): boolean {
+  return value === true;
+}
+
 export function normalizeNotificationPreferences(value: unknown = {}): NotificationPreferences {
   const source = value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
   const chatCompletion = Object.prototype.hasOwnProperty.call(source, "chatCompletion")
@@ -42,6 +47,7 @@ export function normalizeNotificationPreferences(value: unknown = {}): Notificat
     chatCompletion: normalizeChatCompletionNotificationMode(chatCompletion),
     scheduledTaskCompletion: normalizeBackgroundCompletionNotificationMode(source.scheduledTaskCompletion),
     patrolCompletion: normalizeBackgroundCompletionNotificationMode(source.patrolCompletion),
+    chatCompletionSound: normalizeChatCompletionSound(source.chatCompletionSound),
   };
 }
 

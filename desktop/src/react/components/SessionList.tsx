@@ -72,6 +72,12 @@ function setEphemeralShowAllProjectIds(updater: (prev: Set<string>) => Set<strin
   for (const listener of ephemeralShowAllListeners) listener();
 }
 
+export function resetEphemeralShowAllProjectIdsForTest() {
+  if (ephemeralShowAllProjectIds.size === 0) return;
+  ephemeralShowAllProjectIds = new Set();
+  for (const listener of ephemeralShowAllListeners) listener();
+}
+
 type SidebarDragState =
   | { kind: 'session'; sessionPath: string }
   | { kind: 'pinned-session'; sessionPath: string; sessionId: string | null }

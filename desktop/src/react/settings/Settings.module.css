@@ -554,6 +554,39 @@
     opacity: 0.48;
 }
 
+.notification-sound-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.notification-sound-preview {
+    height: 34px;
+    padding: 0 10px;
+    border: var(--border-width, 1px) solid var(--border);
+    border-radius: var(--radius-input, 6px);
+    color: var(--text-light);
+    background: var(--bg-card);
+    font: inherit;
+    font-size: var(--fs-caption);
+    cursor: pointer;
+}
+
+.notification-sound-preview:hover {
+    border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+    background: color-mix(in srgb, var(--accent) 11%, var(--bg-card));
+}
+
+.notification-sound-preview:active {
+    transform: translateY(1px);
+    background: color-mix(in srgb, var(--accent) 18%, var(--bg-card));
+}
+
+.notification-sound-preview:disabled {
+    opacity: 0.48;
+    cursor: not-allowed;
+}
+
 .quick-chat-reset-button {
     height: 34px;
     padding: 0 10px;

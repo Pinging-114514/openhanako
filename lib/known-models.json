@@ -645,6 +645,19 @@
       },
       "defaultThinkingLevel": "high"
     },
+    "deepseek-v4-flash-vision-exp": {
+      "name": "DeepSeek V4 Flash Vision (Exp)",
+      "context": 1000000,
+      "maxOutput": 384000,
+      "image": true,
+      "reasoning": true,
+      "thinkingLevels": ["off", "low", "high", "max"],
+      "thinkingLevelMap": {
+        "medium": "high",
+        "xhigh": "high"
+      },
+      "defaultThinkingLevel": "high"
+    },
     "deepseek-coder": {
       "name": "Deepseek Coder",
       "context": 128000,

@@ -97,17 +97,13 @@ describe("sanitizeMessagesForModel", () => {
     expect(res.messages).toBe(messages);
   });
 
-  it("官方 DeepSeek 即使声明 image 也不直传 image_url", () => {
+  it("官方 DeepSeek 声明 image 时直传 image_url，不再按 provider 拦截", () => {
     const messages = [
       { role: "user", content: [TEXT_BLOCK("what is this?"), IMG_BLOCK] },
     ];
     const res = sanitizeMessagesForModel(messages, deepseekImageDeclaredModel);
-    expect(res.stripped).toBe(1);
-    expect(res.strippedImages).toBe(1);
-    expect(res.messages[0].content).toEqual([
-      TEXT_BLOCK("what is this?"),
-      { type: "text", text: "[图片已省略：当前模型不支持图像输入]" },
-    ]);
+    expect(res.stripped).toBe(0);
+    expect(res.messages).toBe(messages);
   });
 
   it("不支持 image 的模型：user 消息里的 image block 换占位", () => {

@@ -339,6 +339,14 @@
       "fallbackUser": "ユーザーメッセージ",
       "fallbackAssistant": "アシスタントメッセージ"
     },
+    "scroll": {
+      "navAriaLabel": "会話スクロール",
+      "toTop": "先頭へ",
+      "toBottom": "末尾へ",
+      "sectionUp": "前の区切り",
+      "sectionDown": "次の区切り",
+      "loadingTop": "先頭を読み込み中"
+    },
     "modelSwitching": "モデルを切り替え中です。しばらくお待ちください",
     "unknownCommand": "[不明なコマンド] {text}",
     "workflowInline": {
@@ -1121,6 +1129,9 @@
       "notifications": {
         "title": "通知",
         "chatCompletion": "チャット返信の完了",
+        "chatCompletionSound": "返信完了時に音を鳴らす",
+        "chatCompletionSoundHint": "アシスタントが一巡答えたあと、Cursor の完了音を再生します",
+        "chatCompletionSoundPreview": "試聴",
         "scheduledTaskCompletion": "スケジュールタスクの完了",
         "patrolCompletion": "巡回の完了",
         "never": "通知しない",

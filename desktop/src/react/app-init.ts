@@ -255,6 +255,9 @@ export async function initApp(): Promise<void> {
   await loadAgents();
   await loadSessions();
   void hydrateInputDrafts();
+  void import('./services/chat-completion-sound').then(({ hydrateChatCompletionSound }) => {
+    hydrateChatCompletionSound();
+  });
 
   // 10b. 加载项目目录（带重试）。放在 sessions 之后：此时 server 已确认可用，
   // 避免项目目录像过去那样只靠 SessionList 挂载时一次性拉取、失败即长期空白，

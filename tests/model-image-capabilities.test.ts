@@ -22,9 +22,9 @@ describe("model image capability transport", () => {
     expect(modelSupportsDirectImageInput(model)).toBe(true);
   });
 
-  it("marks official DeepSeek chat completions as semantic image capable but not direct image transport capable", () => {
+  it("trusts a model's explicit image capability declaration on the official DeepSeek endpoint", () => {
     const model = {
-      id: "deepseek-v4-pro",
+      id: "deepseek-v4-flash-vision-exp",
       provider: "deepseek",
       api: "openai-completions",
       input: ["text", "image"],
@@ -32,8 +32,8 @@ describe("model image capability transport", () => {
     };
 
     expect(modelSupportsImageInput(model)).toBe(true);
-    expect(resolveModelImageInputTransport(model)).toBe(MODEL_IMAGE_TRANSPORTS.UNSUPPORTED);
-    expect(modelSupportsDirectImageInput(model)).toBe(false);
+    expect(resolveModelImageInputTransport(model)).toBe(MODEL_IMAGE_TRANSPORTS.OPENAI_IMAGE_URL);
+    expect(modelSupportsDirectImageInput(model)).toBe(true);
   });
 
   it("trusts user-declared image support for custom DeepSeek-compatible endpoints", () => {

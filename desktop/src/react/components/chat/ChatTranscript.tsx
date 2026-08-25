@@ -1,5 +1,7 @@
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, type RefObject } from 'react';
 import type { ChatListItem, ChatMessage } from '../../stores/chat-types';
+import { useTranscriptWindow } from './transcript-window';
+import styles from './Chat.module.css';
 import { UserMessage } from './UserMessage';
 import { AgentOriginMessage } from './AgentOriginMessage';
 import { AssistantMessage } from './AssistantMessage';
@@ -24,6 +26,8 @@ interface Props {
   registerMessageElement?: (messageId: string, element: HTMLDivElement | null) => void;
   enableProcessFold?: boolean;
   onForkCreated?: ForkedSessionHandler;
+  scrollParentRef?: RefObject<HTMLElement | null>;
+  pinnedMessageIds?: readonly string[];
 }
 
 export const ChatTranscript = memo(function ChatTranscript({
@@ -36,6 +40,8 @@ export const ChatTranscript = memo(function ChatTranscript({
   registerMessageElement,
   enableProcessFold = false,
   onForkCreated,
+  scrollParentRef,
+  pinnedMessageIds,
 }: Props) {
   const isStreaming = useStore(s => selectIsStreamingSession(s, sessionPath));
   const agents = useStore(s => s.agents);
@@ -65,34 +71,51 @@ export const ChatTranscript = memo(function ChatTranscript({
     [enableProcessFold, isStreaming, items],
   );
   const turnState = useMemo(() => buildTurnState(items), [items]);
+  const renderKeys = useMemo(() => renderItems.map(renderItemKey), [renderItems]);
+  const windowLayout = useTranscriptWindow(renderKeys, scrollParentRef, pinnedMessageIds);
+  const visibleItems = windowLayout.virtualized
+    ? renderItems.slice(windowLayout.start, windowLayout.end + 1)
+    : renderItems;
+
+  const rendered = visibleItems.map((renderItem) => (
+    <TranscriptRenderItemView
+      key={renderItemKey(renderItem)}
+      renderItem={renderItem}
+      sourceItems={items}
+      sessionPath={sessionPath}
+      agentId={agentId}
+      readOnly={readOnly}
+      hideUserIdentity={hideUserIdentity}
+      userIdentity={userIdentity}
+      latestUserIndex={turnState.latestUserIndex}
+      latestAssistantIndex={turnState.latestAssistantIndex}
+      turnCompletionAssistantIndexes={turnState.turnCompletionAssistantIndexes}
+      assistantTurnSelectionIdsByCompletionIndex={turnState.assistantTurnSelectionIdsByCompletionIndex}
+      assistantTurnTargetsByCompletionIndex={turnState.assistantTurnTargetsByCompletionIndex}
+      assistantTurnRetryMessagesByCompletionIndex={turnState.assistantTurnRetryMessagesByCompletionIndex}
+      isStreamingSession={isStreaming}
+      agentDisplay={agentDisplay}
+      viewerIdentity={viewerIdentity}
+      selectedIds={selectedIds}
+      registerMessageElement={registerMessageElement}
+      onForkCreated={onForkCreated}
+    />
+  ));
+
+  if (!windowLayout.virtualized) return <>{rendered}</>;
 
   return (
-    <>
-      {renderItems.map((renderItem) => (
-        <TranscriptRenderItemView
-          key={renderItemKey(renderItem)}
-          renderItem={renderItem}
-          sourceItems={items}
-          sessionPath={sessionPath}
-          agentId={agentId}
-          readOnly={readOnly}
-          hideUserIdentity={hideUserIdentity}
-          userIdentity={userIdentity}
-          latestUserIndex={turnState.latestUserIndex}
-          latestAssistantIndex={turnState.latestAssistantIndex}
-          turnCompletionAssistantIndexes={turnState.turnCompletionAssistantIndexes}
-          assistantTurnSelectionIdsByCompletionIndex={turnState.assistantTurnSelectionIdsByCompletionIndex}
-          assistantTurnTargetsByCompletionIndex={turnState.assistantTurnTargetsByCompletionIndex}
-          assistantTurnRetryMessagesByCompletionIndex={turnState.assistantTurnRetryMessagesByCompletionIndex}
-          isStreamingSession={isStreaming}
-          agentDisplay={agentDisplay}
-          viewerIdentity={viewerIdentity}
-          selectedIds={selectedIds}
-          registerMessageElement={registerMessageElement}
-          onForkCreated={onForkCreated}
-        />
-      ))}
-    </>
+    <div className={styles.transcriptWindow}>
+      {windowLayout.padTop > 0 && (
+        <div className={styles.transcriptPad} style={{ height: windowLayout.padTop }} aria-hidden="true" />
+      )}
+      <div ref={windowLayout.listRef} className={styles.transcriptList}>
+        {rendered}
+      </div>
+      {windowLayout.padBottom > 0 && (
+        <div className={styles.transcriptPad} style={{ height: windowLayout.padBottom }} aria-hidden="true" />
+      )}
+    </div>
   );
 });
 

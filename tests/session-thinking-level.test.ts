@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   normalizeRequestThinkingLevel,
   normalizeSessionThinkingLevel,
+  getModelThinkingLevels,
   modelSupportsAnthropicMaxEffort,
   modelSupportsMax,
   modelSupportsXhigh,
@@ -164,6 +165,19 @@ describe("session thinking level capabilities", () => {
     expect(modelSupportsXhigh(model)).toBe(true);
     expect(modelSupportsAnthropicMaxEffort(model)).toBe(false);
     expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("xhigh");
+  });
+
+  it("declares DeepSeek's official three-tier ladder (off/low/high/max) for V4 models, dropping the unsupported medium", () => {
+    const model = {
+      id: "deepseek-v4-flash",
+      provider: "deepseek",
+      thinkingLevels: ["off", "low", "high", "max"],
+      defaultThinkingLevel: "high",
+    };
+
+    expect(getModelThinkingLevels(model)).toEqual(["off", "low", "high", "max"]);
+    expect(getModelThinkingLevels(model)).not.toContain("medium");
+    expect(resolveModelDefaultThinkingLevel(model)).toBe("high");
   });
 
   it("resolves model-level thinking defaults with per-model xhigh capability", () => {

@@ -47,7 +47,7 @@ describe("splitProjectSessionsByPreview", () => {
     });
   });
 
-  it("keeps the current session visible even when it falls outside the preview window", () => {
+  it("pins the current session into the preview window without expanding the fold", () => {
     const items = [
       session({ path: "/s/1.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
       session({ path: "/s/2.jsonl", modified: "2026-08-18T12:00:00.000Z" }),
@@ -57,13 +57,14 @@ describe("splitProjectSessionsByPreview", () => {
         sessionId: "sess_current",
         modified: "2026-08-10T12:00:00.000Z",
       }),
+      session({ path: "/s/5.jsonl", modified: "2026-08-09T12:00:00.000Z" }),
     ];
 
     expect(splitProjectSessionsByPreview(items, {
       alwaysVisiblePaths: ["/s/current.jsonl"],
     })).toEqual({
-      visible: [items[0], items[1], items[2], items[3]],
-      hidden: [],
+      visible: [items[0], items[1], items[3]],
+      hidden: [items[2], items[4]],
     });
   });
 });

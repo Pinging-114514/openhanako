@@ -15,6 +15,10 @@ interface ScrollToBottomOptions {
   forceSticky?: boolean;
 }
 
+interface ScrollToTopOptions {
+  mode?: Exclude<ScrollMode, 'follow'>;
+}
+
 interface UseContinuousBottomScrollOptions {
   scrollRef: RefObject<HTMLElement | null>;
   contentRef?: RefObject<HTMLElement | null>;
@@ -30,6 +34,7 @@ export interface ContinuousBottomScrollController {
   cancelFollow: () => void;
   followBottom: () => void;
   scrollToBottom: (options?: ScrollToBottomOptions) => void;
+  scrollToTop: (options?: ScrollToTopOptions) => void;
   /**
    * Arm a one-shot "instant landing": the very next bottom-follow (whether driven by the
    * ResizeObserver content callback or an explicit `followBottom()` call) snaps straight to the
@@ -211,12 +216,37 @@ export function useContinuousBottomScroll({
     stopFollow();
 
     const mode = options.mode ?? 'instant';
-    if (mode === 'instant') {
-      setProgrammaticScrollTop(el, maxScrollTop(el));
+    const target = maxScrollTop(el);
+    if (mode === 'instant' || prefersReducedMotion()) {
+      setProgrammaticScrollTop(el, target);
+      return;
+    }
+    if (mode === 'smooth') {
+      if (typeof el.scrollTo === 'function') {
+        el.scrollTo({ top: target, behavior: 'smooth' });
+        return;
+      }
+      setProgrammaticScrollTop(el, target);
       return;
     }
     followBottom();
   }, [followBottom, markSticky, scrollRef, setProgrammaticScrollTop, stopFollow]);
+
+  const scrollToTop = useCallback((options: ScrollToTopOptions = {}) => {
+    const el = scrollRef.current;
+    if (!el) return;
+    cancelFollow();
+    const mode = options.mode ?? 'smooth';
+    if (mode === 'instant' || prefersReducedMotion()) {
+      setProgrammaticScrollTop(el, 0);
+      return;
+    }
+    if (typeof el.scrollTo === 'function') {
+      el.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+    setProgrammaticScrollTop(el, 0);
+  }, [cancelFollow, scrollRef, setProgrammaticScrollTop]);
 
   useEffect(() => {
     if (!active) stopFollow();
@@ -331,6 +361,7 @@ export function useContinuousBottomScroll({
     cancelFollow,
     followBottom,
     scrollToBottom,
+    scrollToTop,
     armInstantLanding,
-  }), [armInstantLanding, cancelFollow, checkSticky, followBottom, markSticky, scrollToBottom]);
+  }), [armInstantLanding, cancelFollow, checkSticky, followBottom, markSticky, scrollToBottom, scrollToTop]);
 }

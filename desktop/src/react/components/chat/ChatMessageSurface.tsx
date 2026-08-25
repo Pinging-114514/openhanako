@@ -2,9 +2,9 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { useStore } from '../../stores';
 import { sessionScopedListIncludes, sessionScopedValue } from '../../stores/session-slice';
-import { loadMoreMessages, reconcileCurrentSessionMessages } from '../../stores/session-actions';
+import { loadAllOlderMessages, loadMoreMessages, reconcileCurrentSessionMessages } from '../../stores/session-actions';
 import { useBoxSelection } from '../../hooks/use-box-selection';
-import { useContinuousBottomScroll } from '../../hooks/use-continuous-bottom-scroll';
+import { useContinuousBottomScroll, type ContinuousBottomScrollController } from '../../hooks/use-continuous-bottom-scroll';
 import { useI18n } from '../../hooks/use-i18n';
 import { resolveLocateStep } from './locate-step';
 import { applyFindMarks, clearFindMarks } from '../../utils/find-marks';
@@ -24,8 +24,78 @@ const TIMELINE_HEIGHT_RATIO = 0.5;
 
 export interface ChatScrollButtonState {
   el: HTMLElement | null;
-  visible: boolean;
+  showTop: boolean;
+  showBottom: boolean;
+  showSectionUp: boolean;
+  showSectionDown: boolean;
+  seekingTop: boolean;
+  scrollToTop: (() => void) | null;
   scrollToBottom: (() => void) | null;
+  scrollSectionUp: (() => void) | null;
+  scrollSectionDown: (() => void) | null;
+}
+
+function finiteScrollNumber(value: unknown, fallback = 0): number {
+  return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+}
+
+function listUserMessageIds(items: ChatListItem[]): string[] {
+  const ids: string[] = [];
+  for (const item of items) {
+    if (item.type === 'message' && item.data.role === 'user') ids.push(item.data.id);
+  }
+  return ids;
+}
+
+function messageTopInPanel(panel: HTMLElement, element: HTMLElement): number {
+  const panelRect = panel.getBoundingClientRect();
+  const rect = element.getBoundingClientRect();
+  return finiteScrollNumber(panel.scrollTop) + finiteScrollNumber(rect.top) - finiteScrollNumber(panelRect.top);
+}
+
+function scrollPanelByPage(panel: HTMLElement, direction: -1 | 1): void {
+  const page = Math.max(120, finiteScrollNumber(panel.clientHeight) * 0.85);
+  const maxScroll = Math.max(0, finiteScrollNumber(panel.scrollHeight) - finiteScrollNumber(panel.clientHeight));
+  const next = Math.min(maxScroll, Math.max(0, finiteScrollNumber(panel.scrollTop) + direction * page));
+  if (typeof panel.scrollTo === 'function') {
+    panel.scrollTo({ top: next, behavior: 'smooth' });
+    return;
+  }
+  panel.scrollTop = next;
+}
+
+function readScrollButtonState(
+  el: HTMLElement,
+  bottomScroll: ContinuousBottomScrollController,
+  opts: {
+    hasMore: boolean;
+    seekingTop: boolean;
+    jumpToStart: () => void;
+    scrollSectionUp: () => void;
+    scrollSectionDown: () => void;
+  },
+): ChatScrollButtonState {
+  const scrollTop = finiteScrollNumber(el.scrollTop);
+  const maxScroll = Math.max(0, finiteScrollNumber(el.scrollHeight) - finiteScrollNumber(el.clientHeight));
+  const canScroll = maxScroll > SCROLL_THRESHOLD;
+  const sticky = bottomScroll.checkSticky();
+  const awayFromLoadedTop = scrollTop > SCROLL_THRESHOLD;
+  const showTop = opts.seekingTop || awayFromLoadedTop || opts.hasMore;
+  const showBottom = canScroll && !sticky;
+  return {
+    el,
+    showTop,
+    showBottom,
+    showSectionUp: showTop,
+    showSectionDown: showBottom,
+    seekingTop: opts.seekingTop,
+    scrollToTop: opts.jumpToStart,
+    scrollToBottom: () => {
+      bottomScroll.scrollToBottom({ mode: 'smooth', forceSticky: true });
+    },
+    scrollSectionUp: opts.scrollSectionUp,
+    scrollSectionDown: opts.scrollSectionDown,
+  };
 }
 
 export interface ChatMessageSurfaceProps {
@@ -64,6 +134,109 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
   const emitScrollButton = useCallback((state: ChatScrollButtonState) => {
     onScrollButtonChange?.(state);
   }, [onScrollButtonChange]);
+  const [seekingTop, setSeekingTop] = useState(false);
+  const seekingTopRef = useRef(false);
+  const cancelSeekTopRef = useRef(false);
+  const [sectionPinId, setSectionPinId] = useState<string | null>(null);
+  const pendingSectionIdRef = useRef<string | null>(null);
+  const pendingSectionFromRef = useRef<string | null>(null);
+  const sectionScrollInstantRef = useRef(false);
+  const scrollToMessage = useCallback((messageId: string, mode: 'smooth' | 'instant' = 'smooth'): boolean => {
+    const panel = ref.current;
+    const target = messageElementsRef.current.get(messageId);
+    if (!panel || !target) return false;
+    const maxScroll = Math.max(0, finiteScrollNumber(panel.scrollHeight) - finiteScrollNumber(panel.clientHeight));
+    const top = Math.min(maxScroll, Math.max(0, messageTopInPanel(panel, target) - 16));
+    const reduceMotion = typeof window.matchMedia === 'function'
+      && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const behavior = mode === 'instant' || reduceMotion ? 'auto' : 'smooth';
+    if (typeof panel.scrollTo === 'function') {
+      panel.scrollTo({ top, behavior });
+    } else {
+      panel.scrollTop = top;
+    }
+    return true;
+  }, []);
+  const queueSectionScroll = useCallback((messageId: string, mode: 'smooth' | 'instant' = 'smooth') => {
+    pendingSectionIdRef.current = messageId;
+    sectionScrollInstantRef.current = mode === 'instant';
+    setSectionPinId(messageId);
+    if (scrollToMessage(messageId, mode)) pendingSectionIdRef.current = null;
+  }, [scrollToMessage]);
+  const scrollSectionUp = useCallback(() => {
+    const panel = ref.current;
+    if (!panel || seekingTopRef.current) return;
+    bottomScroll.cancelFollow();
+    const ids = listUserMessageIds(items);
+    const threshold = finiteScrollNumber(panel.scrollTop) - 24;
+    for (let i = ids.length - 1; i >= 0; i -= 1) {
+      const element = messageElementsRef.current.get(ids[i]);
+      if (element && messageTopInPanel(panel, element) < threshold) {
+        queueSectionScroll(ids[i]);
+        return;
+      }
+    }
+    const firstVisible = ids.find((id) => messageElementsRef.current.has(id));
+    const firstIndex = firstVisible ? ids.indexOf(firstVisible) : 0;
+    if (firstIndex > 0) {
+      queueSectionScroll(ids[firstIndex - 1]);
+      return;
+    }
+    if (hasMore && firstVisible) {
+      pendingSectionFromRef.current = firstVisible;
+      setSectionPinId(firstVisible);
+      loadMoreMessages(sessionPath);
+      return;
+    }
+    scrollPanelByPage(panel, -1);
+  }, [bottomScroll, hasMore, items, queueSectionScroll, sessionPath]);
+  const scrollSectionDown = useCallback(() => {
+    const panel = ref.current;
+    if (!panel) return;
+    bottomScroll.cancelFollow();
+    const ids = listUserMessageIds(items);
+    const threshold = finiteScrollNumber(panel.scrollTop) + 24;
+    for (const id of ids) {
+      const element = messageElementsRef.current.get(id);
+      if (element && messageTopInPanel(panel, element) > threshold) {
+        queueSectionScroll(id);
+        return;
+      }
+    }
+    const mounted = ids.filter((id) => messageElementsRef.current.has(id));
+    const lastMounted = mounted[mounted.length - 1];
+    const lastIndex = lastMounted ? ids.indexOf(lastMounted) : -1;
+    if (lastIndex >= 0 && lastIndex < ids.length - 1) {
+      queueSectionScroll(ids[lastIndex + 1]);
+      return;
+    }
+    scrollPanelByPage(panel, 1);
+  }, [bottomScroll, items, queueSectionScroll]);
+  const jumpToStart = useCallback(() => {
+    const panel = ref.current;
+    if (!panel || seekingTopRef.current) return;
+    seekingTopRef.current = true;
+    cancelSeekTopRef.current = false;
+    setSeekingTop(true);
+    bottomScroll.cancelFollow();
+    const cancel = () => {
+      cancelSeekTopRef.current = true;
+    };
+    panel.addEventListener('wheel', cancel, { passive: true, once: true });
+    panel.addEventListener('touchstart', cancel, { passive: true, once: true });
+    void loadAllOlderMessages(sessionPath)
+      .catch((err) => {
+        console.warn('[chat] load older messages for jump-to-start failed:', err);
+      })
+      .finally(() => {
+        panel.removeEventListener('wheel', cancel);
+        panel.removeEventListener('touchstart', cancel);
+        const skipped = cancelSeekTopRef.current;
+        seekingTopRef.current = false;
+        setSeekingTop(false);
+        if (!skipped) bottomScroll.scrollToTop({ mode: 'smooth' });
+      });
+  }, [bottomScroll, sessionPath]);
   const registerMessageElement = useCallback((messageId: string, element: HTMLDivElement | null) => {
     if (element) {
       messageElementsRef.current.set(messageId, element);
@@ -107,18 +280,19 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
     const el = ref.current;
     if (!el) return;
     let hideTimer: ReturnType<typeof setTimeout> | null = null;
+    const publishScrollButton = () => {
+      if (!active) return;
+      emitScrollButton(readScrollButtonState(el, bottomScroll, {
+        hasMore,
+        seekingTop,
+        jumpToStart,
+        scrollSectionUp,
+        scrollSectionDown,
+      }));
+    };
     const onScroll = () => {
-      const sticky = bottomScroll.checkSticky();
-      if (active) {
-        emitScrollButton({
-          el,
-          visible: !sticky,
-          scrollToBottom: () => {
-            bottomScroll.scrollToBottom({ mode: 'follow', forceSticky: true });
-          },
-        });
-      }
-      if (el.scrollTop < LOAD_MORE_THRESHOLD) {
+      publishScrollButton();
+      if (el.scrollTop < LOAD_MORE_THRESHOLD && !seekingTopRef.current) {
         const state = useStore.getState();
         const session = sessionScopedValue(state, state.chatSessions, sessionPath);
         if (session?.hasMore && !session.loadingMore) {
@@ -132,24 +306,27 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
       }, 800);
     };
     el.addEventListener('scroll', onScroll, { passive: true });
-    if (active) {
-      emitScrollButton({
-        el,
-        visible: !bottomScroll.checkSticky(),
-        scrollToBottom: () => {
-          bottomScroll.scrollToBottom({ mode: 'follow', forceSticky: true });
-        },
-      });
-    }
+    publishScrollButton();
     return () => {
       el.removeEventListener('scroll', onScroll);
       if (hideTimer) clearTimeout(hideTimer);
-      emitScrollButton({ el: null, visible: false, scrollToBottom: null });
+      emitScrollButton({
+        el: null,
+        showTop: false,
+        showBottom: false,
+        showSectionUp: false,
+        showSectionDown: false,
+        seekingTop: false,
+        scrollToTop: null,
+        scrollToBottom: null,
+        scrollSectionUp: null,
+        scrollSectionDown: null,
+      });
     };
-  }, [active, bottomScroll, emitScrollButton, sessionPath]);
+  }, [active, bottomScroll, emitScrollButton, hasMore, jumpToStart, scrollSectionDown, scrollSectionUp, seekingTop, sessionPath]);
 
   const prevFirstId = useRef<string | undefined>(undefined);
-  useEffect(() => {
+  useLayoutEffect(() => {
     const firstId = items.find((item) => item.type === 'message')?.data.id;
     const el = ref.current;
     if (el && prevFirstId.current && firstId !== prevFirstId.current) {
@@ -159,7 +336,20 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
       }
     }
     prevFirstId.current = firstId;
-  }, [items]);
+    const fromId = pendingSectionFromRef.current;
+    if (!fromId || loadingMore) return;
+    const ids = listUserMessageIds(items);
+    const fromIndex = ids.indexOf(fromId);
+    pendingSectionFromRef.current = null;
+    if (fromIndex > 0) queueSectionScroll(ids[fromIndex - 1], 'instant');
+  }, [items, loadingMore, queueSectionScroll]);
+
+  useLayoutEffect(() => {
+    const messageId = pendingSectionIdRef.current;
+    if (!messageId) return;
+    const mode = sectionScrollInstantRef.current ? 'instant' : 'smooth';
+    if (scrollToMessage(messageId, mode)) pendingSectionIdRef.current = null;
+  }, [items, sectionPinId, scrollToMessage]);
 
   useEffect(() => {
     const el = ref.current;
@@ -182,20 +372,40 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
   }, [bottomScroll, items.length]);
 
   const prevLen = useRef(items.length);
+  const prevLastId = useRef<string | undefined>(undefined);
   useEffect(() => {
-    if (items.length > prevLen.current && active) {
-      const last = items[items.length - 1];
-      if (last?.type === 'message' && last.data.role === 'user') {
-        bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
-      } else {
-        bottomScroll.followBottom();
+    let lastId: string | undefined;
+    for (let i = items.length - 1; i >= 0; i -= 1) {
+      const item = items[i];
+      if (item.type === 'message') {
+        lastId = item.data.id;
+        break;
       }
     }
+    const grew = items.length > prevLen.current;
+    const prepended = grew && lastId === prevLastId.current;
+    const appended = grew && lastId !== prevLastId.current;
     prevLen.current = items.length;
+    prevLastId.current = lastId;
+    if (!appended || !active || prepended || seekingTopRef.current || pendingSectionFromRef.current) return;
+    const last = items[items.length - 1];
+    if (last?.type === 'message' && last.data.role === 'user') {
+      bottomScroll.scrollToBottom({ mode: 'instant', forceSticky: true });
+      return;
+    }
+    bottomScroll.followBottom();
   }, [items, items.length, active, bottomScroll]);
 
   const { t } = useI18n();
   const pendingLocate = useStore(s => s.pendingMessageLocate);
+  const pinnedMessageIds = useMemo(() => {
+    const ids: string[] = [];
+    if (sectionPinId) ids.push(sectionPinId);
+    if (pendingLocate && pendingLocate.sessionPath === sessionPath) {
+      ids.push(String(pendingLocate.messageIndex));
+    }
+    return ids;
+  }, [pendingLocate, sectionPinId, sessionPath]);
   const findState = useStore(s => sessionScopedValue(s, s.chatFindBySession, sessionPath));
   // 定位意图的进度守卫：同一意图下"同种 stall 无进展"即放弃，防无限重试——
   // load-more 后 oldestId 未前进，或 refresh（reconcile）后 revision 未前进
@@ -416,6 +626,8 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
             readOnly={sessionReadOnly}
             registerMessageElement={registerMessageElement}
             enableProcessFold
+            scrollParentRef={variant === 'card' ? undefined : ref}
+            pinnedMessageIds={pinnedMessageIds}
           />
           {isSessionStreaming && (
             <div className={styles.typingIndicator} />

@@ -339,6 +339,14 @@
       "fallbackUser": "用户消息",
       "fallbackAssistant": "助手消息"
     },
+    "scroll": {
+      "navAriaLabel": "會話捲動",
+      "toTop": "回到頂部",
+      "toBottom": "回到底部",
+      "sectionUp": "上一節",
+      "sectionDown": "下一節",
+      "loadingTop": "正在載入開頭"
+    },
     "modelSwitching": "正在切换模型，请稍候",
     "unknownCommand": "[未知命令] {text}",
     "workflowInline": {
@@ -1121,6 +1129,9 @@
       "notifications": {
         "title": "通知",
         "chatCompletion": "聊天回覆完成",
+        "chatCompletionSound": "回覆完成時播放提示音",
+        "chatCompletionSoundHint": "AI 答完一輪後播放 Cursor 的完成提示音",
+        "chatCompletionSoundPreview": "試聽",
         "scheduledTaskCompletion": "排程任務完成",
         "patrolCompletion": "巡檢完成",
         "never": "從不",

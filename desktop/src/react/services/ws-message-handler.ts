@@ -39,6 +39,7 @@ import { TODO_TOOL_NAMES, type TodoToolName } from '../utils/todo-constants';
 import { applyTodoLifecycle, migrateLegacyTodos } from '../utils/todo-compat';
 import { renderMarkdown } from '../utils/markdown';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
+import { playChatCompletionSound } from './chat-completion-sound';
 
 declare function t(key: string, vars?: Record<string, string>): any;
 
@@ -280,8 +281,15 @@ function requestInputFocusForCurrentSession(sessionPath: string | null): void {
 }
 
 function applyTurnEndSideEffects(msg: any): void {
-  scheduleSessionsRefresh('turn_end');
   const turnSp = msg.sessionPath;
+  const state = useStore.getState();
+  const stillStreaming = !!turnSp
+    && sessionScopedListIncludes(state, state.streamingSessions, turnSp);
+  // 工具循环里会连发中间 turn_end。每次都重拉列表会按 modified 把当前会话顶到最前，
+  // 项目视图里折叠着的会话区跟着被撑开。等真正停流再刷新。
+  if (!stillStreaming) {
+    scheduleSessionsRefresh('turn_end');
+  }
   if (turnSp) {
     requestContextUsage(turnSp);
   } else {
@@ -379,7 +387,7 @@ export function applyStreamingStatus(
   isStreaming: boolean,
   sessionPath: string | null,
   identity: { streamId?: string | null; turnId?: string | null } = {},
-  options: { force?: boolean } = {},
+  options: { force?: boolean; playSound?: boolean } = {},
 ): boolean {
   // 元数据层：把 isStreaming 视为 sessionPath 维度的权威信号，统一写回 streamingSessions。
   // 这一层不分焦点，任何来源（普通 status、stream_resume 恢复）都必须到达这里，
@@ -399,11 +407,13 @@ export function applyStreamingStatus(
   }
 
   if (!isStreaming && wasStreaming) {
+    scheduleSessionsRefresh('stream_end');
     requestInputFocusForCurrentSession(sessionPath);
     const focused = useStore.getState().currentSessionPath;
     if (sessionPath && sessionPath !== focused) {
       useStore.getState().markSessionOutputUnread?.(sessionPath);
     }
+    if (options.playSound !== false) playChatCompletionSound();
   }
 
   // 渲染层：只有焦点 session 才影响 UI 占位 / sessions 列表。
@@ -1111,7 +1121,7 @@ export function handleServerMessage(msg: any): void {
       const sp = msg.sessionPath || null;
       const sid = typeof msg.sessionId === 'string' && msg.sessionId.trim() ? msg.sessionId.trim() : null;
       const streamId = typeof msg.streamId === 'string' && msg.streamId.trim() ? msg.streamId.trim() : null;
-      const applied = applyStreamingStatus(false, sp, { streamId }, { force: !streamId });
+      const applied = applyStreamingStatus(false, sp, { streamId }, { force: !streamId, playSound: false });
       if (sp && applied) streamBufferManager.finishTurn(sp, sid);
       break;
     }

@@ -339,6 +339,14 @@
       "fallbackUser": "User message",
       "fallbackAssistant": "Assistant message"
     },
+    "scroll": {
+      "navAriaLabel": "Conversation scroll",
+      "toTop": "Jump to top",
+      "toBottom": "Jump to bottom",
+      "sectionUp": "Previous turn",
+      "sectionDown": "Next turn",
+      "loadingTop": "Loading the start"
+    },
     "modelSwitching": "Switching model, please wait",
     "unknownCommand": "[Unknown command] {text}",
     "workflowInline": {
@@ -1422,6 +1430,9 @@
       "notifications": {
         "title": "Notifications",
         "chatCompletion": "Chat reply completion",
+        "chatCompletionSound": "Play a sound when a reply finishes",
+        "chatCompletionSoundHint": "Uses Cursor's completion chime after the assistant finishes a turn",
+        "chatCompletionSoundPreview": "Preview",
         "scheduledTaskCompletion": "Scheduled task completion",
         "patrolCompletion": "Patrol completion",
         "never": "Never",

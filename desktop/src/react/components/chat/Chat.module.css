@@ -2062,6 +2062,30 @@
     gap: var(--space-8);
 }
 
+.transcriptWindow {
+    display: flex;
+    flex-direction: column;
+}
+
+.transcriptList {
+    display: flex;
+    flex-direction: column;
+    gap: inherit;
+}
+
+.sessionMessages .transcriptList {
+    gap: var(--space-8);
+}
+
+.cardSessionShell .transcriptList {
+    gap: var(--space-4);
+}
+
+.transcriptPad {
+    flex-shrink: 0;
+    pointer-events: none;
+}
+
 .cardSessionShell {
     --chat-scrollbar-bottom-inset: 0px;
     position: absolute;
@@ -2133,38 +2157,58 @@
     animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
 }
 
-/* ── Scroll to bottom FAB ── */
+/* ── 右侧滚动浮标：回到顶部 / 回到底部 ── */
 
-.scrollToBottomFab {
+.scrollFab {
     position: absolute;
     /* 跟随输入卡片实时高度浮在其上方，避免多行输入时被输入框覆盖（#1297）。
        复用 InputArea 注入到 .main-content 的 --input-card-h（.sessionShell 同源消费）；
        变量未注入时回退 124px(≈单行卡片高度)+space-md=原 140px，行为不变。 */
     bottom: calc(var(--input-card-h, 124px) + var(--space-16));
-    left: 50%;
-    transform: translateX(-50%);
+    right: var(--space-16);
     z-index: 6;
-    width: 36px;
-    height: 36px;
-    border-radius: 50%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px;
+    border-radius: 999px;
     border: 1px solid var(--border-light, rgba(0,0,0,0.08));
     background: var(--bg-card, #fff);
     box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
-    cursor: default;
-    display: flex;
-    align-items: center;
-    justify-content: center;
     color: var(--text-muted);
+    opacity: 0.9;
     transition: opacity var(--duration-fast), box-shadow var(--duration-fast);
-    opacity: 0.85;
 }
 
-.scrollToBottomFab:hover {
+.scrollFab:hover {
     opacity: 1;
     box-shadow: 0 3px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
 }
 
-.scrollToBottomFab svg {
+.scrollFabBtn {
+    width: 28px;
+    height: 28px;
+    border: 0;
+    border-radius: 50%;
+    background: transparent;
+    color: inherit;
+    cursor: default;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+}
+
+.scrollFabBtn:hover {
+    background: var(--overlay-light, rgba(0,0,0,0.06));
+}
+
+.scrollFabBtn:disabled {
+    opacity: 0.55;
+}
+
+.scrollFabBtn svg {
     display: block;
 }
 

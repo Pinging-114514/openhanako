@@ -97,13 +97,25 @@ describe("deepseek-responses provider plugin", () => {
     );
   });
 
-  it("登记 V4 全系，Pro 与 Flash 走同一套协议元数据", () => {
+  it("登记 V4 全系（含视觉模型），三者走同一套协议元数据与官方三档思考", () => {
     expect(deepseekResponsesPlugin.models.map((m) => m.id)).toEqual([
       "deepseek-v4-flash",
       "deepseek-v4-pro",
+      "deepseek-v4-flash-vision-exp",
     ]);
     for (const model of deepseekResponsesPlugin.models) {
-      expect(model).toMatchObject({ api: "openai-responses", reasoning: true, image: false });
+      expect(model).toMatchObject({
+        api: "openai-responses",
+        reasoning: true,
+        thinkingLevels: ["off", "low", "high", "max"],
+        defaultThinkingLevel: "high",
+      });
+    }
+    expect(deepseekResponsesPlugin.models.find((m) => m.id === "deepseek-v4-flash-vision-exp")).toMatchObject({
+      image: true,
+    });
+    for (const id of ["deepseek-v4-flash", "deepseek-v4-pro"]) {
+      expect(deepseekResponsesPlugin.models.find((m) => m.id === id)).toMatchObject({ image: false });
     }
   });
 

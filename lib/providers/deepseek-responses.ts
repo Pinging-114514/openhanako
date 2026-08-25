@@ -8,12 +8,11 @@
  * 字段、思考链回放载体都不同，混在一个 provider 里只能靠用户手改 api 字段，切错
  * 协议时供应商静默忽略参数而不报错。
  *
- * 覆盖范围：V4-Flash 正式版（2026-07-31）起原生支持 Responses。V4-Pro 在官方
- * 文档上的状态是"即将支持"，这里先行登记，以便官方开放当天无需改代码；在那之前
- * 对 Pro 发起的 Responses 请求会被供应商拒绝。
+ * 覆盖范围：V4-Flash、V4-Pro、V4-Flash-Vision-Exp 三个模型均原生支持 Responses
+ * 通道（V4-Pro 官方 2026-08-13 更新日志确认已原生支持）。
  *
- * 思考档位：Flash 支持 low / high / max 三档，Pro 目前只有 high / max（low 按
- * high 处理）。这是服务端行为，客户端照常发用户选的档位即可。
+ * 思考档位：三个模型官方声明档位一致，均为 low / high（默认）/ max 三档；
+ * medium 与 xhigh 是兼容值，服务端会折算成 high。客户端照常发用户选的档位即可。
  *
  * 文档：https://api-docs.deepseek.com/guides/responses_api/
  *       https://api-docs.deepseek.com/zh-cn/api/create-chat-completion
@@ -28,7 +27,12 @@ const DEEPSEEK_RESPONSES_MODELS = [
     maxOutput: 384_000,
     image: false,
     reasoning: true,
-    xhigh: true,
+    thinkingLevels: ["off", "low", "high", "max"],
+    thinkingLevelMap: {
+      medium: "high",
+      xhigh: "high",
+    },
+    defaultThinkingLevel: "high",
   },
   {
     id: "deepseek-v4-pro",
@@ -38,7 +42,27 @@ const DEEPSEEK_RESPONSES_MODELS = [
     maxOutput: 384_000,
     image: false,
     reasoning: true,
-    xhigh: true,
+    thinkingLevels: ["off", "low", "high", "max"],
+    thinkingLevelMap: {
+      medium: "high",
+      xhigh: "high",
+    },
+    defaultThinkingLevel: "high",
+  },
+  {
+    id: "deepseek-v4-flash-vision-exp",
+    name: "DeepSeek V4 Flash Vision (Exp)",
+    api: "openai-responses",
+    context: 1_000_000,
+    maxOutput: 384_000,
+    image: true,
+    reasoning: true,
+    thinkingLevels: ["off", "low", "high", "max"],
+    thinkingLevelMap: {
+      medium: "high",
+      xhigh: "high",
+    },
+    defaultThinkingLevel: "high",
   },
 ];
 

@@ -2,7 +2,7 @@
 
 import '@testing-library/jest-dom/vitest';
 import React from 'react';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from '../../stores';
 import { initQuotedSelectionLifecycle } from '../../stores/selection-actions';
@@ -148,6 +148,46 @@ describe('ChatArea continuous bottom scroll', () => {
     });
 
     expect(metrics.scrollTop).toBe(500);
+  });
+
+  it('does not jump to the bottom when older messages are prepended', async () => {
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 40 };
+    const { container } = render(<ChatArea />);
+
+    await waitFor(() => {
+      expect(container.querySelector('[class*="sessionPanel"]')).toBeTruthy();
+    });
+
+    const panel = container.querySelector('[class*="sessionPanel"]') as HTMLElement;
+    setScrollMetrics(panel, metrics);
+    panel.scrollTo = ((options?: ScrollToOptions) => {
+      metrics.scrollTop = Number(options?.top || 0);
+    }) as typeof panel.scrollTo;
+
+    act(() => {
+      metrics.scrollTop = 40;
+      fireEvent.scroll(panel);
+    });
+
+    act(() => {
+      useStore.setState((state) => ({
+        chatSessions: {
+          ...state.chatSessions,
+          '/chat/scroll.jsonl': {
+            ...state.chatSessions['/chat/scroll.jsonl'],
+            items: [
+              message('u-0', 'user'),
+              message('a-0', 'assistant'),
+              ...state.chatSessions['/chat/scroll.jsonl'].items,
+            ],
+            hasMore: true,
+            loadingMore: false,
+          },
+        },
+      } as never));
+    });
+
+    expect(metrics.scrollTop).toBe(40);
   });
 
   it('mounts a current empty session panel instead of leaving the chat area blank', async () => {
@@ -309,6 +349,53 @@ describe('ChatArea continuous bottom scroll', () => {
       pending.forEach((cb) => cb(16));
     });
     expect(metrics.scrollTop).toBe(650);
+  });
+
+  it('shows a right-side buoy to jump to the top or bottom of a long conversation', async () => {
+    const { container } = render(<ChatArea />);
+    await waitFor(() => {
+      expect(container.querySelector('[class*="sessionPanel"]')).toBeTruthy();
+    });
+
+    const panel = container.querySelector('[class*="sessionPanel"]') as HTMLElement;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 400 };
+    setScrollMetrics(panel, metrics);
+    panel.scrollTo = ((options?: ScrollToOptions) => {
+      metrics.scrollTop = Number(options?.top || 0);
+    }) as typeof panel.scrollTo;
+
+    act(() => {
+      fireEvent.scroll(panel);
+    });
+
+    expect(screen.getByTestId('chat-scroll-fab')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-scroll-to-top')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-scroll-section-up')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-scroll-section-down')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-scroll-to-bottom')).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('chat-scroll-section-up'));
+    });
+    expect(metrics.scrollTop).toBeLessThan(400);
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('chat-scroll-to-top'));
+    });
+    await waitFor(() => {
+      expect(metrics.scrollTop).toBe(0);
+    });
+
+    act(() => {
+      fireEvent.scroll(panel);
+    });
+    expect(screen.queryByTestId('chat-scroll-to-top')).not.toBeInTheDocument();
+    expect(screen.getByTestId('chat-scroll-to-bottom')).toBeInTheDocument();
+
+    act(() => {
+      fireEvent.click(screen.getByTestId('chat-scroll-to-bottom'));
+    });
+    expect(metrics.scrollTop).toBe(700);
   });
 });
 

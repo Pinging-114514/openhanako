@@ -6,6 +6,11 @@ import { loadSettingsConfig, updateSettingsSnapshot } from '../actions';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { SelectWidget, Toggle } from '@/ui';
+import {
+  playChatCompletionSound,
+  resolveChatCompletionSoundFlag,
+  setChatCompletionSoundEnabled,
+} from '../../services/chat-completion-sound';
 import { readConfigBoolean } from '../resource-state';
 import type { AutoLaunchStatus } from '../../types';
 import {
@@ -27,6 +32,7 @@ interface NotificationPreferences {
   chatCompletion: ChatCompletionNotificationMode;
   scheduledTaskCompletion: BackgroundCompletionNotificationMode;
   patrolCompletion: BackgroundCompletionNotificationMode;
+  chatCompletionSound: boolean;
 }
 
 interface QuickChatPreferences {
@@ -175,8 +181,10 @@ function normalizeBackgroundCompletionMode(value: unknown): BackgroundCompletion
   return normalizeBackgroundCompletionNotificationMode(value) as BackgroundCompletionNotificationMode;
 }
 
-function normalizeNotificationPreferences(value: unknown): NotificationPreferences {
-  return normalizeSharedNotificationPreferences(value) as NotificationPreferences;
+function normalizeNotificationPreferences(value: unknown, fallbackSound = false): NotificationPreferences {
+  const next = normalizeSharedNotificationPreferences(value) as NotificationPreferences;
+  next.chatCompletionSound = resolveChatCompletionSoundFlag(value, fallbackSound);
+  return next;
 }
 
 export function GeneralTab() {
@@ -238,7 +246,9 @@ export function GeneralTab() {
 
   useEffect(() => {
     if (snapshotNotifications) {
-      setNotificationPrefs(normalizeNotificationPreferences(snapshotNotifications));
+      const next = normalizeNotificationPreferences(snapshotNotifications, notificationPrefs?.chatCompletionSound === true);
+      setNotificationPrefs(next);
+      setChatCompletionSoundEnabled(next.chatCompletionSound, { persist: false });
       return undefined;
     }
     let alive = true;
@@ -246,7 +256,9 @@ export function GeneralTab() {
       .then(res => res.json())
       .then((data) => {
         if (!alive) return;
-        setNotificationPrefs(normalizeNotificationPreferences(data?.notifications));
+        const next = normalizeNotificationPreferences(data?.notifications, notificationPrefs?.chatCompletionSound === true);
+        setNotificationPrefs(next);
+        setChatCompletionSoundEnabled(next.chatCompletionSound, { persist: false });
       })
       .catch((err) => {
         if (!alive) return;
@@ -386,7 +398,7 @@ export function GeneralTab() {
       });
       const data = await res.json();
       if (data?.error) throw new Error(data.error);
-      const saved = normalizeNotificationPreferences(data?.notifications);
+      const saved = normalizeNotificationPreferences(data?.notifications, previous.chatCompletionSound);
       setNotificationPrefs(saved);
       updateSettingsSnapshot(snapshot => ({
         ...snapshot,
@@ -394,6 +406,38 @@ export function GeneralTab() {
       }));
     } catch (err: any) {
       setNotificationPrefs(previous);
+      showToast(t('settings.saveFailed') + ': ' + (err?.message || String(err)), 'error');
+    } finally {
+      setNotificationSaving(false);
+    }
+  }, [notificationPrefs, showToast]);
+
+  const saveChatCompletionSound = useCallback(async (on: boolean) => {
+    if (!notificationPrefs) return;
+    const previous = notificationPrefs;
+    const next = { ...notificationPrefs, chatCompletionSound: on };
+    setNotificationPrefs(next);
+    setChatCompletionSoundEnabled(on);
+    setNotificationSaving(true);
+    try {
+      const res = await hanaFetch('/api/preferences/notifications', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ notifications: { chatCompletionSound: on } }),
+      });
+      const data = await res.json();
+      if (data?.error) throw new Error(data.error);
+      const saved = normalizeNotificationPreferences(data?.notifications, on);
+      saved.chatCompletionSound = on;
+      setNotificationPrefs(saved);
+      setChatCompletionSoundEnabled(on);
+      updateSettingsSnapshot(snapshot => ({
+        ...snapshot,
+        preferences: { ...snapshot.preferences, notifications: saved },
+      }));
+    } catch (err: any) {
+      setNotificationPrefs(previous);
+      setChatCompletionSoundEnabled(previous.chatCompletionSound);
       showToast(t('settings.saveFailed') + ': ' + (err?.message || String(err)), 'error');
     } finally {
       setNotificationSaving(false);
@@ -458,6 +502,29 @@ export function GeneralTab() {
       </SettingsSection>
 
       <SettingsSection title={t('settings.general.notifications.title')}>
+        <SettingsRow
+          data-testid="chat-completion-sound-row"
+          label={t('settings.general.notifications.chatCompletionSound')}
+          hint={t('settings.general.notifications.chatCompletionSoundHint')}
+          control={
+            <span className={styles['notification-sound-control']}>
+              <Toggle
+                on={notificationPrefs?.chatCompletionSound === true}
+                onChange={(on) => void saveChatCompletionSound(on)}
+                ariaLabel={t('settings.general.notifications.chatCompletionSound')}
+                disabled={notificationSaving || !notificationPrefs}
+              />
+              <button
+                type="button"
+                className={styles['notification-sound-preview']}
+                onClick={() => playChatCompletionSound({ force: true })}
+                disabled={!notificationPrefs}
+              >
+                {t('settings.general.notifications.chatCompletionSoundPreview')}
+              </button>
+            </span>
+          }
+        />
         <SettingsRow
           data-testid="chat-completion-notification-row"
           label={t('settings.general.notifications.chatCompletion')}

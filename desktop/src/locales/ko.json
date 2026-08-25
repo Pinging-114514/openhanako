@@ -339,6 +339,14 @@
       "fallbackUser": "사용자 메시지",
       "fallbackAssistant": "어시스턴트 메시지"
     },
+    "scroll": {
+      "navAriaLabel": "대화 스크롤",
+      "toTop": "맨 위로",
+      "toBottom": "맨 아래로",
+      "sectionUp": "이전 구간",
+      "sectionDown": "다음 구간",
+      "loadingTop": "처음 부분 불러오는 중"
+    },
     "modelSwitching": "모델 전환 중, 잠시 기다려 주세요",
     "unknownCommand": "[알 수 없는 명령] {text}",
     "workflowInline": {
@@ -1121,6 +1129,9 @@
       "notifications": {
         "title": "알림",
         "chatCompletion": "채팅 답변 완료",
+        "chatCompletionSound": "답변 완료 시 알림음 재생",
+        "chatCompletionSoundHint": "AI가 한 턴을 마치면 Cursor 완료음을 재생합니다",
+        "chatCompletionSoundPreview": "미리 듣기",
         "scheduledTaskCompletion": "예약 작업 완료",
         "patrolCompletion": "순찰 완료",
         "never": "사용 안 함",
