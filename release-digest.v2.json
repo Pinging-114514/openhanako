@@ -3,6 +3,216 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.451.0",
+      "version": "0.451.0",
+      "previousTag": "v0.447.9",
+      "generatedAt": "2026-08-25T12:00:00.000Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "长聊天右侧能跳顶、按轮上下翻、跳到底，回复完成可响 Cursor 那声叮。更新历史改读咱们自己的仓，DeepSeek 能直接发图。侧栏在回答时不再把当前会话顶上去。",
+        "en": "Long chats get a four-button buoy for true top, previous turn, next turn, and bottom. A Cursor done chime can play when a reply finishes. About history reads our fork, DeepSeek accepts images directly, and the sidebar no longer jumps the current chat while the assistant is answering."
+      },
+      "counts": {
+        "feature": 3,
+        "fix": 4,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.447.9..v0.451.0",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.451.0",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "chat-timeline-buoy",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "聊天右侧浮标：真顶、上一轮、下一轮、到底",
+            "en": "Chat buoy: true top, previous turn, next turn, bottom"
+          },
+          "summary": {
+            "zh": "长聊天只渲染看得见的那一段，跳到顶不再把整段历史一次摊开卡死。四个按钮分别去真正顶部、上一轮用户消息、下一轮、以及底部。",
+            "en": "Long chats only mount the visible window, so jumping to the top no longer freezes the page. Four buttons go to the true top, the previous user turn, the next turn, and the bottom."
+          },
+          "details": [
+            {
+              "zh": "往上翻更早的页时，当前轮会钉住，不会被新加载的旧消息弹回底部。",
+              "en": "Loading older pages pins the current turn so the view does not snap back to the bottom."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "chat-top-region-error",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "聊天顶上不再报此区域暂时无法显示",
+            "en": "The top of a long chat no longer blanks out"
+          },
+          "summary": {
+            "zh": "量高度时不再死循环把整块聊天区域打爆。到顶也能正常看最早的几轮。",
+            "en": "Height measuring no longer loops until the chat region crashes. The earliest turns stay visible at the true top."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "fork-update-history",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "更新历史读咱们自己的仓",
+            "en": "Update history reads our fork"
+          },
+          "summary": {
+            "zh": "关于页不再去扒官方 liliMozi 的更新说明。检查更新本来就走咱们仓，历史也对齐。",
+            "en": "The About page no longer loads official liliMozi notes. Update checks already used our fork; history now matches."
+          },
+          "details": [
+            {
+              "zh": "还在跑 0.447.8 时，关于页先展示随包保存的咱们说明，避免主程序仍去问官方。",
+              "en": "On 0.447.8, About shows our bundled notes so the old shell cannot still query the official repo."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "deepseek-direct-vision",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "DeepSeek 可直接发图",
+            "en": "DeepSeek accepts images directly"
+          },
+          "summary": {
+            "zh": "DeepSeek 对话可以带图，不再被目录挡在识图门外。",
+            "en": "DeepSeek chats can carry images instead of being gated out of vision."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "chat-completion-chime",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "回复完成可播放 Cursor 提示音",
+            "en": "Optional Cursor chime when a reply finishes"
+          },
+          "summary": {
+            "zh": "设置 → 通用 → 通知里可打开「回复完成时播放提示音」，声音是 Cursor Agent 答完那一声。点停止不响。",
+            "en": "Settings → General → Notifications can play Cursor's agent-done chime when a turn finishes. Abort stays silent."
+          },
+          "details": [
+            {
+              "zh": "默认关着。试听不必先打开开关。",
+              "en": "Off by default. Preview plays without turning the toggle on."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "sidebar-busy-jump",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "回答时侧栏不再把当前会话顶上去",
+            "en": "The sidebar no longer jumps the current chat while answering"
+          },
+          "summary": {
+            "zh": "AI 还在说话时，当前会话留在原位，项目夹也不会被撑开。",
+            "en": "While the assistant is streaming, the current session stays put and the project fold does not expand."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "section-up-older-pages",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "往上翻旧消息不再弹回底部",
+            "en": "Paging older turns no longer snaps to the bottom"
+          },
+          "summary": {
+            "zh": "上一轮按钮加载更早的页时，视线钉在当前轮，而不是从底部再滑一遍。",
+            "en": "The previous-turn button keeps the current turn in place when older pages prepend."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        },
+        {
+          "id": "about-github-link",
+          "kind": "improvement",
+          "importance": "low",
+          "title": {
+            "zh": "关于页仓库链接改成咱们的",
+            "en": "About links to our GitHub repo"
+          },
+          "summary": {
+            "zh": "关于页的 GitHub 入口指向 Pinging-114514/openhanako。",
+            "en": "The About GitHub link points at Pinging-114514/openhanako."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "bbde51e",
+              "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.447.9",
       "version": "0.447.9",
       "previousTag": "v0.447.8",

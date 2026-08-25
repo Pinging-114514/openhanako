@@ -42,11 +42,11 @@ describe('loadUpdateDigestHistory', () => {
     expect(getUpdateDigestHistory).not.toHaveBeenCalled();
     expect(result.source).toBe('bundled');
     expect(result.entries.map((entry) => entry.version)).toEqual([
+      '0.451.0',
       '0.447.9',
       '0.447.8',
       '0.447.7',
       '0.447.6',
-      '0.447.5',
     ]);
   });
 
