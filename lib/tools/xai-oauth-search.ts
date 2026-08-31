@@ -11,8 +11,17 @@ import {
   buildXaiOauthCliProviderHeaders,
 } from "../providers/xai-oauth-cli-headers.ts";
 
-export const XAI_OAUTH_SEARCH_DEFAULT_MODEL = "grok-4.6";
-export const XAI_OAUTH_SEARCH_TIMEOUT_MS = 90_000;
+// Search is a retriever, not the chat model. grok-4.6 cannot disable reasoning;
+// grok-4-1-fast-non-reasoning returned citations in ~7s in a live bake-off.
+export const XAI_OAUTH_SEARCH_DEFAULT_MODEL = "grok-4-1-fast-non-reasoning";
+export const XAI_OAUTH_SEARCH_TIMEOUT_MS = 45_000;
+export const XAI_OAUTH_SEARCH_MAX_OUTPUT_TOKENS = 800;
+export const XAI_OAUTH_SEARCH_INSTRUCTIONS = [
+  "You are a search result extractor, not a chat assistant.",
+  "Call the search tool, then output ONLY a numbered list.",
+  "Each item: title, url, one-line snippet.",
+  "No analysis, no opinions, no extra sentences.",
+].join(" ");
 
 type FetchLike = typeof globalThis.fetch;
 
@@ -150,10 +159,12 @@ export async function callXaiOauthNativeSearch({
       headers,
       body: JSON.stringify({
         model,
+        instructions: XAI_OAUTH_SEARCH_INSTRUCTIONS,
         input: [{ role: "user", content: query }],
         tools: Array.isArray(tools) && tools.length
           ? tools
           : [{ type: toolType, ...toolOptions }],
+        max_output_tokens: XAI_OAUTH_SEARCH_MAX_OUTPUT_TOKENS,
         stream: false,
         store: false,
       }),

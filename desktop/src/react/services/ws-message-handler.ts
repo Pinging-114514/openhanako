@@ -10,6 +10,7 @@ import { streamBufferManager } from '../hooks/use-stream-buffer';
 import { dispatchStreamKey } from './stream-key-dispatcher';
 import { useStore } from '../stores';
 import { updateKeyed } from '../stores/create-keyed-slice';
+import { mergeSessionContextUsage } from '../stores/context-slice';
 import { sessionScopedKey, sessionScopedListIncludes, sessionScopedValue } from '../stores/session-slice';
 import { browserStateForPath, setBrowserStateForPath } from '../stores/browser-slice';
 import { scheduleSessionsRefresh } from './session-refresh-scheduler';
@@ -1023,11 +1024,15 @@ export function handleServerMessage(msg: any): void {
     case 'context_usage': {
       const sp = msg.sessionPath;
       if (!sp) { console.warn('[ws] event missing sessionPath:', msg.type); break; }
-      const existingWindow = sessionScopedValue(useStore.getState(), useStore.getState().contextBySession, sp)?.window ?? null;
-      const window = msg.contextWindow ?? existingWindow;
-      if (msg.tokens != null || window != null || msg.percent != null) {
+      const existing = sessionScopedValue(useStore.getState(), useStore.getState().contextBySession, sp);
+      const value = mergeSessionContextUsage(existing, {
+        tokens: msg.tokens,
+        contextWindow: msg.contextWindow,
+        percent: msg.percent,
+      });
+      if (value.tokens != null || value.window != null || value.percent != null) {
         updateKeyed('contextBySession', sp,
-          { tokens: msg.tokens ?? null, window, percent: msg.percent ?? null },
+          value,
           (_s, d) => ({ contextTokens: d.tokens, contextWindow: d.window, contextPercent: d.percent }),
         );
       }
@@ -1138,6 +1143,16 @@ export function handleServerMessage(msg: any): void {
         if (msg.isStreaming) streamBufferManager.beginTurn(sp, sid);
         else streamBufferManager.finishTurn(sp, sid);
       }
+      break;
+    }
+
+    case 'loop_status': {
+      const sp = typeof msg.sessionPath === 'string' && msg.sessionPath.trim()
+        ? msg.sessionPath.trim()
+        : null;
+      if (!sp) break;
+      const loop = msg.loop && typeof msg.loop === 'object' ? msg.loop : null;
+      useStore.getState().setSessionLoop?.(sp, loop);
       break;
     }
 

@@ -1395,6 +1395,36 @@ function NewChatIcon() {
   );
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function HighlightedText({
+  text,
+  query,
+  className,
+}: {
+  text: string;
+  query: string;
+  className?: string;
+}) {
+  const needle = query.trim();
+  if (!needle || !text) {
+    return className ? <span className={className}>{text}</span> : <>{text}</>;
+  }
+  const parts = text.split(new RegExp(`(${escapeRegExp(needle)})`, 'ig'));
+  const lowered = needle.toLowerCase();
+  return (
+    <span className={className}>
+      {parts.map((part, index) => (
+        part.toLowerCase() === lowered
+          ? <mark key={index} className={styles.sessionSearchMark}>{part}</mark>
+          : <span key={index}>{part}</span>
+      ))}
+    </span>
+  );
+}
+
 function SessionSearchBox({
   value,
   onChange,
@@ -1463,7 +1493,7 @@ function SessionSearchResults({
     <>
       {titleResults.length > 0 && (
         <SessionSearchSection
-          title={t('sidebar.searchTitleMatches')}
+          title={`${t('sidebar.searchTitleMatches')} · ${titleResults.length}`}
           results={titleResults}
           agents={agents}
           activeSessionPath={activeSessionPath}
@@ -1476,12 +1506,18 @@ function SessionSearchResults({
       )}
       {(contentResults.length > 0 || status === 'content') && (
         <SessionSearchSection
-          title={t('sidebar.searchContentMatches')}
+          title={contentResults.length > 0
+            ? `${t('sidebar.searchContentMatches')} · ${contentResults.length}`
+            : t('sidebar.searchContentMatches')}
           results={contentResults}
           agents={agents}
           activeSessionPath={activeSessionPath}
           pendingNewSession={pendingNewSession}
-          placeholder={status === 'content' && contentResults.length === 0 ? t('sidebar.searchingContent') : null}
+          placeholder={status === 'content' && contentResults.length === 0
+            ? (titleResults.length === 0
+              ? t('sidebar.searchingContentAfterEmptyTitles')
+              : t('sidebar.searchingContent'))
+            : null}
           query={query}
         />
       )}
@@ -1567,12 +1603,19 @@ export const SessionSearchItem = memo(function SessionSearchItem({
           <AgentBadge agentId={result.agentId} agentName={result.agentName} agents={agents} />
         )}
         <div className={styles.sessionItemTitle}>
-          {result.title || result.firstMessage || t('session.untitled')}
+          <HighlightedText
+            text={result.title || result.firstMessage || t('session.untitled')}
+            query={query}
+          />
         </div>
       </div>
       <div className={styles.sessionItemMeta}>{parts.join(' · ')}</div>
       {result.snippet && (
-        <div className={styles.sessionSearchSnippet}>{result.snippet}</div>
+        <HighlightedText
+          className={styles.sessionSearchSnippet}
+          text={result.snippet}
+          query={query}
+        />
       )}
     </button>
   );

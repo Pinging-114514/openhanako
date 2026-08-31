@@ -7,7 +7,7 @@ import { Collapse } from '@/ui';
 import styles from './Chat.module.css';
 import { extractToolDetail } from '../../utils/message-parser';
 import type { ToolDetail } from '../../utils/message-parser';
-import { openInternalLink } from '../../utils/link-open';
+import { openLinkFromUserClick } from '../../utils/link-open';
 import { isToolCallHiddenFromProcessUi } from '../../utils/tool-call-visibility';
 import { getToolLabel, phaseForStatus, sessionToolTargetName, sessionToolTargetPath } from '../../utils/tool-label';
 import { useStore } from '../../stores';
@@ -90,7 +90,7 @@ function handleDetailClick(e: React.MouseEvent, detail: ToolDetail) {
   e.preventDefault();
   e.stopPropagation();
   if (!detail.href) return;
-  void openInternalLink(detail.href, { origin: 'session' });
+  void openLinkFromUserClick(detail.href, { origin: 'session' }, e);
 }
 
 const ToolIndicator = memo(function ToolIndicator({ tool, agentName }: { tool: ToolCall; agentName: string }) {

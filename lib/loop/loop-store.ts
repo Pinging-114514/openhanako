@@ -11,6 +11,9 @@ import fs from "fs";
 import path from "path";
 import { atomicWriteSync } from "../../shared/safe-fs.ts";
 
+export const LOOP_TURNS_MIN = 1;
+export const LOOP_TURNS_MAX = 500;
+
 export const LOOP_DEFAULT_LIMITS = Object.freeze({
   maxTurns: 50,
   maxConsecutiveFailures: 3,
@@ -18,6 +21,32 @@ export const LOOP_DEFAULT_LIMITS = Object.freeze({
   guardedMinDelaySec: 1200,
   fallbackDelaySec: 1200,
 });
+
+export function clampLoopTurns(value: unknown): number {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n < LOOP_TURNS_MIN) {
+    throw new Error(`轮数必须是 ${LOOP_TURNS_MIN} 到 ${LOOP_TURNS_MAX} 的整数`);
+  }
+  return Math.min(LOOP_TURNS_MAX, Math.floor(n));
+}
+
+export function publicLoopSnapshot(loop: any) {
+  if (!loop) return null;
+  return {
+    status: loop.status,
+    prompt: typeof loop.prompt === "string" ? loop.prompt : "",
+    turnCount: Number(loop.turnCount) || 0,
+    maxTurns: Number(loop.limits?.maxTurns) || LOOP_DEFAULT_LIMITS.maxTurns,
+    pausedReason: loop.pausedReason || null,
+    alarmWakeAt: loop.alarm?.wakeAt ?? null,
+    alarmReason: loop.alarm?.reason || null,
+    completedSummary: loop.completedSummary || null,
+  };
+}
+
+export function isVisibleLoopStatus(status: unknown): boolean {
+  return status === "running" || status === "paused";
+}
 
 const ACTIVE_LOOP_STATUSES = new Set(["running", "paused"]);
 
@@ -35,12 +64,27 @@ export class LoopStore {
   declare _path: string;
   declare _loops: Map<string, any>;
   declare _log: any;
+  declare _onChange: ((loop: any) => void) | null;
 
   constructor(persistPath, options: any = {}) {
     this._path = persistPath;
     this._log = options.log || console;
+    this._onChange = typeof options.onChange === "function" ? options.onChange : null;
     this._loops = new Map();
     this._load();
+  }
+
+  setOnChange(onChange) {
+    this._onChange = typeof onChange === "function" ? onChange : null;
+  }
+
+  _notify(record) {
+    if (!this._onChange) return;
+    try {
+      this._onChange(clone(record));
+    } catch (err: any) {
+      this._log.warn?.(`[loop-store] onChange threw: ${err?.message || err}`);
+    }
   }
 
   _load() {
@@ -104,6 +148,7 @@ export class LoopStore {
     };
     this._loops.set(key, record);
     this._save();
+    this._notify(record);
     return clone(record);
   }
 
@@ -113,6 +158,7 @@ export class LoopStore {
     const next = { ...existing, ...clone(patch), updatedAt: Date.now() };
     this._loops.set(key, next);
     this._save();
+    this._notify(next);
     return clone(next);
   }
 

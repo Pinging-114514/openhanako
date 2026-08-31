@@ -48,7 +48,7 @@ describe("/loop", () => {
     const { ctx, controller } = makeCtx({ ctx: { args: "watch the pipeline until green" } });
     const r: any = await loopCmd()!.handler(ctx);
     expect(controller.targetFromSessionRef).toHaveBeenCalledWith(ctx.sessionRef, { ensure: true });
-    expect(controller.start).toHaveBeenCalledWith(D_TARGET, "watch the pipeline until green");
+    expect(controller.start).toHaveBeenCalledWith(D_TARGET, "watch the pipeline until green", null);
     expect(r.reply).toMatch(/启动/);
   });
 
@@ -86,6 +86,25 @@ describe("/loop", () => {
     const none = makeCtx({ controller: { statusForTarget: vi.fn(() => null) }, ctx: { args: "" } });
     const r2: any = await loopCmd()!.handler(none.ctx);
     expect(r2.error || r2.reply).toMatch(/用法|usage/i);
+  });
+
+  it("passes --turns into start limits", async () => {
+    const { ctx, controller } = makeCtx({ ctx: { args: "--turns 100 复现论文" } });
+    const r: any = await loopCmd()!.handler(ctx);
+    expect(controller.start).toHaveBeenCalledWith(D_TARGET, "复现论文", { maxTurns: 100 });
+    expect(r.reply).toMatch(/100/);
+  });
+
+  it("turns subcommand updates the live budget", async () => {
+    const { ctx, controller } = makeCtx({
+      ctx: { args: "turns 25" },
+      controller: {
+        setMaxTurns: vi.fn(async () => ({ turnCount: 3, limits: { maxTurns: 25 } })),
+      },
+    });
+    const r: any = await loopCmd()!.handler(ctx);
+    expect(controller.setMaxTurns).toHaveBeenCalledWith(D_TARGET, 25);
+    expect(r.reply).toContain("25");
   });
 
   it("controller errors surface as {error}", async () => {

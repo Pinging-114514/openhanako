@@ -132,4 +132,66 @@ describe("prepareModelImageInputsForPrompt", () => {
     expect(result).toEqual({ text: "already prepared", opts });
     expect(resizeImage).not.toHaveBeenCalled();
   });
+
+  it("inserts dimension notes after the full media envelope, not before SessionFile markers", async () => {
+    const resizeImage = vi.fn(async (image) => ({
+      data: JPEG_BASE64,
+      mimeType: "image/jpeg",
+      originalWidth: 4000,
+      originalHeight: 3000,
+      width: 2000,
+      height: 1500,
+      wasResized: true,
+    }));
+    const formatDimensionNote = vi.fn((result) =>
+      `[Image: original ${result.originalWidth}x${result.originalHeight}, displayed at ${result.width}x${result.height}. Multiply coordinates by 2.00 to map to original image.]`
+    );
+    const sessionFile =
+      `[SessionFile] {"fileId":"sf-1","sessionPath":"/tmp/main.jsonl","label":"design.png","kind":"attachment"}`;
+
+    const result = await prepareModelImageInputsForPrompt({
+      text: `${sessionFile}\n[attached_image: /tmp/design.png]\n你挑刺把`,
+      opts: {
+        images: [{ type: "image", data: PNG_BASE64, mimeType: "image/png" }],
+        imageAttachmentPaths: ["/tmp/design.png"],
+      },
+      resizeImage,
+      formatDimensionNote,
+    });
+
+    expect(result.text.startsWith("<file name=\"image-1\">")).toBe(false);
+    expect(result.text).toContain(`${sessionFile}\n[attached_image: /tmp/design.png]\n`);
+    expect(result.text).toContain('<file name="image-1">[Image: original 4000x3000, displayed at 2000x1500.');
+    expect(result.text.endsWith("你挑刺把")).toBe(true);
+  });
+
+  it("replaces leftover dimension notes instead of stacking another copy on retry", async () => {
+    const resizeImage = vi.fn(async (image) => ({
+      data: JPEG_BASE64,
+      mimeType: "image/jpeg",
+      originalWidth: 2138,
+      originalHeight: 420,
+      width: 2000,
+      height: 393,
+      wasResized: true,
+    }));
+    const formatDimensionNote = vi.fn(() =>
+      "[Image: original 2138x420, displayed at 2000x393. Multiply coordinates by 1.07 to map to original image.]"
+    );
+    const staleNote =
+      `<file name="image-1">[Image: original 1x1, displayed at 1x1. Multiply coordinates by 1.00 to map to original image.]</file>`;
+
+    const result = await prepareModelImageInputsForPrompt({
+      text: `${staleNote}\n[attached_image: /tmp/a.png]\n这两种查一下原因`,
+      opts: {
+        images: [{ type: "image", data: PNG_BASE64, mimeType: "image/png" }],
+        imageAttachmentPaths: ["/tmp/a.png"],
+      },
+      resizeImage,
+      formatDimensionNote,
+    });
+
+    expect(result.text).not.toContain("original 1x1");
+    expect(result.text.match(/<file name="image-\d+">/g)).toEqual(['<file name="image-1">']);
+  });
 });

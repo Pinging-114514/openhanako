@@ -478,9 +478,8 @@ export class VisionBridge {
 
     const paths = imageAttachmentPaths?.length ? imageAttachmentPaths : uniquePathsFromText(text);
     const userRequest = normalizeUserRequest(text);
-    const notes = [];
-    for (let i = 0; i < images.length; i++) {
-      const img = images[i];
+    const notes = new Array(images.length).fill("");
+    await Promise.all(images.map(async (img, i) => {
       throwIfAborted(signal);
       let note;
       try {
@@ -509,8 +508,8 @@ export class VisionBridge {
         this._rememberNote(sessionPath, imagePath, entry);
         if (sessionPath) this._persistNote(sessionPath, imagePath, entry);
       }
-      notes.push(note);
-    }
+      notes[i] = note;
+    }));
 
     return { text, images: undefined, visionNotes: notes };
   }
@@ -550,22 +549,19 @@ export class VisionBridge {
     }
 
     const request = normalizeUserRequest(userRequest);
-    const notes = [];
-    for (let i = 0; i < resources.length; i++) {
-      const resource = resources[i];
+    const notes = (await Promise.all(resources.map(async (resource, i) => {
       const key = String(resource?.key || "").trim();
       const img = resource?.image;
-      if (!key || !img) continue;
+      if (!key || !img) return null;
 
       const existing = this._lookupNote(sessionPath, key);
       if (existing?.note) {
-        notes.push({
+        return {
           key,
           label: resource?.label || key,
           note: existing.note,
           reused: true,
-        });
-        continue;
+        };
       }
 
       throwIfAborted(signal);
@@ -593,13 +589,13 @@ export class VisionBridge {
       };
       this._rememberNote(sessionPath, key, entry);
       if (sessionPath) this._persistNote(sessionPath, key, entry);
-      notes.push({
+      return {
         key,
         label: resource?.label || key,
         note,
         reused: false,
-      });
-    }
+      };
+    }))).filter(Boolean);
 
     return { notes };
   }

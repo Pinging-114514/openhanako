@@ -69,10 +69,15 @@ export default defineConfig({
       },
     },
     target: "node24",
-    // esbuild minify 只做标识符缩短和空白移除，不做 tree-shaking 变换，
-    // 不会触发 inlineDynamicImports 场景下的 TDZ ReferenceError。
+    // esbuild minify 只做语法/空白压缩，不做标识符缩短。
+    // 单文件 ESM（inlineDynamicImports）里缩短标识符会撞名，
+    // Node 解析阶段直接 SyntaxError（0.451.0: IUe 同时绑了
+    // createMemoryTicker 和 XAI_OAUTH_SEARCH_INSTRUCTIONS）。
     minify: "esbuild",
     sourcemap: false,
+  },
+  esbuild: {
+    minifyIdentifiers: false,
   },
   logLevel: "info",
 });

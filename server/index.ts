@@ -28,6 +28,8 @@ const log = createModuleLogger("server");
 const checkpointLog = createModuleLogger("checkpoint");
 const sessionFilesLog = createModuleLogger("session-files");
 import { createOutboundProxyRuntime } from "../lib/net/outbound-proxy.ts";
+import { installProxiedGlobalFetch } from "../lib/net/proxied-global-fetch.ts";
+import { startSystemProxySync } from "../lib/net/system-proxy-sync.ts";
 import { createServerAuthService } from "../core/server-auth.ts";
 import { createWebSocketTicketService } from "../core/ws-auth-ticket.ts";
 import { resolveServerListenOptions, saveServerNetworkConfig } from "../core/server-network-config.ts";
@@ -452,6 +454,12 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
   } as any);
   engine.setOutboundProxyRuntime(outboundProxyRuntime);
   outboundProxyRuntime.apply(engine.getNetworkProxy());
+  installProxiedGlobalFetch();
+  startSystemProxySync({
+    getMode: () => engine.getNetworkProxy()?.mode || "system",
+    apply: (config) => outboundProxyRuntime.apply(config),
+    log: (msg: any) => dlog.log("server", msg),
+  });
 
   // 注入依赖给 BrowserManager（避免循环依赖）
   BrowserManager.setHanakoHome(engine.hanakoHome);

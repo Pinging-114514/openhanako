@@ -200,6 +200,47 @@ describe("SearchRateLimiter", () => {
     ]);
   });
 
+  it("allows four concurrent xAI OAuth searches", async () => {
+    vi.useFakeTimers({ now: 0 });
+    const limiter = createSearchRateLimiter({ random: () => 0 });
+    const starts = [];
+    const releases = [];
+
+    const calls = Array.from({ length: 5 }, (_, index) => (
+      limiter.run("xai_oauth", "oauth", async () => {
+        starts.push([index, Date.now()]);
+        await new Promise((resolve) => {
+          releases[index] = resolve;
+        });
+        return index;
+      })
+    ));
+
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+    ]);
+
+    releases[0]();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(starts).toEqual([
+      [0, 0],
+      [1, 0],
+      [2, 0],
+      [3, 0],
+      [4, 0],
+    ]);
+
+    releases[1]();
+    releases[2]();
+    releases[3]();
+    releases[4]();
+    await expect(Promise.all(calls)).resolves.toEqual([0, 1, 2, 3, 4]);
+  });
+
   it("parses Retry-After as seconds or an HTTP date", () => {
     expect(retryAfterMsFromHeaders(new Headers({ "retry-after": "3" }))).toBe(3_000);
 

@@ -225,9 +225,11 @@ export class Hub {
         } catch { /* best-effort; prompt still goes through */ }
       }
       if (savedPaths.length) {
-        const pathNote = savedPaths.map(p => `[attached_image: ${p}]`).join("\n");
-        text = `${pathNote}\n${text}`;
-        o.imageAttachmentPaths = savedPaths;
+        if (!o.imageAttachmentPaths?.length) {
+          const pathNote = savedPaths.map(p => `[attached_image: ${p}]`).join("\n");
+          text = `${pathNote}\n${text}`;
+          o.imageAttachmentPaths = savedPaths;
+        }
       }
     }
     if (
@@ -249,9 +251,11 @@ export class Hub {
         } catch { /* best-effort; prompt still goes through */ }
       }
       if (savedPaths.length) {
-        const pathNote = savedPaths.map(p => `[attached_video: ${p}]`).join("\n");
-        text = `${pathNote}\n${text}`;
-        o.videoAttachmentPaths = savedPaths;
+        if (!o.videoAttachmentPaths?.length) {
+          const pathNote = savedPaths.map(p => `[attached_video: ${p}]`).join("\n");
+          text = `${pathNote}\n${text}`;
+          o.videoAttachmentPaths = savedPaths;
+        }
       }
     }
 

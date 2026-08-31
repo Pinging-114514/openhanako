@@ -17,8 +17,8 @@ export function searchSessions(sessions, query, options: { phase?: string; limit
 
   for (const session of Array.isArray(sessions) ? sessions : []) {
     const fieldText = phase === "content"
-      ? session?.allMessagesText
-      : [session?.title, session?.firstMessage].filter(Boolean).join(" ");
+      ? stripSearchNoise(session?.allMessagesText)
+      : stripSearchNoise([session?.title, session?.firstMessage].filter(Boolean).join(" "));
     const match = scoreText(fieldText, normalizedQuery, tokens, phase);
     if (!match.matched) continue;
 
@@ -124,19 +124,57 @@ function timestampOf(value) {
 }
 
 export function buildSnippet(text, normalizedQuery, token) {
-  const raw = collapseWhitespace(text);
+  const raw = collapseWhitespace(stripSearchNoise(text));
   if (!raw) return "";
 
   const normalizedRaw = normalizeSessionSearchText(raw);
-  const needle = token || normalizedQuery;
-  const index = normalizedRaw.indexOf(needle);
+  const needles = [normalizedQuery, token].filter(Boolean);
+  let index = -1;
+  let usedLength = 0;
+  for (const needle of needles) {
+    const normalizedNeedle = normalizeSessionSearchText(needle);
+    if (!normalizedNeedle) continue;
+    const found = normalizedRaw.indexOf(normalizedNeedle);
+    if (found < 0) continue;
+    index = found;
+    usedLength = normalizedNeedle.length;
+    break;
+  }
   if (index < 0) return raw.slice(0, 120);
 
   const start = Math.max(0, index - 36);
-  const end = Math.min(raw.length, index + needle.length + 72);
+  const end = Math.min(raw.length, index + usedLength + 72);
   const prefix = start > 0 ? "..." : "";
   const suffix = end < raw.length ? "..." : "";
   return `${prefix}${raw.slice(start, end)}${suffix}`;
+}
+
+export function stripSearchNoise(text) {
+  let out = String(text || "");
+  out = out.replace(/\[attached_(?:image|video|audio):\s*[^\]]+\]/g, " ");
+  let start;
+  while ((start = out.indexOf("[SessionFile]")) >= 0) {
+    const brace = out.indexOf("{", start);
+    if (brace < 0) {
+      out = `${out.slice(0, start)} ${out.slice(start + 13)}`;
+      continue;
+    }
+    let depth = 0;
+    let end = -1;
+    for (let i = brace; i < out.length; i += 1) {
+      const ch = out[i];
+      if (ch === "{") depth += 1;
+      else if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+    out = `${out.slice(0, start)} ${end > 0 ? out.slice(end) : ""}`;
+  }
+  return out;
 }
 
 function collapseWhitespace(value) {

@@ -400,6 +400,8 @@ export async function loadMessages(forPath?: string): Promise<void> {
     // 修订点 stamp：记录本次快照对应的磁盘修订点，后续 reconcile 与列表投影对比。
     const revision = typeof data.revision === 'string' ? data.revision : null;
     useStore.getState().setSessionTodosForPath(targetPath, migratedTodos);
+    const loop = data.loop && typeof data.loop === 'object' ? data.loop : null;
+    useStore.getState().setSessionLoop?.(targetPath, loop);
     if (items.length > 0) {
       useStore.getState().initSession(targetPath, items, data.hasMore ?? false, revision);
       if (targetPath === useStore.getState().currentSessionPath) {

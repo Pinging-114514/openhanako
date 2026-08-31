@@ -14,12 +14,7 @@ import {
   isSessionTurnInputEntry,
 } from "../lib/turn-input-presentation.ts";
 import {
-  ATTACHMENT_MARKER_RE,
-  REFERENCE_BLOCK_END,
-  REFERENCE_BLOCK_PREFIX,
-  REMINDER_BLOCK_END,
-  REMINDER_BLOCK_PREFIX,
-  SESSION_FILE_MARKER_RE,
+  leadingPromptEnvelope,
   visiblePromptText,
 } from "./session-reminders.ts";
 
@@ -258,12 +253,16 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
       : await completeMediaPayloads(original.audios, audioAttachmentPaths, "audio", mediaDeps);
     const nextDisplayMessage = customTurnInput
       ? {}
-      : canonicalizeRetryDisplayMessage(engine, sessionPath, {
+      : canonicalizeRetryDisplayMessage(engine, sessionPath, restoreRetryDisplayAttachments({
           ...originalEnvelopeDisplay,
           ...(displayMessage || {}),
           text: displayMessage?.text
             ?? (replacementText == null ? originalVisibleText : String(replacementText)),
-        });
+        }, {
+          imageAttachmentPaths,
+          videoAttachmentPaths,
+          audioAttachmentPaths,
+        }));
 
     const retainedEntries = retainedEntriesBeforeRetry(branch, resolved.retryBranchParentId);
     const discardedEntries = branch.slice(retainedEntries.length);
@@ -756,6 +755,36 @@ async function completeMediaPayloads(existing, paths, kind, deps) {
   return payloads;
 }
 
+function mediaPathBasename(filePath) {
+  const normalized = String(filePath || "").replace(/\\/g, "/");
+  const parts = normalized.split("/");
+  return parts[parts.length - 1] || String(filePath || "");
+}
+
+function attachmentsFromMediaPaths(paths) {
+  return uniqueStrings(paths).map((filePath) => ({
+    path: filePath,
+    name: mediaPathBasename(filePath),
+    isDir: false,
+  }));
+}
+
+function restoreRetryDisplayAttachments(displayMessage, mediaPaths) {
+  const existing = Array.isArray(displayMessage?.attachments) ? displayMessage.attachments : [];
+  if (existing.length) return displayMessage;
+  const attachments = [
+    ...attachmentsFromMediaPaths(mediaPaths?.imageAttachmentPaths),
+    ...attachmentsFromMediaPaths(mediaPaths?.videoAttachmentPaths),
+    ...attachmentsFromMediaPaths(mediaPaths?.audioAttachmentPaths),
+  ];
+  if (!attachments.length) return displayMessage;
+  return { ...(displayMessage || {}), attachments };
+}
+
+function uniqueStrings(values) {
+  return Array.from(new Set((values || []).filter((value) => typeof value === "string" && value)));
+}
+
 function canonicalizeRetryDisplayMessage(engine, sessionPath, displayMessage) {
   if (!Array.isArray(displayMessage?.attachments)) return displayMessage;
   if (typeof engine?.resolveActiveSessionFile !== "function") return displayMessage;
@@ -793,45 +822,6 @@ function replaceVisiblePromptText(originalText, visibleText, replacementText) {
   }
   const prefix = leadingPromptEnvelope(original);
   return prefix ? `${prefix}${replacementText}` : replacementText;
-}
-
-function leadingPromptEnvelope(text) {
-  const lines = String(text || "").split(/\r?\n/);
-  const kept = [];
-  let index = 0;
-  // A prompt may lead with a reference listing, a reminder broadcast, or both,
-  // so every envelope at the head is consumed rather than just the first kind.
-  while (index < lines.length) {
-    const header = lines[index];
-    const closing = header.startsWith(REMINDER_BLOCK_PREFIX)
-      ? REMINDER_BLOCK_END
-      : header.trim() === REFERENCE_BLOCK_PREFIX
-        ? REFERENCE_BLOCK_END
-        : null;
-    if (!closing) break;
-    while (index < lines.length) {
-      const line = lines[index++];
-      kept.push(line);
-      if (line.trim() === closing) break;
-    }
-    while (index < lines.length && !lines[index].trim()) kept.push(lines[index++]);
-  }
-  while (index < lines.length) {
-    const line = lines[index];
-    const trimmed = line.trim();
-    if (ATTACHMENT_MARKER_RE.test(trimmed) || SESSION_FILE_MARKER_RE.test(trimmed)) {
-      kept.push(line);
-      index += 1;
-      continue;
-    }
-    if (!trimmed && kept.length > 0) {
-      kept.push(line);
-      index += 1;
-      continue;
-    }
-    break;
-  }
-  return kept.length ? `${kept.join("\n")}\n` : "";
 }
 
 function visibleUserText(text) {

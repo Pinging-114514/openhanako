@@ -1,208 +1,219 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.451.0",
-  "version": "0.451.0",
-  "previousTag": "v0.447.9",
-  "generatedAt": "2026-08-25T12:00:00.000Z",
+  "tag": "v0.452.0",
+  "version": "0.452.0",
+  "previousTag": "v0.451.0",
+  "generatedAt": "2026-08-31T08:53:23.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "长聊天右侧能跳顶、按轮上下翻、跳到底，回复完成可响 Cursor 那声叮。更新历史改读咱们自己的仓，DeepSeek 能直接发图。侧栏在回答时不再把当前会话顶上去。",
-    "en": "Long chats get a four-button buoy for true top, previous turn, next turn, and bottom. A Cursor done chime can play when a reply finishes. About history reads our fork, DeepSeek accepts images directly, and the sidebar no longer jumps the current chat while the assistant is answering."
+    "zh": "网页搜索改用 Grok 4.1 快模型、并发 4，X 搜索拆成独立工具。后开梯子也能跟上系统代理。侧栏能搜对话，发图、半小时定时、按停圆环这些坑也收了。",
+    "en": "Web search now uses Grok 4.1 Fast without reasoning, with concurrency 4, and X search is a separate tool. System proxy is picked up if the VPN starts later. Sidebar search, image send, 30-minute schedules, and the abort context ring are fixed."
   },
   "counts": {
     "feature": 3,
-    "fix": 4,
+    "fix": 5,
     "improvement": 1,
     "migration": 0
   },
   "source": {
     "owner": "Pinging-114514",
     "repo": "openhanako",
-    "commitRange": "v0.447.9..v0.451.0",
-    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.451.0",
+    "commitRange": "v0.451.0..v0.452.0",
+    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.452.0",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "chat-timeline-buoy",
+      "id": "xai-search-retriever",
       "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "聊天右侧浮标：真顶、上一轮、下一轮、到底",
-        "en": "Chat buoy: true top, previous turn, next turn, bottom"
+        "zh": "网页搜索更快，X 搜索改独立",
+        "en": "Faster web search, separate X search"
       },
       "summary": {
-        "zh": "长聊天只渲染看得见的那一段，跳到顶不再把整段历史一次摊开卡死。四个按钮分别去真正顶部、上一轮用户消息、下一轮、以及底部。",
-        "en": "Long chats only mount the visible window, so jumping to the top no longer freezes the page. Four buttons go to the true top, the previous user turn, the next turn, and the bottom."
+        "zh": "web_search 改走 grok-4-1-fast-non-reasoning，并发 4，只搜公开网页。要不要搜 X 由模型自己调 x_search。",
+        "en": "web_search uses grok-4-1-fast-non-reasoning at concurrency 4 and only covers the public web. The model calls x_search on its own when X posts are needed."
       },
       "details": [
         {
-          "zh": "往上翻更早的页时，当前轮会钉住，不会被新加载的旧消息弹回底部。",
-          "en": "Loading older pages pins the current turn so the view does not snap back to the bottom."
+          "zh": "不再跟聊天用的 grok-4.6 绑在一起，也不再顺手开看图和 X 搜索。",
+          "en": "Search is no longer bound to chat grok-4.6, and no longer piggybacks image understanding or X search."
         }
       ],
       "sources": [
         {
           "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+          "ref": "HEAD",
+          "title": "xai search retriever"
         }
       ]
     },
     {
-      "id": "chat-top-region-error",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "聊天顶上不再报此区域暂时无法显示",
-        "en": "The top of a long chat no longer blanks out"
-      },
-      "summary": {
-        "zh": "量高度时不再死循环把整块聊天区域打爆。到顶也能正常看最早的几轮。",
-        "en": "Height measuring no longer loops until the chat region crashes. The earliest turns stay visible at the true top."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
-        }
-      ]
-    },
-    {
-      "id": "fork-update-history",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "更新历史读咱们自己的仓",
-        "en": "Update history reads our fork"
-      },
-      "summary": {
-        "zh": "关于页不再去扒官方 liliMozi 的更新说明。检查更新本来就走咱们仓，历史也对齐。",
-        "en": "The About page no longer loads official liliMozi notes. Update checks already used our fork; history now matches."
-      },
-      "details": [
-        {
-          "zh": "还在跑 0.447.8 时，关于页先展示随包保存的咱们说明，避免主程序仍去问官方。",
-          "en": "On 0.447.8, About shows our bundled notes so the old shell cannot still query the official repo."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
-        }
-      ]
-    },
-    {
-      "id": "deepseek-direct-vision",
+      "id": "system-proxy-follow",
       "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "DeepSeek 可直接发图",
-        "en": "DeepSeek accepts images directly"
+        "zh": "后开梯子，系统代理会跟上",
+        "en": "System proxy follows if the VPN starts later"
       },
       "summary": {
-        "zh": "DeepSeek 对话可以带图，不再被目录挡在识图门外。",
-        "en": "DeepSeek chats can carry images instead of being gated out of vision."
+        "zh": "不再只在开机问一次代理。Windows 系统代理变了会补上环境变量，OAuth 用的 fetch 也走代理。",
+        "en": "Proxy is no longer frozen at spawn. Windows system proxy changes are stamped into the process, and OAuth fetch uses the proxy too."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+          "ref": "HEAD",
+          "title": "system proxy follow"
         }
       ]
     },
     {
-      "id": "chat-completion-chime",
+      "id": "loop-turns",
       "kind": "feature",
       "importance": "medium",
       "title": {
-        "zh": "回复完成可播放 Cursor 提示音",
-        "en": "Optional Cursor chime when a reply finishes"
+        "zh": "/loop 可限定轮数",
+        "en": "/loop can cap turns"
       },
       "summary": {
-        "zh": "设置 → 通用 → 通知里可打开「回复完成时播放提示音」，声音是 Cursor Agent 答完那一声。点停止不响。",
-        "en": "Settings → General → Notifications can play Cursor's agent-done chime when a turn finishes. Abort stays silent."
-      },
-      "details": [
-        {
-          "zh": "默认关着。试听不必先打开开关。",
-          "en": "Off by default. Preview plays without turning the toggle on."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
-        }
-      ]
-    },
-    {
-      "id": "sidebar-busy-jump",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "回答时侧栏不再把当前会话顶上去",
-        "en": "The sidebar no longer jumps the current chat while answering"
-      },
-      "summary": {
-        "zh": "AI 还在说话时，当前会话留在原位，项目夹也不会被撑开。",
-        "en": "While the assistant is streaming, the current session stays put and the project fold does not expand."
+        "zh": "/loop --turns N 限制循环次数，输入栏有循环状态条。",
+        "en": "/loop --turns N caps the loop, and the composer shows a loop status bar."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+          "ref": "HEAD",
+          "title": "loop turns"
         }
       ]
     },
     {
-      "id": "section-up-older-pages",
+      "id": "sidebar-search",
       "kind": "fix",
-      "importance": "medium",
+      "importance": "high",
       "title": {
-        "zh": "往上翻旧消息不再弹回底部",
-        "en": "Paging older turns no longer snaps to the bottom"
+        "zh": "侧栏能搜标题和对话",
+        "en": "Sidebar searches titles and transcripts"
       },
       "summary": {
-        "zh": "上一轮按钮加载更早的页时，视线钉在当前轮，而不是从底部再滑一遍。",
-        "en": "The previous-turn button keeps the current turn in place when older pages prepend."
+        "zh": "侧栏搜索会高亮命中，空标题也有文案。",
+        "en": "Sidebar search highlights hits and labels untitled chats."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+          "ref": "HEAD",
+          "title": "sidebar search"
         }
       ]
     },
     {
-      "id": "about-github-link",
+      "id": "image-send",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "发图会把像素送给模型",
+        "en": "Pasted images send pixels to the model"
+      },
+      "summary": {
+        "zh": "修掉只传路径、服务端收到 0 张图的问题。",
+        "en": "Fixes the path-only skip that made the server receive 0 images."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "image send"
+        }
+      ]
+    },
+    {
+      "id": "cron-half-hour",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "30 分钟定时不再显示成每小时",
+        "en": "30-minute jobs no longer read as hourly"
+      },
+      "summary": {
+        "zh": "半小时任务按分钟显示，不再四舍五入成 1 小时。",
+        "en": "Half-hour jobs stay in minutes instead of rounding to 1 hour."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "cron humanize"
+        }
+      ]
+    },
+    {
+      "id": "context-ring-abort",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "按停不再抹掉上下文圆环",
+        "en": "Abort no longer clears the context ring"
+      },
+      "summary": {
+        "zh": "中止后仍保留上一刀已知用量，圆环不会被空值盖掉。",
+        "en": "Abort keeps the last known token usage instead of overwriting it with null."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "context ring abort"
+        }
+      ]
+    },
+    {
+      "id": "observational-jsonl",
+      "kind": "fix",
+      "importance": "medium",
+      "title": {
+        "zh": "观察压缩会去读会话文件",
+        "en": "Observational compaction reads the session file"
+      },
+      "summary": {
+        "zh": "装订笔记时不只翻内存树枝，也会读 jsonl 里已经记下的观察。",
+        "en": "Prepared notes are collected from the session jsonl, not only the in-memory branch."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "observational jsonl"
+        }
+      ]
+    },
+    {
+      "id": "automation-created-badge",
       "kind": "improvement",
       "importance": "low",
       "title": {
-        "zh": "关于页仓库链接改成咱们的",
-        "en": "About links to our GitHub repo"
+        "zh": "定时建议确认后显示已创建",
+        "en": "Schedule suggestions show created after confirm"
       },
       "summary": {
-        "zh": "关于页的 GitHub 入口指向 Pinging-114514/openhanako。",
-        "en": "The About GitHub link points at Pinging-114514/openhanako."
+        "zh": "点确认后卡片变成已创建，并弹出提示。",
+        "en": "After confirm, the card shows created and toasts."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
-          "ref": "bbde51e",
-          "title": "chat timeline, completion chime, DeepSeek vision, fork update history"
+          "ref": "HEAD",
+          "title": "automation created badge"
         }
       ]
     }

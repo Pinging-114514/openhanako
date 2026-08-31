@@ -2,6 +2,26 @@ import { describe, expect, it } from 'vitest';
 import { buildItemsFromHistory } from '../../utils/history-builder';
 
 describe('buildItemsFromHistory user image restoration', () => {
+  it('把 loop 自定义消息渲染成对话里的循环幕间', () => {
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'loop-1',
+        role: 'loop',
+        content: '↻ 循环已启动 · 预算 50 轮',
+        displayText: '↻ 循环已启动 · 预算 50 轮',
+      }],
+    });
+    expect(items).toHaveLength(1);
+    expect(items[0]).toMatchObject({
+      type: 'interlude',
+      data: {
+        type: 'interlude',
+        variant: 'loop',
+        text: '↻ 循环已启动 · 预算 50 轮',
+      },
+    });
+  });
+
   it('restores tool outcomes by toolCallId instead of tool name', () => {
     const items = buildItemsFromHistory({
       messages: [{
@@ -389,6 +409,29 @@ describe('buildItemsFromHistory user image restoration', () => {
         modelId: 'mimo-v2.5-asr',
       },
     });
+  });
+
+  it('带 sessionRefs 的 displayText 只覆盖可见正文，不丢掉 content 里的图片标记', () => {
+    const filePath = '/Users/test/.hanako/attachments/upload-abc.png';
+    const items = buildItemsFromHistory({
+      messages: [{
+        id: 'u1',
+        role: 'user',
+        content: `[attached_image: ${filePath}]\n这两种查一下原因`,
+        displayText: '这两种查一下原因',
+        sessionRefs: [{ sessionId: 'sess_other', label: '别的会话' }],
+      }],
+    });
+
+    const first = items[0];
+    expect(first.type).toBe('message');
+    if (first.type !== 'message') throw new Error('expected message');
+    expect(first.data.text).toBe('这两种查一下原因');
+    expect(first.data.attachments).toEqual([{
+      path: filePath,
+      name: 'upload-abc.png',
+      isDir: false,
+    }]);
   });
 
   it('从 SessionFile 账本恢复旧版图片附件，并把模型传输说明排除出可见正文', () => {

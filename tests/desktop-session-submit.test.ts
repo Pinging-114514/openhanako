@@ -194,6 +194,49 @@ describe("submitDesktopSessionMessage", () => {
     });
   });
 
+  it("reads missing image pixels from attachment paths so the websocket can skip base64", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-submit-image-"));
+    const imagePath = path.join(dir, "shot.png");
+    fs.writeFileSync(imagePath, Buffer.from("iVBORw0KGgo=", "base64"));
+    const session = makeFakeSession();
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+      registerSessionFile: vi.fn((opts) => ({
+        fileId: "sf_shot",
+        id: "sf_shot",
+        filePath: opts.filePath,
+        displayName: "shot.png",
+        mime: "image/png",
+        kind: "image",
+        isDirectory: false,
+      })),
+    };
+
+    try {
+      await submitDesktopSessionMessage(engine, {
+        sessionPath: "/tmp/desk.jsonl",
+        text: "看图",
+        displayMessage: {
+          text: "看图",
+          attachments: [{ path: imagePath, name: "shot.png", mimeType: "image/png" }],
+        },
+      });
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        "/tmp/desk.jsonl",
+        expect.stringContaining(`[attached_image: ${imagePath}]`),
+        expect.objectContaining({
+          images: [expect.objectContaining({ type: "image", mimeType: "image/png" })],
+          imageAttachmentPaths: [imagePath],
+        }),
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("can replay a hidden model input without emitting a visible user projection", async () => {
     const session = makeFakeSession({ replyText: "background reply" });
     const engine = {
@@ -975,6 +1018,82 @@ describe("submitDesktopSessionMessage", () => {
         })}\n[attached_image: ${filePath}]\nlocal file`,
         expect.objectContaining({
           imageAttachmentPaths: [filePath],
+          images: [{
+            type: "image",
+            data: "BASE64",
+            mimeType: "image/png",
+          }],
+        }),
+      );
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it("reloads path-backed display attachments into prompt images when WS omits pixels", async () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-path-backed-image-"));
+    try {
+      const filePath = path.join(tmpDir, "wechat.png");
+      const bytes = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+      fs.writeFileSync(filePath, bytes);
+      const session = makeFakeSession();
+      const sessionPath = path.join(tmpDir, "main.jsonl");
+      fs.writeFileSync(sessionPath, "{}\n");
+      const registerSessionFile = vi.fn(({ sessionPath, filePath, label, origin, storageKind }) => ({
+        id: "sf_wechat",
+        fileId: "sf_wechat",
+        sessionPath,
+        filePath,
+        realPath: filePath,
+        displayName: label,
+        filename: path.basename(filePath),
+        label,
+        ext: "png",
+        mime: "image/png",
+        size: bytes.length,
+        kind: "image",
+        origin,
+        storageKind,
+        createdAt: 1,
+      }));
+      const engine = {
+        hanakoHome: tmpDir,
+        registerSessionFile,
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+
+      await submitDesktopSessionMessage(engine, {
+        sessionPath,
+        text: "老师的反馈如下",
+        displayMessage: {
+          text: "老师的反馈如下",
+          attachments: [{
+            fileId: "sf_wechat",
+            path: filePath,
+            name: "粘贴图片.png",
+            isDir: false,
+            mimeType: "image/png",
+          }],
+        },
+      });
+
+      expect(engine.promptSession).toHaveBeenCalledWith(
+        sessionPath,
+        `${sessionFileMarker({
+          fileId: "sf_wechat",
+          sessionPath,
+          label: "粘贴图片.png",
+        })}\n[attached_image: ${filePath}]\n老师的反馈如下`,
+        expect.objectContaining({
+          imageAttachmentPaths: [filePath],
+          images: [{
+            type: "image",
+            data: bytes.toString("base64"),
+            mimeType: "image/png",
+          }],
         }),
       );
     } finally {

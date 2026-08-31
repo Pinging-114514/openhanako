@@ -12,7 +12,7 @@ import { useStore } from '../stores';
 import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
 import { selectPreviewItems, selectActiveTabId } from '../stores/preview-slice';
 import { sessionScopedListIncludes, sessionScopedValue } from '../stores/session-slice';
-import { getSessionCompactionMode, isSessionCompacting } from '../stores/context-slice';
+import { getSessionCompactionMode, getSessionLoop, isSessionCompacting } from '../stores/context-slice';
 import { selectSessionFiles } from '../stores/selectors/file-refs';
 import { isImageFile, isVideoFile } from '../utils/format';
 import { isAudioFileName } from '../utils/file-kind';
@@ -416,6 +416,17 @@ function applyComposerDocument(
 
 export type { SlashItem };
 
+function formatLoopCountdown(wakeAt: number | null | undefined, now: number): string | null {
+  if (typeof wakeAt !== 'number' || !Number.isFinite(wakeAt)) return null;
+  const remainSec = Math.max(0, Math.floor((wakeAt - now) / 1000));
+  const hours = Math.floor(remainSec / 3600);
+  const minutes = Math.floor((remainSec % 3600) / 60);
+  const seconds = remainSec % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
 // ── 主组件 ──
 
 export interface InputAreaProps {
@@ -446,6 +457,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const deletedAgentReadOnly = currentSessionProjection?.agentDeleted === true;
   const compacting = useStore(s => isSessionCompacting(s, currentSessionPath));
   const compactionMode = useStore(s => getSessionCompactionMode(s, currentSessionPath));
+  const loopStatus = useStore(s => getSessionLoop(s, currentSessionPath));
   const screenshotBusy = useStore(s => s.screenshotTaskCount > 0);
   const screenshotProgress = useStore(s => s.screenshotProgress);
   const inlineError = useStore(s => s.currentSessionPath ? (sessionScopedValue(s, s.inlineErrors, s.currentSessionPath) ?? null) : null);
@@ -482,6 +494,28 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const compactingStatusLabel = capabilityRefreshing
     ? t('input.refreshAndCompactBusy')
     : t(compactionMode === 'lossy_local' ? 'chat.instantSimpleCompaction' : 'chat.compacting');
+  const sendLoopSlash = useCallback((command: string) => {
+    const ws = getWebSocket();
+    const path = useStore.getState().currentSessionPath;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !path) return;
+    ws.send(JSON.stringify({ type: 'slash', text: command, sessionPath: path }));
+  }, []);
+  const [loopNow, setLoopNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!loopStatus?.alarmWakeAt || loopStatus.status !== 'running') return undefined;
+    const timer = window.setInterval(() => setLoopNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [loopStatus?.alarmWakeAt, loopStatus?.status]);
+  const loopBanner = loopStatus ? {
+    status: loopStatus.status,
+    label: t(loopStatus.status === 'paused' ? 'loop.bannerPaused' : 'loop.banner', {
+      current: String(loopStatus.turnCount),
+      max: String(loopStatus.maxTurns),
+      next: loopStatus.status === 'running' && loopStatus.alarmWakeAt
+        ? t('loop.next', { countdown: formatLoopCountdown(loopStatus.alarmWakeAt, loopNow) || '' })
+        : '',
+    }),
+  } : null;
   const currentModelInfo = sessionModelInfo || globalModelInfo;
   const availableThinkingLevels = useMemo(
     () => getModelThinkingLevels(currentModelInfo),
@@ -508,6 +542,22 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const permissionMode = useStore(s => s.sessionPermissionMode);
   const setPermissionMode = useStore(s => s.setSessionPermissionMode);
   const [sending, setSending] = useState(false);
+  const pendingAttachmentJobsRef = useRef(0);
+  const [attachmentsBusy, setAttachmentsBusy] = useState(false);
+  const beginAttachmentJob = useCallback(() => {
+    pendingAttachmentJobsRef.current += 1;
+    setAttachmentsBusy(true);
+  }, []);
+  const endAttachmentJob = useCallback(() => {
+    pendingAttachmentJobsRef.current = Math.max(0, pendingAttachmentJobsRef.current - 1);
+    if (pendingAttachmentJobsRef.current === 0) setAttachmentsBusy(false);
+  }, []);
+  const waitForPendingAttachments = useCallback(async (timeoutMs = 20_000) => {
+    const started = Date.now();
+    while (pendingAttachmentJobsRef.current > 0 && Date.now() - started < timeoutMs) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  }, []);
   const [slashMenuOpen, setSlashMenuOpen] = useState(false);
   const [slashSelected, setSlashSelected] = useState(0);
   const [slashBusy, setSlashBusy] = useState<string | null>(null);
@@ -969,8 +1019,9 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     }
     const files = Array.from(event.currentTarget.files || []);
     event.currentTarget.value = '';
+    if (files.length === 0) return;
+    beginAttachmentJob();
     try {
-      if (files.length === 0) return;
       if (useStore.getState().attachedFiles.length >= 9) return;
 
       for (const file of files) {
@@ -1030,9 +1081,10 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         }
       }
     } finally {
+      endAttachmentJob();
       restoreEditorFocus();
     }
-  }, [addAttachedFile, inputLocked, restoreEditorFocus, t]);
+  }, [addAttachedFile, beginAttachmentJob, endAttachmentJob, inputLocked, restoreEditorFocus, t]);
 
   const handleAttach = useCallback(async () => {
     if (inputLocked) return;
@@ -1467,7 +1519,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   // runtime，此窗口内发 prompt 会冷建第二个 runtime 与 reload 竞争（#1624 I2）。
   const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && !inputLocked
     && !modelSelectionRequired
-    && !capabilityRefreshing && !compacting;
+    && !capabilityRefreshing && !compacting && !attachmentsBusy && !sending;
 
   const loadVisionAuxiliaryConfig = useCallback(async () => {
     if (surface === 'mobile') {
@@ -1508,58 +1560,76 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         pathItems.push(filePath);
         nameMap[filePath] = file.name;
       }
-      if (pathItems.length > 0) {
-        e.preventDefault();
-        void Promise.resolve(attachFilesFromPaths(pathItems, nameMap)).catch((err) => {
-          console.warn('[paste] attach clipboard file paths failed', err);
-        });
-        return true;
-      }
-
+      const pastedImageFiles: File[] = [];
       for (const item of Array.from(items)) {
         if (!item.type.startsWith('image/')) continue;
-        e.preventDefault();
         const file = item.getAsFile();
-        if (!file) return true;
-        const reader = new FileReader();
-        reader.onload = async () => {
-          const dataUrl = reader.result as string;
-          const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
-          if (!match) return;
-          const [, mimeType, base64Data] = match;
-          const ext = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : (mimeType.split('/')[1] || 'png');
-          const name = `${t('input.pastedImage')}.${ext}`;
-          try {
-            const uploadPayload = await prepareChatImageUpload({
-              file,
-              name,
-              base64Data,
-              mimeType,
+        if (!file) continue;
+        if (window.platform?.getFilePath?.(file)) continue;
+        pastedImageFiles.push(file);
+      }
+      if (pathItems.length > 0 || pastedImageFiles.length > 0) {
+        e.preventDefault();
+        if (pathItems.length > 0) {
+          beginAttachmentJob();
+          void Promise.resolve(attachFilesFromPaths(pathItems, nameMap))
+            .catch((err) => {
+              console.warn('[paste] attach clipboard file paths failed', err);
+            })
+            .finally(() => {
+              endAttachmentJob();
             });
-            const res = await hanaFetch('/api/upload-blob', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                name: uploadPayload.name,
-                base64Data: uploadPayload.base64Data,
-                mimeType: uploadPayload.mimeType,
-                ...(useStore.getState().currentSessionPath ? { sessionPath: useStore.getState().currentSessionPath } : {}),
-              }),
-            });
-            const data = await res.json();
-            const upload = data?.uploads?.[0];
-            if (upload?.dest) {
-              addAttachedFile({ fileId: upload.fileId, path: upload.dest, name: upload.name || uploadPayload.name, isDirectory: false });
-            } else {
-              notifyPasteUploadFailure(t, upload?.error);
-              console.warn('[paste] upload-blob failed', upload?.error || data);
+        }
+        const uploadPastedImage = (file: File) => {
+          beginAttachmentJob();
+          const reader = new FileReader();
+          const finish = () => endAttachmentJob();
+          reader.onerror = () => {
+            notifyPasteUploadFailure(t, reader.error);
+            finish();
+          };
+          reader.onload = async () => {
+            try {
+              const dataUrl = reader.result as string;
+              const match = dataUrl.match(/^data:(image\/[^;]+);base64,(.+)$/);
+              if (!match) return;
+              const [, mimeType, base64Data] = match;
+              const ext = mimeType.split('/')[1] === 'jpeg' ? 'jpg' : (mimeType.split('/')[1] || 'png');
+              const name = `${t('input.pastedImage')}.${ext}`;
+              const uploadPayload = await prepareChatImageUpload({
+                file,
+                name,
+                base64Data,
+                mimeType,
+              });
+              const res = await hanaFetch('/api/upload-blob', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  name: uploadPayload.name,
+                  base64Data: uploadPayload.base64Data,
+                  mimeType: uploadPayload.mimeType,
+                  ...(useStore.getState().currentSessionPath ? { sessionPath: useStore.getState().currentSessionPath } : {}),
+                }),
+              });
+              const data = await res.json();
+              const upload = data?.uploads?.[0];
+              if (upload?.dest) {
+                addAttachedFile({ fileId: upload.fileId, path: upload.dest, name: upload.name || uploadPayload.name, isDirectory: false });
+              } else {
+                notifyPasteUploadFailure(t, upload?.error);
+                console.warn('[paste] upload-blob failed', upload?.error || data);
+              }
+            } catch (err) {
+              notifyPasteUploadFailure(t, err);
+              console.warn('[paste] upload-blob error', err);
+            } finally {
+              finish();
             }
-          } catch (err) {
-            notifyPasteUploadFailure(t, err);
-            console.warn('[paste] upload-blob error', err);
-          }
+          };
+          reader.readAsDataURL(file);
         };
-        reader.readAsDataURL(file);
+        for (const file of pastedImageFiles) uploadPastedImage(file);
         return true;
       }
     }
@@ -1571,7 +1641,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       return true;
     }
     return false;
-  }, [addAttachedFile, editor, inputLocked, t]);
+  }, [addAttachedFile, beginAttachmentJob, editor, endAttachmentJob, inputLocked, t]);
 
   pasteHandlerRef.current = handlePaste;
 
@@ -1691,6 +1761,13 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const submitEditorMessage = useCallback(async (type: 'prompt' | 'interject') => {
     if (inputLocked) return;
     if (!editor) return;
+    await waitForPendingAttachments();
+    if (pendingAttachmentJobsRef.current > 0) {
+      addToast(t('input.attachmentsStillUploading'), 'warning', 6000, {
+        dedupeKey: 'attachments-still-uploading',
+      });
+      return;
+    }
     const editorJson = editor.getJSON();
     const { text: rawText, skills, fileRefs, sessionRefs, agentMentions } = serializeEditor(editorJson);
     const text = rawText.trim();
@@ -1705,7 +1782,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     const clickedSessionRef: Readonly<SessionRef> | null = clickedSessionPath && clickedSessionId && clickedAgentId
       ? Object.freeze({ sessionId: clickedSessionId, sessionPath: clickedSessionPath, agentId: clickedAgentId })
       : null;
-    const clickedAttachedFiles = attachedFiles.map(file => ({ ...file }));
+    const clickedAttachedFiles = useStore.getState().attachedFiles.map(file => ({ ...file }));
     const clickedQuotes = clickState.quotedSelections.map(quote => ({ ...quote }));
     const clickedDocContextAttached = docContextAttached;
     const clickedDoc = currentDoc ? { ...currentDoc } : null;
@@ -1876,6 +1953,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const videoBase64Map = new Map<string, { base64Data: string; mimeType: string }>();
       const audioBase64Map = new Map<string, { base64Data: string; mimeType: string }>();
       // 单图读取失败同样不拦整条消息：该图退化为仅文件身份，显式提示（#1647）
+      // path-backed 附件仍要把像素发出去：0.451.0 服务端只吃 WS 里的 images，
+      // 光靠路径标记的话模型看不到图。新服务端会从磁盘补读，双边都能活。
       const imageFileOnlyPaths = new Set<string>();
       for (const img of imagesAsFileOnly ? [] : imageFiles) {
         try {
@@ -2062,7 +2141,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     } finally {
       setSending(false);
     }
-  }, [addToast, editor, inputLocked, attachedFiles, docContextAttached, connected, isStreaming, sending, currentDoc, clearAttachedFiles, clearAttachedFilesForSession, clearDraft, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, supportsVision, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t]);
+  }, [addToast, editor, inputLocked, docContextAttached, connected, isStreaming, sending, currentDoc, clearAttachedFiles, clearAttachedFilesForSession, clearDraft, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, supportsVision, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t, waitForPendingAttachments]);
 
   const handleSend = useCallback(async () => {
     await submitEditorMessage('prompt');
@@ -2233,6 +2312,10 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         modelUnavailableMessage={modelUnavailableMessage}
         slashResult={slashResult}
         onResultClick={(slashResult?.filePath || slashResult?.deskDir) ? handleSlashResultClick : undefined}
+        loopStatus={loopBanner}
+        onLoopStop={() => sendLoopSlash('/loop stop')}
+        onLoopPause={() => sendLoopSlash('/loop pause')}
+        onLoopResume={() => sendLoopSlash('/loop resume')}
       />
       <div className={styles['slash-menu-anchor']} ref={slashMenuRef}>
         {slashMenuOpen && filteredCommands.length > 0 && (

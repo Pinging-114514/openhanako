@@ -33,7 +33,7 @@ import { parseCSV, injectCopyButtons } from '../../utils/format';
 import { observeMarkdownRhythmSnap } from '../../utils/markdown-rhythm';
 import { fileIconSvg } from '../../utils/icons';
 import { openFilePreview } from '../../utils/file-preview';
-import { openInternalLink, resolveLinkTarget, type LinkOpenContext } from '../../utils/link-open';
+import { openLinkFromUserClick, resolveLinkTarget, type LinkOpenContext } from '../../utils/link-open';
 import { showError } from '../../utils/ui-helpers';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { useStore } from '../../stores';
@@ -532,7 +532,7 @@ function MarkdownPreview({ previewItem }: { previewItem: PreviewItem }) {
           return;
         }
       }
-      await openInternalLink(href, context);
+      await openLinkFromUserClick(href, context, event);
     })();
   }, [findAnchor, linkContext]);
 

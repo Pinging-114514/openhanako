@@ -89,6 +89,15 @@ const REMINDER_HEADER_LINE_RE = /^\[hana_reminder(?: at \d{4}-\d{2}-\d{2} \d{2}:
  */
 export const ATTACHMENT_MARKER_RE = /^\[(attached_(?:image|video|audio):[^\]]+)\]\s*$/;
 export const SESSION_FILE_MARKER_RE = /^\[SessionFile\]\s+\{.*\}\s*$/;
+export const IMAGE_DIMENSION_NOTE_LINE_RE =
+  /^<file name="image-\d+">\[Image: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+(?:\.\d+)? to map to original image\.\]<\/file>$/;
+
+export function isPromptMediaEnvelopeLine(line: string): boolean {
+  const trimmed = String(line || "").trim();
+  return ATTACHMENT_MARKER_RE.test(trimmed)
+    || SESSION_FILE_MARKER_RE.test(trimmed)
+    || IMAGE_DIMENSION_NOTE_LINE_RE.test(trimmed);
+}
 
 const BLOCK_BODY_CHAR_LIMIT = 300;
 
@@ -145,7 +154,8 @@ export function stripSessionReminderBlocks(value: unknown): string {
 /**
  * The text the user actually typed, with everything the submit path prepended
  * removed: the model-only envelopes above, plus the attachment and session-file
- * markers that stand in for the files carried alongside the message.
+ * markers that stand in for the files carried alongside the message, plus
+ * the `<file name="image-N">` dimension notes injected for model coordinates.
  *
  * Consumers that summarize, title, or otherwise reason about the user's own
  * words compose this instead of reading the raw prompt, so a new envelope shape
@@ -156,12 +166,51 @@ export function visiblePromptText(value: unknown): string {
   if (!withoutBlocks) return "";
   return withoutBlocks
     .split(/\r?\n/)
-    .filter((line) => {
-      const trimmed = line.trim();
-      return !ATTACHMENT_MARKER_RE.test(trimmed) && !SESSION_FILE_MARKER_RE.test(trimmed);
-    })
+    .filter((line) => !isPromptMediaEnvelopeLine(line))
     .join("\n")
     .trim();
+}
+
+/**
+ * Leading model-only envelope: reminder/reference blocks, then media markers
+ * (`[attached_*]`, `[SessionFile]`, `<file name="image-N">` dimension notes).
+ * Callers that edit visible text keep this prefix instead of reconstructing it.
+ */
+export function leadingPromptEnvelope(text: unknown): string {
+  const lines = String(text || "").split(/\r?\n/);
+  const kept: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    const header = lines[index];
+    const closing = header.startsWith(REMINDER_BLOCK_PREFIX)
+      ? REMINDER_BLOCK_END
+      : header.trim() === REFERENCE_BLOCK_PREFIX
+        ? REFERENCE_BLOCK_END
+        : null;
+    if (!closing) break;
+    while (index < lines.length) {
+      const line = lines[index++];
+      kept.push(line);
+      if (line.trim() === closing) break;
+    }
+    while (index < lines.length && !lines[index].trim()) kept.push(lines[index++]);
+  }
+  while (index < lines.length) {
+    const line = lines[index];
+    const trimmed = line.trim();
+    if (isPromptMediaEnvelopeLine(line)) {
+      kept.push(line);
+      index += 1;
+      continue;
+    }
+    if (!trimmed && kept.length > 0) {
+      kept.push(line);
+      index += 1;
+      continue;
+    }
+    break;
+  }
+  return kept.length ? `${kept.join("\n")}\n` : "";
 }
 
 /** Projects a persisted message for display without mutating the JSONL truth. */

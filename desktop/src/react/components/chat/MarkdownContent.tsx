@@ -12,7 +12,7 @@ import { memo, useCallback, useMemo, useRef, useLayoutEffect, useState, type Mou
 import { renderCodeBlockToolbarHtml, type CodeBlockToolbarLabels } from '../../utils/format';
 import { useMermaidDiagrams } from '../../hooks/use-mermaid-diagrams';
 import { splitGraphemes } from '../../utils/grapheme';
-import { openInternalLink, resolveLinkTarget, type LinkOpenContext } from '../../utils/link-open';
+import { openLinkFromUserClick, resolveLinkTarget, type LinkOpenContext } from '../../utils/link-open';
 import { LinkContextMenu, type LinkContextMenuState } from '../shared/LinkContextMenu';
 import styles from './Chat.module.css';
 
@@ -219,7 +219,7 @@ export const MarkdownContent = memo(function MarkdownContent({ html, className, 
     if (resolveLinkTarget(href, context).kind === 'anchor') return;
     event.preventDefault();
     event.stopPropagation();
-    void openInternalLink(href, context);
+    void openLinkFromUserClick(href, context, event);
   }, [findAnchor, handleCodeBlockToolbarClick, linkContext]);
 
   const handleContextMenu = useCallback((event: MouseEvent) => {

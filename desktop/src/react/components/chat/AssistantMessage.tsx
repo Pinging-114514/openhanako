@@ -902,7 +902,7 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
   const label = draftLabel || (draftPrompt || '').slice(0, 40) || '';
   const schedulePreview = schedulePreviewFromDraft(scheduleDraft);
   const pending = status === 'pending';
-  const canOpenDraft = isSuggestionCard || pending;
+  const canOpenDraft = pending;
   const draftAgentId = typeof jobData.actorAgentId === 'string' && jobData.actorAgentId.trim()
     ? jobData.actorAgentId.trim()
     : typeof jobData.executor?.agentId === 'string' && jobData.executor.agentId.trim()
@@ -1046,6 +1046,12 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
       }
       setStatus('approved');
       setModalOpen(false);
+      const suggestionId = block.suggestionId || block.detail?.suggestionId;
+      if (typeof sessionPath === 'string' && sessionPath && typeof suggestionId === 'string' && suggestionId.trim()) {
+        useStore.getState().setSuggestionCardStatus?.(sessionPath, suggestionId.trim(), 'approved');
+      }
+      const successKey = operation === 'update' ? 'automation.updateSuccess' : 'automation.createSuccess';
+      addToast(window.t(successKey, { label: label || window.t('automation.draftTitle') }), 'success');
     } catch (err) {
       const prefix = window.t('automation.createFailed');
       const detail = err instanceof AutomationSubmissionError ? err.message.trim() : '';
@@ -1078,10 +1084,14 @@ const CronConfirmBlock = memo(function CronConfirmBlock({ block, sessionPath }: 
       icon={<AutomationDraftIcon />}
       title={label || window.t('automation.draftTitle')}
       titleMeta={!isSuggestionCard && pending ? window.t('automation.suggested') : undefined}
-      titleTail={isSuggestionCard ? window.t('automation.viewSuggestion') : undefined}
+      titleTail={isSuggestionCard && pending ? window.t('automation.viewSuggestion') : undefined}
       subtitle={`${agentInfo.displayName} · ${schedulePreview}`}
-      statusLabel={!isSuggestionCard && !pending ? (status === 'approved' ? window.t('common.approved') : window.t('common.rejected')) : undefined}
-      statusTone={!isSuggestionCard && !pending ? (status === 'approved' ? 'success' : 'muted') : 'accent'}
+      statusLabel={!pending ? (
+        status === 'approved'
+          ? window.t('cron.confirm.created')
+          : window.t('cron.confirm.rejected')
+      ) : undefined}
+      statusTone={!pending ? (status === 'approved' ? 'success' : 'muted') : 'accent'}
       onClick={canOpenDraft ? () => setModalOpen(true) : undefined}
       ariaLabel={window.t('automation.openDraft')}
       className={styles.automationDraftCard}

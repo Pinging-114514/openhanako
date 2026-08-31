@@ -922,6 +922,43 @@
     background: color-mix(in srgb, var(--panel-card-bg) 96%, var(--text) 4%);
 }
 
+.loop-status-bar {
+    justify-content: space-between;
+    gap: var(--space-8);
+    color: var(--accent);
+}
+.loop-status-bar .slash-busy-dot {
+    display: none;
+}
+.loop-status-text {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.loop-status-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex: 0 0 auto;
+}
+.loop-status-button {
+    border: 0;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: var(--fs-caption);
+    padding: 2px 6px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+}
+.loop-status-button:hover,
+.loop-status-button:focus-visible {
+    color: var(--text);
+    background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+
 .slash-busy-dot {
     width: 6px;
     height: 6px;

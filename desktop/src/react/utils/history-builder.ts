@@ -16,6 +16,7 @@ import { parseUserAttachments } from './message-parser';
 import { renderMarkdown } from './markdown';
 import { extOfName } from './file-kind';
 import { buildAssistantBlocksFromContent } from './assistant-block-builder';
+import { IMAGE_DIMENSION_NOTE_LINE_RE } from '../../../../core/session-reminders.ts';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- API 历史消息 JSON 结构动态，难以静态收窄 */
 
@@ -43,8 +44,6 @@ const MEDIA_ONLY_PLACEHOLDER_TEXT = new Set([
 
 // 历史里可能残留 provider/model 边界注入的图片尺寸提示。
 // 这类 <file name="image-N"> 行只服务于模型坐标换算，不属于用户输入的可见正文。
-const LEGACY_IMAGE_DIMENSION_NOTE_LINE_RE =
-  /^<file name="image-\d+">\[Image: original \d+x\d+, displayed at \d+x\d+\. Multiply coordinates by \d+(?:\.\d+)? to map to original image\.\]<\/file>$/;
 
 // ── API 响应类型 ──
 
@@ -317,7 +316,7 @@ function normalizeUserVisibleText(text: string, hasMediaAttachment: boolean): st
   if (!hasMediaAttachment) return text;
   const withoutLegacyImageNotes = text
     .split(/\r?\n/)
-    .filter(line => !LEGACY_IMAGE_DIMENSION_NOTE_LINE_RE.test(line.trim()))
+    .filter(line => !IMAGE_DIMENSION_NOTE_LINE_RE.test(line.trim()))
     .join('\n')
     .trim();
   const trimmed = withoutLegacyImageNotes.trim();
@@ -511,15 +510,30 @@ export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] 
     const id = m.id || `hist-${i}`;
     const timestamp = normalizeHistoryTimestamp(m.timestamp);
 
+    if (m.role === 'loop') {
+      const text = nonEmptyString(m.displayText) || nonEmptyString(m.content) || '';
+      if (!text) continue;
+      items.push({
+        type: 'interlude',
+        id,
+        data: {
+          type: 'interlude',
+          id,
+          variant: 'loop',
+          text,
+        },
+      });
+      continue;
+    }
     if (m.role === 'user') {
-      // 跨 session 协作：非用户本人发出的消息带 origin，此时以 displayText（干净正文，
-      // 不含模型侧身份前缀）为准；老消息没有这两个字段，走既有 content 管道，行为不变。
+      // 跨 session 协作：displayText 只覆盖可见正文。附件 / SessionFile / attached_* 标记
+      // 永远从 persisted content 解析，否则带 origin / sessionRefs 的历史会把图弄丢。
       const origin = (m as any).origin;
-      const originDisplayText = (origin || m.agentReview || m.agentReviewRequest || m.sessionRefs?.length)
-        && typeof m.displayText === 'string' ? m.displayText : null;
+      const preferDisplayText = !!(origin || m.agentReview || m.agentReviewRequest || m.sessionRefs?.length)
+        && typeof m.displayText === 'string';
 
       // strip steer 前缀（内部标记，不应展示给用户）
-      const rawContent = (originDisplayText ?? (m.content || ''))
+      const rawContent = (m.content || '')
         .replace(LEGACY_STEER_PREFIX_RE, '')
         .replace(/^<t>[^<]*<\/t>\s*/, '');
 
@@ -530,7 +544,8 @@ export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] 
 
       const { text, files, attachedImages, attachedVideos, attachedAudios, sessionFileRefs, deskContext, quotedText } = parseUserAttachments(rawContent);
       const hasMarkerMedia = attachedImages.length > 0 || attachedVideos.length > 0 || attachedAudios.length > 0;
-      const visibleText = normalizeUserVisibleText(text, hasMarkerMedia);
+      const visibleSource = preferDisplayText ? String(m.displayText || '') : text;
+      const visibleText = normalizeUserVisibleText(visibleSource, hasMarkerMedia);
       const consumedSessionFileMarkers = new Set<number>();
       const fileAtts = files.map((f) => {
         const marker = consumeSessionFileMarkerForAttachment(sessionFileRefs, consumedSessionFileMarkers, f);

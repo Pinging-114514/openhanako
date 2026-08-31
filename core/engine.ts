@@ -50,6 +50,7 @@ import { getFreshCompactNoopReason } from "../lib/fresh-compact/policy.ts";
 import { DeferredResultCoordinator } from "../lib/deferred-result-coordinator.ts";
 import { LoopAlarmService } from "../lib/loop/alarm-service.ts";
 import { LoopController } from "../lib/loop/loop-controller.ts";
+import { publicLoopSnapshot } from "../lib/loop/loop-store.ts";
 import {
   getToolSessionPath,
   normalizeToolRuntimeContext,
@@ -889,6 +890,7 @@ export class HanaEngine {
       deliverLoopMessage: (target, message) => {
         if (target.kind === "desktop") {
           const sessionPath = resolveDesktopPath(target.sessionId);
+          this._emitLoopInterlude(sessionPath, message);
           return this._sessionCoord.deliverCustomMessage(sessionPath, message, { triggerTurn: true });
         }
         const hooks = requireBridgeHooks();
@@ -900,6 +902,7 @@ export class HanaEngine {
       recordNotice: (target, message) => {
         if (target.kind === "desktop") {
           const sessionPath = resolveDesktopPath(target.sessionId);
+          this._emitLoopInterlude(sessionPath, message);
           return this._sessionCoord.deliverCustomMessage(sessionPath, message, { triggerTurn: false });
         }
         return requireBridgeHooks().sendNotice(target.sessionKey, target.agentId, message.content);
@@ -945,9 +948,36 @@ export class HanaEngine {
     controller.attachAlarm(alarm);
     this._loopAlarm = alarm;
     this._loopController = controller;
+    store.setOnChange?.((loop) => {
+      try {
+        const sessionPath = resolveTargetSessionPathSoft(loop?.target);
+        if (!sessionPath) return;
+        this._emitEvent({
+          type: "loop_status",
+          sessionId: loop?.target?.sessionId || null,
+          loop: publicLoopSnapshot(loop),
+        }, sessionPath);
+      } catch (err: any) {
+        console.warn(`[loop] status emit failed: ${err?.message || err}`);
+      }
+    });
   }
 
   get loopController() { return this._loopController; }
+
+  _emitLoopInterlude(sessionPath, message) {
+    const text = typeof message?.details?.displayText === "string" ? message.details.displayText.trim() : "";
+    if (!sessionPath || !text) return;
+    this._emitEvent({
+      type: "content_block",
+      block: {
+        type: "interlude",
+        id: `loop:${message.details?.kind || "notice"}:${Date.now()}`,
+        variant: "loop",
+        text,
+      },
+    }, sessionPath);
+  }
 
   setSubagentRunStore(store) {
     this._subagentRunStore = store || null;

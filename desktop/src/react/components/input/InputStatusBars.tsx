@@ -20,6 +20,13 @@ interface Props {
   modelUnavailableMessage?: string | null;
   slashResult: { text: string; type: 'success' | 'error'; deskDir?: string; filePath?: string } | null;
   onResultClick: (() => void) | undefined;
+  loopStatus?: {
+    status: string;
+    label: string;
+  } | null;
+  onLoopStop?: () => void;
+  onLoopPause?: () => void;
+  onLoopResume?: () => void;
 }
 
 /** 输入区域上方的状态提示条（slash 执行中 / 压缩中 / 错误 / 结果） */
@@ -27,6 +34,7 @@ export const InputStatusBars = memo(function InputStatusBars({
   slashBusy, slashBusyLabel, compacting, compactingLabel,
   screenshotBusy, screenshotLabel, screenshotPageLabel, screenshotProgress,
   inlineError, modelUnavailableMessage = null, slashResult, onResultClick,
+  loopStatus = null, onLoopStop, onLoopPause, onLoopResume,
 }: Props) {
   const completedBlocks = screenshotProgress?.completedBlocks ?? 0;
   const totalBlocks = screenshotProgress?.totalBlocks ?? 0;
@@ -53,6 +61,26 @@ export const InputStatusBars = memo(function InputStatusBars({
         <div className={styles['slash-busy-bar']}>
           <span className={styles['slash-busy-dot']} />
           <span>{compactingLabel}</span>
+        </div>
+      )}
+      {loopStatus && (
+        <div className={`${styles['slash-busy-bar']} ${styles['loop-status-bar']}`}>
+          <span className={styles['slash-busy-dot']} />
+          <span className={styles['loop-status-text']}>{loopStatus.label}</span>
+          <span className={styles['loop-status-actions']}>
+            {loopStatus.status === 'paused' ? (
+              <button type="button" className={styles['loop-status-button']} onClick={onLoopResume}>
+                {t('loop.resume')}
+              </button>
+            ) : (
+              <button type="button" className={styles['loop-status-button']} onClick={onLoopPause}>
+                {t('loop.pause')}
+              </button>
+            )}
+            <button type="button" className={styles['loop-status-button']} onClick={onLoopStop}>
+              {t('loop.stop')}
+            </button>
+          </span>
         </div>
       )}
       {screenshotBusy && (

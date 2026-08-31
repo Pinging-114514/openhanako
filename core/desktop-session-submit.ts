@@ -28,7 +28,9 @@
  * @returns {Promise<{ text: string | null, toolMedia: string[] }>}
  */
 import path from "path";
-import { extOfName, inferFileKind } from "../lib/file-metadata.ts";
+import fsp from "fs/promises";
+import { Buffer } from "node:buffer";
+import { detectMime, extOfName, inferFileKind } from "../lib/file-metadata.ts";
 import { collectMediaItems } from "../lib/tools/media-details.ts";
 import { formatSettingsUpdateText } from "../lib/tools/settings-update-result.ts";
 import { createVisibleTextAccumulator } from "../lib/bridge/visible-text-accumulator.ts";
@@ -221,7 +223,9 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
     throw new Error("desktop-session-submit: engine session API unavailable");
   }
   const { sessionId, sessionPath } = resolveDesktopSessionTarget(engine, requestedSessionId, requestedSessionPath);
-  if (!text && !images?.length && !videos?.length && !audios?.length) throw new Error("desktop-session-submit: text, images, videos, or audios required");
+  if (isEmptyDesktopSessionPayload(opts)) {
+    throw new Error("desktop-session-submit: text, images, videos, or audios required");
+  }
   const submissionKey = sessionId || sessionPath;
   if (pendingDesktopSessionSubmissions.has(submissionKey)) {
     throw new Error("session_busy");
@@ -391,10 +395,31 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
     });
 
     try {
+      const promptImages = await completePromptMediaFromPaths({
+        existing: images,
+        paths: promptImageAttachmentPaths,
+        kind: "image",
+        engine,
+        sessionPath,
+      });
+      const promptVideos = await completePromptMediaFromPaths({
+        existing: videos,
+        paths: promptVideoAttachmentPaths,
+        kind: "video",
+        engine,
+        sessionPath,
+      });
+      const promptAudios = await completePromptMediaFromPaths({
+        existing: audios,
+        paths: promptAudioAttachmentPaths,
+        kind: "audio",
+        engine,
+        sessionPath,
+      });
       const promptOpts = buildPromptOptions({
-        images,
-        videos,
-        audios,
+        images: promptImages,
+        videos: promptVideos,
+        audios: promptAudios,
         promptImageAttachmentPaths,
         promptVideoAttachmentPaths,
         promptAudioAttachmentPaths,
@@ -510,7 +535,9 @@ export async function submitDesktopSessionInterjection(engine: any, opts: {
     throw new Error("desktop-session-submit: engine interjection API unavailable");
   }
   const { sessionId, sessionPath } = resolveDesktopSessionTarget(engine, requestedSessionId, requestedSessionPath);
-  if (!text && !images?.length && !videos?.length && !audios?.length) throw new Error("desktop-session-submit: text, images, videos, or audios required");
+  if (isEmptyDesktopSessionPayload(opts)) {
+    throw new Error("desktop-session-submit: text, images, videos, or audios required");
+  }
 
   if (typeof engine.isSessionStreaming === "function" && !engine.isSessionStreaming(sessionPath)) {
     return submitDesktopSessionMessage(engine, opts);
@@ -632,6 +659,65 @@ export async function submitDesktopSessionInterjection(engine: any, opts: {
   );
   recordMessageOriginEntry(session, sessionPath, displayMessage);
   return { text: null, toolMedia: [], steered: true };
+}
+
+function isEmptyDesktopSessionPayload(opts: {
+  text?: string;
+  images?: unknown[];
+  videos?: unknown[];
+  audios?: unknown[];
+  imageAttachmentPaths?: unknown[];
+  videoAttachmentPaths?: unknown[];
+  audioAttachmentPaths?: unknown[];
+  inboundFiles?: unknown[];
+  displayMessage?: { attachments?: unknown[] };
+} = {}) {
+  return !opts.text
+    && !opts.images?.length
+    && !opts.videos?.length
+    && !opts.audios?.length
+    && !opts.imageAttachmentPaths?.length
+    && !opts.videoAttachmentPaths?.length
+    && !opts.audioAttachmentPaths?.length
+    && !opts.inboundFiles?.length
+    && !opts.displayMessage?.attachments?.length;
+}
+
+async function completePromptMediaFromPaths({
+  existing,
+  paths,
+  kind,
+  engine,
+  sessionPath,
+}: {
+  existing?: Array<{ type: string; data: string; mimeType: string }>;
+  paths?: string[];
+  kind: "image" | "video" | "audio";
+  engine?: any;
+  sessionPath?: string;
+}) {
+  const payloads = [...(existing || [])];
+  const missingPaths = uniquePaths(paths).slice(payloads.length);
+  if (!missingPaths.length) return payloads.length ? payloads : existing;
+  const fallbackMime = kind === "video" ? "video/mp4" : kind === "audio" ? "audio/wav" : "image/png";
+  for (const markerPath of missingPaths) {
+    const activeFile = engine?.resolveActiveSessionFile?.({
+      filePath: markerPath,
+      sessionPath: sessionPath || null,
+    }) || null;
+    const bytesPath = activeFile?.realPath || activeFile?.filePath || markerPath;
+    try {
+      const bytes = Buffer.from(await fsp.readFile(bytesPath));
+      payloads.push({
+        type: kind,
+        data: bytes.toString("base64"),
+        mimeType: detectMime(bytes, fallbackMime, markerPath),
+      });
+    } catch (err) {
+      console.warn(`[desktop-session-submit] failed to read ${kind} attachment ${bytesPath}: ${(err as any)?.message || err}`);
+    }
+  }
+  return payloads;
 }
 
 function buildPromptOptions({

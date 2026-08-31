@@ -134,4 +134,12 @@ describe("local startup contract", () => {
     expect(buildServerPhases).toContain('externalPackageNames.includes("better-sqlite3")');
     expect(buildServerPhases).toContain("buildBetterSqliteRuntimeSmokeScript()");
   });
+
+  it("server bundle does not minify identifiers and is syntax-checked after copy", () => {
+    // 0.451.0 shipped a SyntaxError: IUe declared as both createMemoryTicker
+    // and XAI_OAUTH_SEARCH_INSTRUCTIONS in the single-file ESM bundle.
+    expect(viteServerConfig.esbuild?.minifyIdentifiers).toBe(false);
+    const buildServerPhases = fs.readFileSync(path.join(ROOT, "scripts", "build-server-phases.mjs"), "utf-8");
+    expect(buildServerPhases).toContain('node --check "${bundlePath}"');
+  });
 });

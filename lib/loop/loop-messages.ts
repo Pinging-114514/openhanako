@@ -8,6 +8,24 @@
 export const LOOP_TURN_MESSAGE_TYPE = "loop-turn";
 export const LOOP_NOTICE_MESSAGE_TYPE = "loop-notice";
 
+export function loopDisplayTextForKickoff(loop) {
+  const maxTurns = loop?.limits?.maxTurns;
+  const task = typeof loop?.prompt === "string" ? loop.prompt.trim() : "";
+  const budget = Number.isFinite(maxTurns) ? `预算 ${maxTurns} 轮` : "循环已启动";
+  return task ? `↻ 循环已启动 · ${budget} · ${task}` : `↻ 循环已启动 · ${budget}`;
+}
+
+export function loopDisplayTextForWakeup(loop) {
+  const maxTurns = Number(loop?.limits?.maxTurns) || 0;
+  const current = (Number(loop?.turnCount) || 0) + 1;
+  return `↻ 循环 · 第 ${current}/${maxTurns || "?"} 轮`;
+}
+
+export function loopDisplayTextForNotice(text) {
+  const raw = String(text || "").trim().replace(/^（/, "").replace(/）$/, "");
+  return raw ? `↻ ${raw}` : "";
+}
+
 export function buildLoopKickoffMessage(loop) {
   const { maxTurns, maxConsecutiveFailures } = loop.limits;
   const content = [
@@ -27,7 +45,7 @@ export function buildLoopKickoffMessage(loop) {
     customType: LOOP_TURN_MESSAGE_TYPE,
     content,
     display: false,
-    details: { schemaVersion: 1, kind: "kickoff" },
+    details: { schemaVersion: 1, kind: "kickoff", displayText: loopDisplayTextForKickoff(loop) },
   };
 }
 
@@ -44,7 +62,7 @@ export function buildLoopWakeupMessage(loop, reason) {
     customType: LOOP_TURN_MESSAGE_TYPE,
     content,
     display: false,
-    details: { schemaVersion: 1, kind: "wakeup" },
+    details: { schemaVersion: 1, kind: "wakeup", displayText: loopDisplayTextForWakeup(loop) },
   };
 }
 
@@ -53,6 +71,6 @@ export function buildLoopNoticeMessage(text) {
     customType: LOOP_NOTICE_MESSAGE_TYPE,
     content: text,
     display: false,
-    details: { schemaVersion: 1, kind: "notice" },
+    details: { schemaVersion: 1, kind: "notice", displayText: loopDisplayTextForNotice(text) },
   };
 }

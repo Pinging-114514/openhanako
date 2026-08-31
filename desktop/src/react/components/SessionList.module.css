@@ -152,6 +152,13 @@
     overflow: hidden;
 }
 
+.sessionSearchMark {
+    background: color-mix(in srgb, var(--accent) 28%, transparent);
+    color: inherit;
+    padding: 0 1px;
+    border-radius: 2px;
+}
+
 .sessionSearchStatus,
 .sessionSearchEmpty {
     padding: 10px var(--space-8);

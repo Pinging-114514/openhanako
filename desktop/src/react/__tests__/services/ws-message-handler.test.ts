@@ -1245,6 +1245,29 @@ describe('ws-message-handler compaction lifecycle', () => {
       percent: null,
     });
   });
+
+  it('keeps the last known context fill after a stop leaves tokens unknown', () => {
+    handleServerMessage({
+      type: 'context_usage',
+      sessionPath: '/session/a.jsonl',
+      tokens: 80_000,
+      contextWindow: 200_000,
+      percent: 40,
+    });
+    handleServerMessage({
+      type: 'context_usage',
+      sessionPath: '/session/a.jsonl',
+      tokens: null,
+      contextWindow: 200_000,
+      percent: null,
+    });
+
+    expect(useStore.getState().contextBySession['/session/a.jsonl']).toEqual({
+      tokens: 80_000,
+      window: 200_000,
+      percent: 40,
+    });
+  });
 });
 
 describe('ws-message-handler app events', () => {

@@ -1492,9 +1492,9 @@ export class Agent {
     // 网页工具选择优先级（跨工具编排，工具 description 里放不下）
     parts.push(isZh
       ? "\n## 网页工具优先级\n\n" +
-        "获取网页信息按此顺序选择工具：1. **web_search** 查找信息、获取 URL；2. **web_fetch** 已知 URL、提取页面文字；3. **browser** 仅当页面需要登录、需要填表或点击交互、web_fetch 内容为空或不完整（JS 动态渲染）、或需要查看视觉布局时使用。前两者能完成时禁止启动浏览器。"
+        "获取信息按此顺序选择工具：1. **web_search** 搜公开网页，拿标题、链接、摘要，不含 X；2. **x_search** 只在需要 X/Twitter 上的帖子、账号或讨论时由你自己决定调用，普通网页事实不要搜 X；3. **web_fetch** 已知 URL、提取页面文字；4. **browser** 仅当需要登录、填表、点击，或 web_fetch 拿不全时。web_search 能完成时禁止启动浏览器。"
       : "\n## Web Tool Priority\n\n" +
-        "Choose web tools in this order: 1. **web_search** to find information and URLs; 2. **web_fetch** to extract text from a known URL; 3. **browser** only when the page requires login, form filling or click interaction, web_fetch returns empty or incomplete content (JS-rendered), or you need the visual layout. Never launch the browser when the first two suffice."
+        "Choose tools in this order: 1. **web_search** for public web titles, URLs, and snippets (not X); 2. **x_search** only when you decide the user needs posts, accounts, or discussion from X/Twitter; 3. **web_fetch** to extract text from a known URL; 4. **browser** only when login, forms, clicks, or incomplete fetches require it. Never launch the browser when web_search/web_fetch suffice."
     );
 
     // 主动技能获取引导（仅在 allow_github_fetch 开启时注入）

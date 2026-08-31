@@ -49,7 +49,7 @@ describe('SessionSearchItem click routing', () => {
   });
 
   it('routes content match hits through locateSearchHit with the query, not switchSession', () => {
-    const result = makeResult({ matchKind: 'content' });
+    const result = makeResult({ matchKind: 'content', snippet: '这里在排查渠道 401' });
     render(
       <SessionSearchItem result={result as never} isActive={false} agents={[]} query="排查" />,
     );
@@ -58,6 +58,7 @@ describe('SessionSearchItem click routing', () => {
 
     expect(locateSearchHitMock).toHaveBeenCalledWith(result.path, '排查');
     expect(switchSessionMock).not.toHaveBeenCalled();
+    expect(screen.getByText('排查').tagName).toBe('MARK');
   });
 
   it('routes title match hits through switchSession, not locateSearchHit', () => {

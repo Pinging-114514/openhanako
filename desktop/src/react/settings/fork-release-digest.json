@@ -3,6 +3,227 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.452.0",
+      "version": "0.452.0",
+      "previousTag": "v0.451.0",
+      "generatedAt": "2026-08-31T08:53:23.000Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "网页搜索改用 Grok 4.1 快模型、并发 4，X 搜索拆成独立工具。后开梯子也能跟上系统代理。侧栏能搜对话，发图、半小时定时、按停圆环这些坑也收了。",
+        "en": "Web search now uses Grok 4.1 Fast without reasoning, with concurrency 4, and X search is a separate tool. System proxy is picked up if the VPN starts later. Sidebar search, image send, 30-minute schedules, and the abort context ring are fixed."
+      },
+      "counts": {
+        "feature": 3,
+        "fix": 5,
+        "improvement": 1,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.451.0..v0.452.0",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.452.0",
+        "releaseNotes": ""
+      },
+      "items": [
+        {
+          "id": "xai-search-retriever",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "网页搜索更快，X 搜索改独立",
+            "en": "Faster web search, separate X search"
+          },
+          "summary": {
+            "zh": "web_search 改走 grok-4-1-fast-non-reasoning，并发 4，只搜公开网页。要不要搜 X 由模型自己调 x_search。",
+            "en": "web_search uses grok-4-1-fast-non-reasoning at concurrency 4 and only covers the public web. The model calls x_search on its own when X posts are needed."
+          },
+          "details": [
+            {
+              "zh": "不再跟聊天用的 grok-4.6 绑在一起，也不再顺手开看图和 X 搜索。",
+              "en": "Search is no longer bound to chat grok-4.6, and no longer piggybacks image understanding or X search."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "xai search retriever"
+            }
+          ]
+        },
+        {
+          "id": "system-proxy-follow",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "后开梯子，系统代理会跟上",
+            "en": "System proxy follows if the VPN starts later"
+          },
+          "summary": {
+            "zh": "不再只在开机问一次代理。Windows 系统代理变了会补上环境变量，OAuth 用的 fetch 也走代理。",
+            "en": "Proxy is no longer frozen at spawn. Windows system proxy changes are stamped into the process, and OAuth fetch uses the proxy too."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "system proxy follow"
+            }
+          ]
+        },
+        {
+          "id": "loop-turns",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "/loop 可限定轮数",
+            "en": "/loop can cap turns"
+          },
+          "summary": {
+            "zh": "/loop --turns N 限制循环次数，输入栏有循环状态条。",
+            "en": "/loop --turns N caps the loop, and the composer shows a loop status bar."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "loop turns"
+            }
+          ]
+        },
+        {
+          "id": "sidebar-search",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "侧栏能搜标题和对话",
+            "en": "Sidebar searches titles and transcripts"
+          },
+          "summary": {
+            "zh": "侧栏搜索会高亮命中，空标题也有文案。",
+            "en": "Sidebar search highlights hits and labels untitled chats."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "sidebar search"
+            }
+          ]
+        },
+        {
+          "id": "image-send",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "发图会把像素送给模型",
+            "en": "Pasted images send pixels to the model"
+          },
+          "summary": {
+            "zh": "修掉只传路径、服务端收到 0 张图的问题。",
+            "en": "Fixes the path-only skip that made the server receive 0 images."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "image send"
+            }
+          ]
+        },
+        {
+          "id": "cron-half-hour",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "30 分钟定时不再显示成每小时",
+            "en": "30-minute jobs no longer read as hourly"
+          },
+          "summary": {
+            "zh": "半小时任务按分钟显示，不再四舍五入成 1 小时。",
+            "en": "Half-hour jobs stay in minutes instead of rounding to 1 hour."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "cron humanize"
+            }
+          ]
+        },
+        {
+          "id": "context-ring-abort",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "按停不再抹掉上下文圆环",
+            "en": "Abort no longer clears the context ring"
+          },
+          "summary": {
+            "zh": "中止后仍保留上一刀已知用量，圆环不会被空值盖掉。",
+            "en": "Abort keeps the last known token usage instead of overwriting it with null."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "context ring abort"
+            }
+          ]
+        },
+        {
+          "id": "observational-jsonl",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "观察压缩会去读会话文件",
+            "en": "Observational compaction reads the session file"
+          },
+          "summary": {
+            "zh": "装订笔记时不只翻内存树枝，也会读 jsonl 里已经记下的观察。",
+            "en": "Prepared notes are collected from the session jsonl, not only the in-memory branch."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "observational jsonl"
+            }
+          ]
+        },
+        {
+          "id": "automation-created-badge",
+          "kind": "improvement",
+          "importance": "low",
+          "title": {
+            "zh": "定时建议确认后显示已创建",
+            "en": "Schedule suggestions show created after confirm"
+          },
+          "summary": {
+            "zh": "点确认后卡片变成已创建，并弹出提示。",
+            "en": "After confirm, the card shows created and toasts."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "automation created badge"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.451.0",
       "version": "0.451.0",
       "previousTag": "v0.447.9",

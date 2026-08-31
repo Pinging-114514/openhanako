@@ -151,12 +151,13 @@
     "toggle": "サイドバー",
     "bridgeShort": "連携",
     "pinned": "ピン留め",
-    "searchPlaceholder": "チャットを検索",
+    "searchPlaceholder": "タイトルと会話を検索",
     "searchClear": "検索をクリア",
     "searchTitleMatches": "タイトル",
-    "searchContentMatches": "本文",
+    "searchContentMatches": "会話本文",
     "searchingTitles": "タイトルを検索中…",
-    "searchingContent": "本文を検索中…",
+    "searchingContent": "会話を検索中…",
+    "searchingContentAfterEmptyTitles": "タイトルなし。会話を検索中…",
     "searchNoResults": "一致するチャットがありません",
     "searchFailed": "検索に失敗しました",
     "metaRecoveryNoticeTitle": "一部のチャットは復旧待ちです",
@@ -402,6 +403,7 @@
     "accessModeLocked": "現在アクセスモードを変更できません",
     "deskContext": "デスクのコンテキスト付き",
     "pastedImage": "貼り付け画像",
+    "attachmentsStillUploading": "添付ファイルをアップロード中です。少し待ってから送信してください。",
     "textModelImageFileOnly": "現在のモデルは画像を表示できず、補助ビジョンも有効になっていません。画像はファイルとして送信され、モデルにはファイルパスのみが見え、画像の内容は見えません。",
     "textModelVideoFileOnly": "現在のモデルは動画を直接表示できません。動画はファイルとして送信され、モデルにはファイルパスのみが見え、動画の内容は見えません。",
     "textModelAudioBlocked": "現在のモデルは音声入力に対応していません。音声対応モデルに切り替えてください。",
@@ -475,6 +477,14 @@
     "reviewSessionFallback": "{name} のレビュー会話",
     "interjectionUnavailable": "Agent レビューは割り込みとして送信できません。現在の返信が終わるまでお待ちください"
   },
+  "loop": {
+    "banner": "ループ {current}/{max} · {task}",
+    "bannerPaused": "ループ一時停止 {current}/{max} · {task}",
+    "paused": "一時停止",
+    "pause": "停止",
+    "resume": "再開",
+    "stop": "終了"
+  },
   "slash": {
     "diary": "今日の日記を書く",
     "diaryBusy": "日記を書いています...",
@@ -483,7 +493,7 @@
     "xing": "会話からスキルを作成",
     "compact": "コンテキストを圧縮",
     "compactBusy": "圧縮中...",
-    "loop": "このセッションでループタスクを実行",
+    "loop": "このセッションでループタスクを実行。--turns N で回数を指定",
     "commandError": "[コマンドエラー] {message}",
     "usage": "使い方: {usage}",
     "commandTimeout": "コマンドがタイムアウトしました（>{ms}ms）"
@@ -1718,7 +1728,7 @@
       "weeklyUnknown": "週間クォータを取得できません",
       "hoursRemaining": "{hours}時間ウィンドウ残り {remaining}%",
       "searchTools": "検索ツール",
-      "searchToolsHint": "オンにすると Hana の web_search が Grok OAuth 検索を使い、x_search（X 検索）も追加されます。週間クォータを消費します。"
+      "searchToolsHint": "オンにすると web_search は Grok でウェブ検索し、x_search は X 用の別ツールです。X を探すかはモデルが判断します。週間クォータを消費します。"
     },
     "api": {
       "title": "モデルと API",
@@ -2652,6 +2662,8 @@
     "promptPlaceholder": "{agent} にしてほしいことを書いてください",
     "promptRequired": "この自動化を有効にする前に、Agent にしてほしいことを書いてください。",
     "createFailed": "自動化の作成に失敗しました",
+    "createSuccess": "定期タスクを作成しました：{label}",
+    "updateSuccess": "定期タスクを更新しました：{label}",
     "agentRequired": "先に Agent を選択してください",
     "field": {
       "label": "名前",

@@ -1,7 +1,15 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { captureObservationalNotes, observationalCaptureModelRef } from "../lib/observational-compaction/capture-run.ts";
 import { observationsFromCaptureText } from "../lib/observational-compaction/capture.ts";
-import { foldObservationalNotes, parseObservationsJson, parseObservationsJsonResult } from "../lib/observational-compaction/ledger.ts";
+import {
+  collectObservationalNoteSources,
+  foldObservationalNotes,
+  parseObservationsJson,
+  parseObservationsJsonResult,
+} from "../lib/observational-compaction/ledger.ts";
 import { renderObservationalSummary } from "../lib/observational-compaction/render.ts";
 import { OBSERVATIONAL_NOTES_TYPE } from "../lib/observational-compaction/types.ts";
 
@@ -45,6 +53,39 @@ describe("observational compaction ledger", () => {
     expect(folded.coveredThroughEntryId).toBe("e2");
     expect(folded.observations.map((item) => item.content)).toContain("completed: added observational mode");
     expect(renderObservationalSummary(folded.observations)).toMatch(/## Observations/);
+  });
+
+  it("reads notes from the session jsonl even when memory only has the live tail", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-om-"));
+    const sessionPath = path.join(dir, "session.jsonl");
+    fs.writeFileSync(sessionPath, [
+      JSON.stringify({ type: "session", id: "s1" }),
+      JSON.stringify({
+        type: "custom",
+        customType: OBSERVATIONAL_NOTES_TYPE,
+        id: "note1",
+        data: {
+          schema: 1,
+          coveredThroughEntryId: "old",
+          observations: [
+            { id: "om_file", content: "Notes lived on disk behind the compaction cut", relevance: "high", timestamp: "2026-08-31" },
+          ],
+        },
+      }),
+      JSON.stringify({ id: "tail", type: "message", message: { role: "user", content: "continue" } }),
+    ].join("\n") + "\n", "utf8");
+    const sources = collectObservationalNoteSources({
+      sessionManager: {
+        getSessionFile: () => sessionPath,
+        getBranch: () => [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+      },
+      branchEntries: [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+    });
+    const folded = foldObservationalNotes(sources);
+    expect(folded.observations.map((item) => item.content)).toEqual([
+      "Notes lived on disk behind the compaction cut",
+    ]);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it("captures new notes from a conversation chunk", async () => {

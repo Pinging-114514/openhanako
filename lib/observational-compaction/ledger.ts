@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import {
   OBSERVATIONAL_NOTES_TYPE,
   isObservationRelevance,
@@ -29,6 +30,71 @@ export function normalizeObservation(raw: any, fallbackTimestamp: string): Obser
 
 export function nextObservationId(): string {
   return `om_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36).slice(-4)}`;
+}
+
+function callManagerList(sessionManager: any, method: string): any[] {
+  if (!sessionManager || typeof sessionManager[method] !== "function") return [];
+  try {
+    const result = sessionManager[method]();
+    return Array.isArray(result) ? result : [];
+  } catch {
+    return [];
+  }
+}
+
+function callManagerValue(sessionManager: any, method: string): unknown {
+  if (!sessionManager || typeof sessionManager[method] !== "function") return null;
+  try {
+    return sessionManager[method]();
+  } catch {
+    return null;
+  }
+}
+
+export function readSessionEntriesFromFile(sessionPath: unknown): any[] {
+  if (typeof sessionPath !== "string" || !sessionPath.trim()) return [];
+  try {
+    const raw = fs.readFileSync(sessionPath, "utf8");
+    const entries = [];
+    for (const line of raw.split("\n")) {
+      if (!line.trim()) continue;
+      try {
+        entries.push(JSON.parse(line));
+      } catch {
+        // 单行坏掉不阻断整份笔记装订
+      }
+    }
+    return entries;
+  } catch {
+    return [];
+  }
+}
+
+export function collectObservationalNoteSources(input: {
+  sessionManager?: any;
+  branchEntries?: any[];
+} = {}): any[] {
+  const sessionManager = input.sessionManager;
+  const sessionPath = callManagerValue(sessionManager, "getSessionFile");
+  const chunks = [
+    readSessionEntriesFromFile(typeof sessionPath === "string" ? sessionPath : null),
+    callManagerList(sessionManager, "getEntries"),
+    callManagerList(sessionManager, "getBranch"),
+    Array.isArray(input.branchEntries) ? input.branchEntries : [],
+  ];
+  const seen = new Set<string>();
+  const out: any[] = [];
+  for (const chunk of chunks) {
+    for (const entry of chunk) {
+      const id = typeof entry?.id === "string" && entry.id ? entry.id : "";
+      if (id) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+      }
+      out.push(entry);
+    }
+  }
+  return out;
 }
 
 export function foldObservationalNotes(entries: any[]): ObservationalNotesData {

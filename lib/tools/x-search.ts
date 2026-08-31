@@ -8,7 +8,7 @@ export function createXSearchTool({ xaiOauthSearchResolver }: Record<string, any
   return {
     name: "x_search",
     label: "X Search",
-    description: "Search X/Twitter posts, users, and threads through xAI Grok OAuth. Image understanding is on by default: Grok will read images in posts.",
+    description: "Search X/Twitter posts, users, and threads. Call this yourself only when the user needs posts, accounts, or discussion from X. Do not use it for ordinary web facts; use web_search for those.",
     parameters: Type.Object({
       query: Type.String({ description: "What to search on X" }),
       allowed_x_handles: Type.Optional(Type.Array(Type.String(), {
@@ -45,7 +45,6 @@ export function createXSearchTool({ xaiOauthSearchResolver }: Record<string, any
         prompt: query,
         toolOptions,
         accessToken: runtime.accessToken,
-        modelId: runtime.modelId,
       });
       return {
         content: [{ type: "text", text: formatXaiSearchResult(result, "x_search") }],

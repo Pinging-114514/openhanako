@@ -74,4 +74,21 @@ describe("session search", () => {
     expect(searchSessions(sessions, "A2A通信记录", { phase: "content" }).map(r => r.path))
       .toEqual(["/tmp/agents/hana/sessions/a2a.jsonl"]);
   });
+
+  it("strips SessionFile envelopes so snippets land on the real sentence", () => {
+    const sessions = [
+      {
+        ...baseSession,
+        path: "/tmp/agents/hana/sessions/wechat.jsonl",
+        title: "论文预读",
+        allMessagesText: `[SessionFile] {"fileId":"sf_1","label":"粘贴图片.png","kind":"attachment"} [attached_image: C:\\tmp\\a.png] 老师：图也很粗糙 我周一看下`,
+      },
+    ];
+
+    const results = searchSessions(sessions, "图也很粗糙", { phase: "content" });
+    expect(results).toHaveLength(1);
+    expect(results[0].snippet).toContain("图也很粗糙");
+    expect(results[0].snippet).not.toContain("SessionFile");
+    expect(results[0].snippet).not.toContain("attached_image");
+  });
 });

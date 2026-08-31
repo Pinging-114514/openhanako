@@ -216,10 +216,10 @@ let lastResolvedOtaProxyUrl = "";
 function stampProcessProxyEnv(proxyUrl) {
   const value = String(proxyUrl || "").trim();
   if (!value) return;
-  process.env.HTTP_PROXY = process.env.HTTP_PROXY || value;
-  process.env.HTTPS_PROXY = process.env.HTTPS_PROXY || value;
-  process.env.http_proxy = process.env.http_proxy || value;
-  process.env.https_proxy = process.env.https_proxy || value;
+  process.env.HTTP_PROXY = value;
+  process.env.HTTPS_PROXY = value;
+  process.env.http_proxy = value;
+  process.env.https_proxy = value;
 }
 
 async function resolveOtaProxyUrl(targetUrl) {

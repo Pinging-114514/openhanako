@@ -41,6 +41,7 @@ export interface ChatSlice {
   appendInterludeItem: (sessionPath: string, block: Extract<ContentBlock, { type: 'interlude' }>) => boolean;
   resolveBlockByTaskId: (sessionPath: string, taskId: string, resolution: ContentBlock) => boolean;
   patchBlockByTaskId: (sessionPath: string, taskId: string, patch: Record<string, any>) => void;
+  setSuggestionCardStatus: (path: string, suggestionId: string, status: string) => boolean;
   _pendingBlockPatches: Record<string, Record<string, any>>;
   setSessionRegistryFiles: (path: string, files: SessionRegistryFile[]) => void;
   upsertSessionRegistryFile: (path: string, file: SessionRegistryFile) => void;
@@ -597,6 +598,38 @@ export const createChatSlice = (
       const pending = (get() as any)._pendingBlockPatches;
       pending[taskId] = { ...(pending[taskId] || {}), ...patch };
     }
+  },
+
+  setSuggestionCardStatus: (path, suggestionId, status) => {
+    const id = typeof suggestionId === 'string' ? suggestionId.trim() : '';
+    if (!path || !id) return false;
+    let changed = false;
+    set((s) => {
+      const session = scopedMapValue<SessionMessages>(s as any, s.chatSessions, path);
+      if (!session?.items) return {};
+      const items = session.items.map((item) => {
+        if (item.type !== 'message' || !item.data?.blocks) return item;
+        let messageChanged = false;
+        const blocks = item.data.blocks.map((block: any) => {
+          if (block?.type !== 'suggestion_card') return block;
+          const blockId = typeof block.suggestionId === 'string'
+            ? block.suggestionId
+            : (typeof block.detail?.suggestionId === 'string' ? block.detail.suggestionId : '');
+          if (blockId !== id || block.status === status) return block;
+          messageChanged = true;
+          return { ...block, status };
+        });
+        if (!messageChanged) return item;
+        changed = true;
+        return { ...item, data: { ...item.data, blocks } };
+      });
+      if (!changed) return {};
+      return {
+        chatSessions: putScopedMapValue(s as any, s.chatSessions, path, { ...session, items }),
+      };
+    });
+    if (changed) bumpMessageLiveVersion(path);
+    return changed;
   },
 
   updateSessionModel: (path, model) => {

@@ -478,8 +478,12 @@ describe('SessionList context menu', () => {
       target: { value: '聊天记录' },
     });
 
-    expect(await screen.findByText('聊天记录搜索')).toBeInTheDocument();
-    expect(await screen.findByText(/和其他 Agent 的聊天记录/)).toBeInTheDocument();
+    const titleHit = await screen.findByText((_, node) => (
+      node?.tagName === 'BUTTON'
+      && (node.textContent || '').includes('聊天记录搜索')
+    ));
+    expect(titleHit).toBeInTheDocument();
+    expect(await screen.findByText(/和其他 Agent 的/)).toBeInTheDocument();
 
     const searchCalls = hanaFetchMock.mock.calls
       .map(([url]) => String(url))
@@ -487,7 +491,7 @@ describe('SessionList context menu', () => {
     expect(searchCalls[0]).toContain('phase=title');
     expect(searchCalls[1]).toContain('phase=content');
 
-    const resultButton = screen.getByText('聊天记录搜索').closest('button');
+    const resultButton = titleHit;
     if (!resultButton) throw new Error('missing search result button');
     fireEvent.click(resultButton);
     expect(switchSessionMock).toHaveBeenCalledWith('/tmp/agents/hana/sessions/title-search.jsonl');

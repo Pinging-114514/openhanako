@@ -140,7 +140,7 @@ export const InterludeBlock = memo(function InterludeBlock({ block }: { block: I
   );
 
   return (
-    <div className={styles.interludeRow} data-interlude-status={block.status || 'success'}>
+    <div className={styles.interludeRow} data-interlude-status={block.status || 'success'} data-interlude-variant={block.variant || ''}>
       {canPreview ? (
         <button
           ref={setAnchor}

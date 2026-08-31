@@ -72,8 +72,12 @@ export function formatSessionDate(isoStr: string): string {
 export function cronToHuman(schedule: number | string): string {
   const t = window.t ?? ((p: string) => p);
   if (typeof schedule === 'number') {
-    const h = Math.round(schedule / 3600000);
-    return h > 0 ? t('cron.everyHours', { n: h }) : t('cron.everyMinutes', { n: Math.round(schedule / 60000) });
+    const HOUR_MS = 3_600_000;
+    const MINUTE_MS = 60_000;
+    if (!Number.isFinite(schedule) || schedule <= 0) return String(schedule);
+    // Exact hours only. Rounding 30 min (0.5 h) to 1 hour made the card lie.
+    if (schedule % HOUR_MS === 0) return t('cron.everyHours', { n: schedule / HOUR_MS });
+    return t('cron.everyMinutes', { n: Math.max(1, Math.round(schedule / MINUTE_MS)) });
   }
   const s = String(schedule);
   const parts = s.split(' ');

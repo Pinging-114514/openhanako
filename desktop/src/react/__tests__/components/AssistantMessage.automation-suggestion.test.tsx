@@ -84,11 +84,18 @@ describe('AssistantMessage automation suggestion card', () => {
     vi.restoreAllMocks();
   });
 
-  it('keeps a suggestion card clickable with a first-line view tail and no status badge', () => {
+  it('shows a created badge instead of view suggestion after the card is approved', () => {
     renderSuggestion('approved');
 
-    expect(screen.queryByText('common.approved')).not.toBeInTheDocument();
-    expect(screen.queryByText('automation.suggested')).not.toBeInTheDocument();
+    expect(screen.queryByText('automation.viewSuggestion')).not.toBeInTheDocument();
+    expect(screen.getByText('cron.confirm.created')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'automation.openDraft' })).not.toBeInTheDocument();
+  });
+
+  it('keeps a pending suggestion card clickable with a first-line view tail', () => {
+    renderSuggestion('pending');
+
+    expect(screen.queryByText('cron.confirm.created')).not.toBeInTheDocument();
     expect(screen.getByText('automation.viewSuggestion')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'automation.openDraft' }));
@@ -203,5 +210,22 @@ describe('AssistantMessage automation suggestion card', () => {
       expect(screen.queryByRole('dialog', { name: 'automation.draftTitle' })).not.toBeInTheDocument();
     });
     expect(hanaFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('toasts success and shows the created badge after applying a suggestion', async () => {
+    window.t = ((key: string, params?: Record<string, string>) => {
+      if (key === 'automation.createSuccess') return `已创建定时任务：${params?.label || ''}`;
+      return key;
+    }) as typeof window.t;
+    renderSuggestion('pending');
+
+    fireEvent.click(screen.getByRole('button', { name: 'automation.openDraft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'automation.confirmCreate' }));
+
+    await waitFor(() => {
+      expect(addToast).toHaveBeenCalledWith('已创建定时任务：奶茶提醒', 'success');
+    });
+    expect(screen.getByText('cron.confirm.created')).toBeInTheDocument();
+    expect(screen.queryByText('automation.viewSuggestion')).not.toBeInTheDocument();
   });
 });

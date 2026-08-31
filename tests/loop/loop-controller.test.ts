@@ -67,6 +67,20 @@ describe("start / 记账 / 守恒", () => {
     expect(delivered[0][1].details.kind).toBe("kickoff");
   });
 
+  it("start honors a custom maxTurns budget", async () => {
+    const { controller, store, delivered } = makeHarness();
+    await controller.start(D, "watch the pipeline", { maxTurns: 25 });
+    expect(store.get(DK).limits.maxTurns).toBe(25);
+    expect(delivered[0][1].content).toContain("25");
+  });
+
+  it("setMaxTurns updates a live loop budget", async () => {
+    const { controller, store } = makeHarness();
+    await controller.start(D, "t");
+    await controller.setMaxTurns(D, 100);
+    expect(store.get(DK).limits.maxTurns).toBe(100);
+  });
+
   it("counts only loop-triggered turns against the budget", async () => {
     const { controller, store } = makeHarness();
     await controller.start(D, "t");

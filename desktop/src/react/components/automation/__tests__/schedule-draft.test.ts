@@ -35,6 +35,19 @@ describe('automation schedule draft conversion', () => {
     });
   });
 
+  it('keeps a 30-minute every job in minutes instead of promoting it to an hour', () => {
+    const draft = scheduleDraftFromStored('every', 1_800_000);
+    expect(draft).toMatchObject({
+      mode: 'interval',
+      intervalValue: '30',
+      intervalUnit: 'minutes',
+    });
+    expect(storedScheduleFromDraft(draft)).toEqual({
+      type: 'every',
+      schedule: 1_800_000,
+    });
+  });
+
   it('serializes weekly and monthly selections to existing cron storage', () => {
     expect(storedScheduleFromDraft({
       ...scheduleDraftFromStored('cron', '0 9 * * *'),

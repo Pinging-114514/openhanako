@@ -289,7 +289,7 @@ describe('InputArea media send', () => {
     delete (window as unknown as { hana?: unknown }).hana;
   });
 
-  it('sends pasted image bytes through the platform API when window.hana is unavailable', async () => {
+  it('sends path-backed images as file identity plus pixels so older servers can still see them', async () => {
     render(React.createElement(InputArea));
 
     fireEvent.click(screen.getByTestId('send'));
@@ -299,16 +299,13 @@ describe('InputArea media send', () => {
     });
     expect(window.platform.readFileBase64).toHaveBeenCalledWith('/tmp/hana/session-files/pasted.png');
     const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
-    expect(payload.images).toEqual([{
-      type: 'image',
-      data: 'IMAGE_BASE64',
-      mimeType: 'image/png',
-    }]);
+    expect(payload.images).toEqual([
+      { type: 'image', data: 'IMAGE_BASE64', mimeType: 'image/png' },
+    ]);
     expect(payload.displayMessage.attachments[0]).toMatchObject({
       fileId: 'sf_pasted',
       path: '/tmp/hana/session-files/pasted.png',
       name: 'pasted.png',
-      mimeType: 'image/png',
       visionAuxiliary: true,
     });
     expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/preferences/models', undefined);
@@ -396,7 +393,7 @@ describe('InputArea media send', () => {
     expect(window.platform.readFileBase64).not.toHaveBeenCalled();
   });
 
-  it('keeps the send alive as file-only when reading image bytes fails (#1647)', async () => {
+  it('falls back to file identity when path-backed image bytes cannot be read', async () => {
     window.platform = {
       readFileBase64: vi.fn(async () => null),
     } as unknown as typeof window.platform;
@@ -408,6 +405,7 @@ describe('InputArea media send', () => {
     await waitFor(() => {
       expect(mocks.wsSend).toHaveBeenCalledTimes(1);
     });
+    expect(window.platform.readFileBase64).toHaveBeenCalledWith('/tmp/hana/session-files/pasted.png');
     const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
     expect(payload.images).toBeUndefined();
     expect(payload.displayMessage.attachments[0]).toMatchObject({

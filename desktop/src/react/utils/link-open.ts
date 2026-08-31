@@ -151,6 +151,19 @@ export function resolveLinkTarget(href: string, context: LinkOpenContext = {}): 
   return { kind: 'external', href: raw };
 }
 
+export function isModifiedLinkClick(event: { ctrlKey?: boolean; metaKey?: boolean } | null | undefined): boolean {
+  return event?.ctrlKey === true || event?.metaKey === true;
+}
+
+export async function openLinkFromUserClick(
+  href: string,
+  context: LinkOpenContext = {},
+  event?: { ctrlKey?: boolean; metaKey?: boolean } | null,
+): Promise<boolean> {
+  if (isModifiedLinkClick(event)) return openExternalLink(href, context);
+  return openInternalLink(href, context);
+}
+
 export async function openInternalLink(href: string, context: LinkOpenContext = {}): Promise<boolean> {
   const target = resolveLinkTarget(href, context);
   if (target.kind === 'anchor') return false;

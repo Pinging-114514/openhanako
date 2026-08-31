@@ -60,7 +60,7 @@ import {
   COMPACTION_MODES,
   normalizeCompactionMode,
 } from "../../shared/compaction-mode.ts";
-import { foldObservationalNotes } from "../observational-compaction/ledger.ts";
+import { collectObservationalNoteSources, foldObservationalNotes } from "../observational-compaction/ledger.ts";
 import { renderObservationalSummary } from "../observational-compaction/render.ts";
 import { captureObservationalNotes, observationalCaptureModelRef } from "../observational-compaction/capture-run.ts";
 import { convertAgentMessagesToLlm } from "../pi-sdk/index.ts";
@@ -175,7 +175,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
   const captureObservationalText = typeof opts.captureObservationalText === "function"
     ? opts.captureObservationalText
     : null;
-  const observationalCaptureInFlight = new Set();
+  const observationalCaptureInFlight = new Map();
 
   function resolveReasoningLevelForRequest(ctx: any) {
     if (!getRequestReasoningLevel) {
@@ -219,9 +219,8 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         if (typeof sessionManager?.appendCustomEntry !== "function") return;
         const sessionKey = sessionManager.getSessionFile?.() || sessionManager.getSessionId?.() || "unknown";
         if (observationalCaptureInFlight.has(sessionKey)) return;
-        observationalCaptureInFlight.add(sessionKey);
-        const entries = typeof sessionManager.getBranch === "function" ? sessionManager.getBranch() : [];
-        void captureObservationalNotes({
+        const entries = collectObservationalNoteSources({ sessionManager });
+        const pending = captureObservationalNotes({
           entries,
           completeText: (input) => captureObservationalText({ ...input, ctx }),
           appendCustomEntry: (type, data) => sessionManager.appendCustomEntry(type, data),
@@ -237,6 +236,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         }).finally(() => {
           observationalCaptureInFlight.delete(sessionKey);
         });
+        observationalCaptureInFlight.set(sessionKey, pending);
       } catch (err) {
         log.warn(`[om] agent_end hook error: ${err?.message || err}`);
       }
@@ -284,11 +284,19 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         }
         if (compactionMode === COMPACTION_MODES.OBSERVATIONAL) {
           const sessionManager = ctx.sessionManager;
-          const noteSources = [
-            ...(Array.isArray(sessionManager?.getEntries?.()) ? sessionManager.getEntries() : []),
-            ...(Array.isArray(sessionManager?.getBranch?.()) ? sessionManager.getBranch() : []),
-            ...(Array.isArray(event.branchEntries) ? event.branchEntries : []),
-          ];
+          const sessionKey = sessionManager?.getSessionFile?.() || sessionManager?.getSessionId?.() || "unknown";
+          const pendingCapture = observationalCaptureInFlight.get(sessionKey);
+          if (pendingCapture) {
+            try {
+              await pendingCapture;
+            } catch {
+              // 记笔记失败不阻断压缩，下面再读文件里已经写下的笔记
+            }
+          }
+          const noteSources = collectObservationalNoteSources({
+            sessionManager,
+            branchEntries: event.branchEntries,
+          });
           const folded = foldObservationalNotes(noteSources);
           const summary = renderObservationalSummary(folded.observations);
           if (summary) {

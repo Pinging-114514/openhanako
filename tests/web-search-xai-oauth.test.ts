@@ -30,7 +30,10 @@ describe("web_search xAI OAuth backend", () => {
     });
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
     const body = JSON.parse(vi.mocked(globalThis.fetch).mock.calls[0][1].body);
-    expect(body.tools.map((item) => item.type)).toEqual(["web_search", "x_search"]);
+    expect(body.model).toBe("grok-4-1-fast-non-reasoning");
+    expect(body.tools.map((item) => item.type)).toEqual(["web_search"]);
+    expect(body.tools[0].enable_image_understanding).toBe(false);
+    expect(String(body.instructions || "")).toMatch(/search result extractor/i);
   });
 
   it("does not call Grok when the provider toggle is off", async () => {

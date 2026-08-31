@@ -34,6 +34,8 @@ import {
   readSubagentSessionMetaSync,
 } from "../../lib/subagent-executor-metadata.ts";
 import { assignTurnUsageToAssistants } from "../../lib/llm/turn-usage.ts";
+import { isVisibleLoopStatus, publicLoopSnapshot } from "../../lib/loop/loop-store.ts";
+import { LOOP_NOTICE_MESSAGE_TYPE, LOOP_TURN_MESSAGE_TYPE } from "../../lib/loop/loop-messages.ts";
 import {
   extractTextContent,
   contentHasThinkingBlock,
@@ -1532,6 +1534,24 @@ export function createSessionsRoute(engine, hub = null) {
 
       for (let sourceIndex = 0; sourceIndex < sourceMessages.length; sourceIndex += 1) {
         const m = sourceMessages[sourceIndex];
+        if (m.role === "custom" && (m.customType === LOOP_TURN_MESSAGE_TYPE || m.customType === LOOP_NOTICE_MESSAGE_TYPE)) {
+          const displayText = typeof m.details?.displayText === "string" ? m.details.displayText.trim() : "";
+          if (!displayText) continue;
+          const currentIndex = displayIdx;
+          displayIdx += 1;
+          if (currentIndex >= pageBounds.startIdx && currentIndex < pageBounds.endIdx) {
+            messages.push({
+              id: String(currentIndex),
+              sourceIndex,
+              ...(m.id ? { entryId: m.id } : {}),
+              role: "loop",
+              content: displayText,
+              displayText,
+              ...(m.timestamp ? { timestamp: m.timestamp } : {}),
+            });
+          }
+          continue;
+        }
         if (m.role === "user") {
           latestTurnInputEntryId = typeof m.id === "string" && m.id.trim() ? m.id.trim() : null;
           latestTurnInputVisible = !isHiddenTurnInputMessage(m);
@@ -1784,7 +1804,22 @@ export function createSessionsRoute(engine, hub = null) {
 
       attachTurnUsageToHistoryMessages(engine, resolvedSessionPath, messages);
 
-      return c.json({ messages, blocks: slicedBlocks, todos, hasMore, sessionFiles, revision });
+      let loop = null;
+      try {
+        const sessionId = (typeof querySessionId === "string" && querySessionId.trim())
+          ? querySessionId.trim()
+          : engine.getSessionIdForPath?.(resolvedSessionPath) || null;
+        if (sessionId && engine.loopController?.statusForTarget) {
+          const snapshot = publicLoopSnapshot(engine.loopController.statusForTarget({
+            kind: "desktop",
+            sessionId,
+          }));
+          if (snapshot && isVisibleLoopStatus(snapshot.status)) loop = snapshot;
+        }
+      } catch {
+        loop = null;
+      }
+      return c.json({ messages, blocks: slicedBlocks, todos, hasMore, sessionFiles, revision, loop });
     } catch (err) {
       return c.json({ error: err.message }, 500);
     }

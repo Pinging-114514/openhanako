@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { clampMaxTokensToContext } from "@earendil-works/pi-ai/api/simple-options";
 import type { AssistantMessage, Model } from "@earendil-works/pi-ai";
@@ -1157,6 +1160,51 @@ describe("CompactionGuardExtension", () => {
 
       expect(res?.compaction?.summary).toMatch(/Notes survived behind the compaction boundary/);
       expect(cacheCompactor).not.toHaveBeenCalled();
+    });
+
+    it("binds observational notes from the session jsonl when memory only has the live tail", async () => {
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-om-compact-"));
+      const sessionPath = path.join(dir, "session.jsonl");
+      fs.writeFileSync(sessionPath, JSON.stringify({
+        type: "custom",
+        customType: "hana.om.notes",
+        id: "note-disk",
+        data: {
+          schema: 1,
+          coveredThroughEntryId: "old",
+          observations: [
+            { id: "om_disk", content: "Disk notes must be bound at compact time", relevance: "high", timestamp: "2026-08-31" },
+          ],
+        },
+      }) + "\n", "utf8");
+      pi = createMockPi();
+      createCompactionGuardExtension({
+        getRequestReasoningLevel: sessionReasoningLevel,
+        cacheCompactor,
+        buildSessionCacheSnapshot,
+        getCompactionMode: () => "observational",
+      })(pi);
+
+      const res = await pi.trigger(
+        "session_before_compact",
+        {
+          preparation,
+          signal: { aborted: false },
+          branchEntries: [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+        },
+        {
+          ...ctx,
+          sessionManager: {
+            getSessionFile: () => sessionPath,
+            getBranch: () => [{ id: "tail", type: "message", message: { role: "user", content: "continue" } }],
+            buildSessionContext: ctx.sessionManager.buildSessionContext,
+          },
+        },
+      );
+
+      expect(res?.compaction?.summary).toMatch(/Disk notes must be bound at compact time/);
+      expect(cacheCompactor).not.toHaveBeenCalled();
+      fs.rmSync(dir, { recursive: true, force: true });
     });
 
     it("lets Pi SDK native compaction run when pi-compatible mode is selected", async () => {

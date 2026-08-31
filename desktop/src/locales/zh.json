@@ -151,12 +151,13 @@
     "toggle": "侧边栏",
     "bridgeShort": "社交平台",
     "pinned": "置顶",
-    "searchPlaceholder": "搜索聊天记录",
+    "searchPlaceholder": "搜索标题和对话",
     "searchClear": "清空搜索",
     "searchTitleMatches": "标题",
-    "searchContentMatches": "正文",
+    "searchContentMatches": "对话正文",
     "searchingTitles": "正在搜索标题…",
-    "searchingContent": "正在搜索正文…",
+    "searchingContent": "正在搜索对话正文…",
+    "searchingContentAfterEmptyTitles": "标题没找到，正在搜对话正文…",
     "searchNoResults": "没有找到相关会话",
     "searchFailed": "搜索失败",
     "metaRecoveryNoticeTitle": "部分会话待恢复",
@@ -402,6 +403,7 @@
     "accessModeLocked": "当前无法更改权限模式",
     "deskContext": "看着书桌说",
     "pastedImage": "粘贴图片",
+    "attachmentsStillUploading": "图片还在上传，稍等一下再发。",
     "textModelImageFileOnly": "当前模型不能查看图片，也未启用辅助视觉：图片将作为文件发送，模型只能看到文件路径，看不到图片内容。",
     "textModelVideoFileOnly": "当前模型不支持直接查看视频：视频将作为文件发送，模型只能看到文件路径，看不到视频内容。",
     "textModelAudioBlocked": "当前模型不支持音频输入。请切换到支持音频的模型。",
@@ -475,6 +477,15 @@
     "reviewSessionFallback": "{name} 的审阅对话",
     "interjectionUnavailable": "助手审阅不能作为插话发送，请等待当前回复结束"
   },
+  "loop": {
+    "banner": "↻ 循环 · 第 {current}/{max} 轮{next}",
+    "bannerPaused": "↻ 循环已暂停 · 第 {current}/{max} 轮",
+    "paused": "已暂停",
+    "pause": "暂停",
+    "resume": "继续",
+    "stop": "停止",
+    "next": " · 下次 {countdown}"
+  },
   "slash": {
     "diary": "写今日日记",
     "diaryBusy": "正在写日记...",
@@ -483,7 +494,7 @@
     "xing": "从对话中提炼技能",
     "compact": "压缩上下文",
     "compactBusy": "正在压缩...",
-    "loop": "在当前会话循环执行任务",
+    "loop": "在当前会话循环执行任务，可用 --turns N 设轮数",
     "commandError": "[命令错误] {message}",
     "usage": "用法：{usage}",
     "commandTimeout": "命令超时（>{ms}ms）"
@@ -1798,7 +1809,7 @@
       "weeklyUnknown": "周用量暂时读不到",
       "hoursRemaining": "{hours}小时剩余 {remaining}%",
       "searchTools": "搜索工具",
-      "searchToolsHint": "开启后，web_search 会用 Grok 同时搜网页和 X。用的是本周额度。"
+      "searchToolsHint": "开启后，web_search 用 Grok 搜网页，并单独提供 x_search 搜 X。要不要搜 X 由模型自己判断。用本周额度。"
     },
     "api": {
       "title": "模型与接口",
@@ -2656,6 +2667,8 @@
     "promptPlaceholder": "写下你想让 {agent} 做什么",
     "promptRequired": "先写下想让 Agent 做什么，再启用这条自动化",
     "createFailed": "创建自动化失败",
+    "createSuccess": "已创建定时任务：{label}",
+    "updateSuccess": "已更新定时任务：{label}",
     "agentRequired": "需要先选择一个 Agent",
     "field": {
       "label": "名称",

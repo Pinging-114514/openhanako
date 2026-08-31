@@ -1,4 +1,5 @@
 import { listRecentAgentSessions } from "./list-agent-sessions.ts";
+import { parseLoopCommand } from "../../lib/loop/loop-command.ts";
 
 /** @type {import('../slash-command-registry.ts').CommandDef[]} */
 // 注意：reply 文案暂硬编码中文，和 session-ops.js 的 "[上下文已压缩]" 一致，
@@ -222,15 +223,13 @@ export const bridgeCommands = [
   {
     name: "loop",
     description: "在当前会话启动/管理循环任务",
-    usage: "/loop <任务> | /loop stop | pause | resume | status",
+    usage: "/loop [--turns N] <任务> | /loop stop | pause | resume | status | turns <N>",
     scope: "session",
     permission: "owner",
     source: "core",
     handler: async (ctx) => _handleLoopCommand(ctx),
   },
 ];
-
-const LOOP_SUBCOMMANDS = new Set(["stop", "pause", "resume", "status"]);
 
 function _renderLoopStatus(loop) {
   if (!loop) return null;
@@ -251,33 +250,42 @@ function _renderLoopStatus(loop) {
 async function _handleLoopCommand(ctx) {
   const controller = ctx.engine?.loopController;
   if (!controller) return { error: "循环服务未就绪" };
-  const args = (ctx.args || "").trim();
-  const firstToken = args.split(/\s+/, 1)[0]?.toLowerCase() || "";
-  const isStart = !!args && !LOOP_SUBCOMMANDS.has(firstToken);
+  const parsed = parseLoopCommand(ctx.args || "");
+  if (parsed.kind === "error") return { error: parsed.message };
+  const isStart = parsed.kind === "start";
   try {
     const target = await controller.targetFromSessionRef(ctx.sessionRef, { ensure: isStart });
     if (!target) return { error: "无法定位当前会话（会话尚未建立或已失效）" };
-    if (!args || firstToken === "status") {
+    if (parsed.kind === "empty" || parsed.kind === "status") {
       const rendered = _renderLoopStatus(controller.statusForTarget(target));
       if (rendered) return { reply: rendered };
-      return args
+      return parsed.kind === "status"
         ? { reply: "（该会话没有循环）" }
-        : { error: "用法：/loop <任务> | /loop stop | pause | resume | status" };
+        : { error: "用法：/loop [--turns N] <任务> | /loop stop | pause | resume | status | turns <N>" };
     }
-    if (firstToken === "stop") {
+    if (parsed.kind === "stop") {
       await controller.stop(target);
       return { reply: "（循环已终止）" };
     }
-    if (firstToken === "pause") {
+    if (parsed.kind === "pause") {
       await controller.pause(target, "user");
       return { reply: "（循环已暂停，/loop resume 恢复）" };
     }
-    if (firstToken === "resume") {
+    if (parsed.kind === "resume") {
       await controller.resume(target);
       return { reply: "（循环已恢复）" };
     }
-    await controller.start(target, args);
-    return { reply: "（循环已启动，/loop status 查看进度，/loop stop 终止）" };
+    if (parsed.kind === "turns") {
+      const loop = await controller.setMaxTurns(target, parsed.maxTurns);
+      return { reply: `（循环预算已改为 ${loop.limits.maxTurns} 轮，当前 ${loop.turnCount}/${loop.limits.maxTurns}）` };
+    }
+    const loop = await controller.start(
+      target,
+      parsed.prompt,
+      parsed.maxTurns ? { maxTurns: parsed.maxTurns } : null,
+    );
+    const budget = loop?.limits?.maxTurns || parsed.maxTurns || 50;
+    return { reply: `（循环已启动，预算 ${budget} 轮。进度会显示在输入框上方，也可 /loop status 查看，/loop stop 终止）` };
   } catch (err) {
     return { error: err?.message || String(err) };
   }

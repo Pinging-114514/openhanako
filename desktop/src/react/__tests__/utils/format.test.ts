@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { toSlash, baseName, parseCSV, isImageFile, parseMoodFromContent, injectCopyButtons } from '../../utils/format';
+import { toSlash, baseName, parseCSV, isImageFile, parseMoodFromContent, injectCopyButtons, cronToHuman } from '../../utils/format';
 
 describe('toSlash', () => {
   it('反斜杠转正斜杠', () => {
@@ -77,6 +77,33 @@ describe('isImageFile', () => {
   it('大小写不敏感', () => {
     expect(isImageFile('PHOTO.PNG')).toBe(true);
     expect(isImageFile('Photo.Jpg')).toBe(true);
+  });
+});
+
+describe('cronToHuman', () => {
+  beforeEach(() => {
+    window.t = ((key: string, params?: Record<string, string | number>) => {
+      if (key === 'cron.everyHours') return `每 ${params?.n} 小时`;
+      if (key === 'cron.everyMinutes') return `每 ${params?.n} 分钟`;
+      return key;
+    }) as typeof window.t;
+  });
+
+  it('30 minutes stays minutes instead of rounding to 1 hour', () => {
+    expect(cronToHuman(1_800_000)).toBe('每 30 分钟');
+  });
+
+  it('45 minutes stays minutes instead of rounding to 1 hour', () => {
+    expect(cronToHuman(2_700_000)).toBe('每 45 分钟');
+  });
+
+  it('90 minutes stays minutes instead of rounding to 2 hours', () => {
+    expect(cronToHuman(5_400_000)).toBe('每 90 分钟');
+  });
+
+  it('exact hours stay hours', () => {
+    expect(cronToHuman(3_600_000)).toBe('每 1 小时');
+    expect(cronToHuman(7_200_000)).toBe('每 2 小时');
   });
 });
 

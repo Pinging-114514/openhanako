@@ -151,12 +151,13 @@
     "toggle": "Sidebar",
     "bridgeShort": "Bridge",
     "pinned": "Pinned",
-    "searchPlaceholder": "Search chats",
+    "searchPlaceholder": "Search titles and chats",
     "searchClear": "Clear search",
     "searchTitleMatches": "Titles",
-    "searchContentMatches": "Content",
+    "searchContentMatches": "In conversation",
     "searchingTitles": "Searching titles…",
-    "searchingContent": "Searching content…",
+    "searchingContent": "Searching conversations…",
+    "searchingContentAfterEmptyTitles": "No title matches. Searching conversations…",
     "searchNoResults": "No matching chats",
     "searchFailed": "Search failed",
     "metaRecoveryNoticeTitle": "Some chats need recovery",
@@ -407,6 +408,7 @@
     "referenceDocument": "[Reference] {path}",
     "deskContext": "With desk context",
     "pastedImage": "Pasted image",
+    "attachmentsStillUploading": "Attachments are still uploading. Wait a moment and send again.",
     "textModelImageFileOnly": "The current model cannot view images and auxiliary vision is not enabled: images are sent as files, so the model only sees the file path, not the image content.",
     "textModelVideoFileOnly": "The current model cannot view videos directly: videos are sent as files, so the model only sees the file path, not the video content.",
     "textModelAudioBlocked": "The current model does not support audio input. Switch to an audio-capable model.",
@@ -475,6 +477,15 @@
     "reviewSessionFallback": "{name}'s review conversation",
     "interjectionUnavailable": "Agent review cannot be sent as an interjection; wait for the current reply to finish"
   },
+  "loop": {
+    "banner": "↻ Loop · turn {current}/{max}{next}",
+    "bannerPaused": "↻ Loop paused · turn {current}/{max}",
+    "paused": "Paused",
+    "pause": "Pause",
+    "resume": "Resume",
+    "stop": "Stop",
+    "next": " · next {countdown}"
+  },
   "slash": {
     "diary": "Write today's diary",
     "diaryBusy": "Writing diary...",
@@ -483,7 +494,7 @@
     "xing": "Create skill from conversation",
     "compact": "Compact context",
     "compactBusy": "Compacting...",
-    "loop": "Run a recurring loop task in this session",
+    "loop": "Run a recurring loop task in this session. Use --turns N to set the budget",
     "commandError": "[Command error] {message}",
     "usage": "Usage: {usage}",
     "commandTimeout": "Command timed out (>{ms}ms)"
@@ -1798,7 +1809,7 @@
       "weeklyUnknown": "Weekly quota unavailable",
       "hoursRemaining": "{remaining}% left in {hours}h window",
       "searchTools": "Search tools",
-      "searchToolsHint": "When on, Hana web_search uses Grok OAuth search and adds x_search for X. This uses the weekly quota."
+      "searchToolsHint": "When on, web_search uses Grok for the public web, and x_search is a separate tool for X. The model decides whether to search X. This uses the weekly quota."
     },
     "api": {
       "title": "Models & API",
@@ -2656,6 +2667,8 @@
     "promptPlaceholder": "Write what you want {agent} to do",
     "promptRequired": "Write what the Agent should do before enabling this automation.",
     "createFailed": "Failed to create automation",
+    "createSuccess": "Scheduled task created: {label}",
+    "updateSuccess": "Scheduled task updated: {label}",
     "agentRequired": "Choose an Agent first",
     "field": {
       "label": "Name",

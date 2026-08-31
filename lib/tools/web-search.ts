@@ -23,6 +23,7 @@ import {
   normalizeSearchProvider,
 } from "../../shared/search-providers.ts";
 import {
+  XAI_OAUTH_SEARCH_DEFAULT_MODEL,
   callXaiOauthNativeSearch,
   resultsFromXaiSearch,
 } from "./xai-oauth-search.ts";
@@ -299,15 +300,12 @@ async function searchXaiOauth(query, maxResults, _apiKey, _provider, extras: Rec
   if (!runtime.enabled || !runtime.accessToken) {
     throw new Error("xAI OAuth search is off or not logged in");
   }
-  const image = runtime.understandImages !== false;
   const result = await callXaiOauthNativeSearch({
     prompt: query,
-    tools: [
-      { type: "web_search", enable_image_understanding: image },
-      { type: "x_search", enable_image_understanding: image },
-    ],
+    toolType: "web_search",
+    tools: [{ type: "web_search", enable_image_understanding: false }],
     accessToken: runtime.accessToken,
-    modelId: runtime.modelId,
+    modelId: XAI_OAUTH_SEARCH_DEFAULT_MODEL,
   });
   if (!result.ok) throw new Error(result.error || "xAI OAuth search failed");
   return resultsFromXaiSearch(result, maxResults);
@@ -631,7 +629,7 @@ export function createWebSearchTool({ configPath, searchConfigResolver, xaiOauth
   return {
     name: "web_search",
     label: "Web Search",
-    description: "Search the internet for real-time information. Use when you need the latest news, technical docs, current events, or any external knowledge not in memory.",
+    description: "Search the public web for titles, URLs, and snippets. Use for news, docs, papers, and general facts. Does not search X/Twitter; call x_search separately if you need posts or discussion on X.",
     parameters: Type.Object({
       query: Type.String({ description: "Search keywords" }),
       maxResults: Type.Optional(

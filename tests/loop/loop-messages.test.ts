@@ -22,7 +22,11 @@ describe("loop messages", () => {
     expect(msg.content).toContain("watch the pipeline");
     expect(msg.content).toContain("loop_control");
     expect(msg.content).toContain("50");
-    expect(msg.details).toMatchObject({ schemaVersion: 1, kind: "kickoff" });
+    expect(msg.details).toMatchObject({
+      schemaVersion: 1,
+      kind: "kickoff",
+      displayText: expect.stringContaining("↻ 循环已启动"),
+    });
   });
 
   it("wakeup message carries reason and progress", () => {
@@ -30,7 +34,11 @@ describe("loop messages", () => {
     expect(msg.customType).toBe(LOOP_TURN_MESSAGE_TYPE);
     expect(msg.content).toContain("check remote pipeline status");
     expect(msg.content).toContain("2/50");
-    expect(msg.details).toMatchObject({ schemaVersion: 1, kind: "wakeup" });
+    expect(msg.details).toMatchObject({
+      schemaVersion: 1,
+      kind: "wakeup",
+      displayText: "↻ 循环 · 第 3/50 轮",
+    });
   });
 
   it("notice message uses the notice type and shows text verbatim", () => {

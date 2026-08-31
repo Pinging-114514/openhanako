@@ -1,6 +1,10 @@
 import { Buffer } from "node:buffer";
 import * as piSdk from "../lib/pi-sdk/index.ts";
 import {
+  IMAGE_DIMENSION_NOTE_LINE_RE,
+  leadingPromptEnvelope,
+} from "./session-reminders.ts";
+import {
   isAbortLikeVisionError,
   isRecoverableVisionWatchdogError,
   logVisionWatchdog,
@@ -164,22 +168,25 @@ function buildDimensionNoteLine(note, _path, index) {
   return `<file name="${escapeXmlAttr(name)}">${escapeXmlText(note)}</file>`;
 }
 
+function stripExistingDimensionNotes(text) {
+  return String(text || "")
+    .split(/\r?\n/)
+    .filter((line) => !IMAGE_DIMENSION_NOTE_LINE_RE.test(line.trim()))
+    .join("\n");
+}
+
 function appendDimensionNotes(text, notes) {
   if (!notes.length) return text;
   const noteText = notes.map(({ note, path, index }) => buildDimensionNoteLine(note, path, index)).join("\n");
-  const sourceText = typeof text === "string" ? text : String(text ?? "");
+  const sourceText = stripExistingDimensionNotes(
+    typeof text === "string" ? text : String(text ?? ""),
+  );
   if (!sourceText) return noteText;
 
-  const lines = sourceText.split("\n");
-  let markerEnd = 0;
-  while (markerEnd < lines.length && /^\[attached_image: .+\]$/.test(lines[markerEnd])) {
-    markerEnd += 1;
-  }
-
-  if (markerEnd === 0) return `${noteText}\n${sourceText}`;
-  const before = lines.slice(0, markerEnd).join("\n");
-  const after = lines.slice(markerEnd).join("\n");
-  return after ? `${before}\n${noteText}\n${after}` : `${before}\n${noteText}`;
+  const prefix = leadingPromptEnvelope(sourceText);
+  if (!prefix) return `${noteText}\n${sourceText}`;
+  const body = sourceText.startsWith(prefix) ? sourceText.slice(prefix.length) : sourceText;
+  return body ? `${prefix}${noteText}\n${body}` : `${prefix}${noteText}`;
 }
 
 function throwIfAborted(signal) {
@@ -293,17 +300,15 @@ export async function prepareModelImageInputsForPrompt({
   }
 
   const policy = normalizePolicy(imagePolicy);
-  const nextImages = [];
-  const dimensionNotes = [];
-
-  for (let index = 0; index < opts.images.length; index += 1) {
-    let prepared;
+  const imageCount = opts.images.length;
+  const preparedEntries = await Promise.all(opts.images.map(async (image, index) => {
+    throwIfAborted(signal);
     try {
-      prepared = await raceWithVisionWatchdog(
+      const prepared = await raceWithVisionWatchdog(
         prepareSingleModelImageInputForPrompt({
-          image: opts.images[index],
+          image,
           index,
-          imageCount: opts.images.length,
+          imageCount,
           imagePolicy: policy,
           resizeImage,
           formatDimensionNote,
@@ -311,25 +316,24 @@ export async function prepareModelImageInputsForPrompt({
         }),
         "image prepare watchdog timeout",
       );
+      return { index, image: prepared.image, note: prepared.note || "" };
     } catch (err: any) {
       if (isAbortLikeVisionError(err) || err?.code === "LLM_AUTH_FAILED") throw err;
       if (!isRecoverableVisionWatchdogError(err)) throw err;
       logVisionWatchdog(`prepareModelImageInputs image ${index} watchdog/err: ${err?.message || err}`);
       // Soft-fail: keep the original image so the turn can continue instead of hanging forever.
-      nextImages.push(opts.images[index]);
-      continue;
+      return { index, image: opts.images[index], note: "" };
     }
-    nextImages.push(prepared.image);
+  }));
 
-    const note = prepared.note;
-    if (note) {
-      dimensionNotes.push({
-        note,
-        index,
-        path: Array.isArray(opts.imageAttachmentPaths) ? opts.imageAttachmentPaths[index] : undefined,
-      });
-    }
-  }
+  const nextImages = preparedEntries.map((entry) => entry.image);
+  const dimensionNotes = preparedEntries
+    .filter((entry) => entry.note)
+    .map((entry) => ({
+      note: entry.note,
+      index: entry.index,
+      path: Array.isArray(opts.imageAttachmentPaths) ? opts.imageAttachmentPaths[entry.index] : undefined,
+    }));
 
   const totalBytes = nextImages.reduce((sum, image) => sum + byteLengthBase64(image.data), 0);
   if (totalBytes > policy.totalBase64BudgetBytes) {

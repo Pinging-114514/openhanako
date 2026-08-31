@@ -177,7 +177,12 @@ export function buildViteServerBundle({ rootDir, viteBundleDir, bundleOutDir, en
   });
 
   fs.cpSync(viteBundleDir, bundleOutDir, { recursive: true });
-  log("[build-server] Vite bundle copied to bundle/");
+  const bundlePath = path.join(bundleOutDir, "index.js");
+  execSync(`node --check "${bundlePath}"`, {
+    cwd: rootDir,
+    stdio: "inherit",
+  });
+  log("[build-server] Vite bundle syntax check passed");
 }
 
 /**

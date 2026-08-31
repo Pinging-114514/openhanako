@@ -36,6 +36,7 @@ import { createApiResourceOperationContext, requestIdFromHono } from "../http/re
 import { MountAwareFileError, MountAwareFileService } from "../../core/mount-aware-file-service.ts";
 import { materializeUploadedSkillPackage } from "../utils/uploaded-skill-package.ts";
 import { requireAutomationExecutionContext } from "../../lib/desk/automation-execution-context.ts";
+import { SESSION_COLLAB_DECISION_RECORD_TYPE, buildSessionCollabDecision } from "../../lib/session-collab/decision-record.ts";
 
 /** 安全路径校验：target 必须在 baseDir 内部（解析 symlink 后比较） */
 function isInsidePath(target, baseDir) {
@@ -85,6 +86,28 @@ function isApprovedDir(dir, engine, { agentId = null } = {}) {
     return true;
   }
   return isInsideAnyRoot(dir, approved);
+}
+
+async function persistAutomationSuggestionDecision(engine, sessionId, suggestionId) {
+  try {
+    if (!sessionId || !suggestionId) return false;
+    const manifest = engine.getSessionManifest?.(sessionId);
+    const sessionPath = manifest?.currentLocator?.path;
+    if (typeof sessionPath !== "string" || !sessionPath) return false;
+    const session = await engine.ensureSessionLoaded?.(sessionPath);
+    if (typeof session?.sessionManager?.appendCustomEntry !== "function") return false;
+    session.sessionManager.appendCustomEntry(
+      SESSION_COLLAB_DECISION_RECORD_TYPE,
+      buildSessionCollabDecision({
+        suggestionId,
+        status: "approved",
+      }),
+    );
+    return true;
+  } catch (err) {
+    console.warn(`[desk] automation suggestion decision persist failed: ${err?.message || err}`);
+    return false;
+  }
 }
 
 function defaultDeskDir(engine) {
@@ -1115,7 +1138,8 @@ export function createDeskRoute(engine, hub) {
               applying ? 409 : expired ? 410 : 400,
             );
           }
-          return c.json({ ok: true, job: applied.result, jobs: store.listJobs() });
+          const decisionPersisted = await persistAutomationSuggestionDecision(engine, sessionId, suggestionId);
+          return c.json({ ok: true, job: applied.result, jobs: store.listJobs(), decisionPersisted });
         } catch (err) {
           if (isSafeCronStoreError(err)) return cronStoreRouteFailure(c, err);
           const message = err instanceof Error ? err.message : String(err);

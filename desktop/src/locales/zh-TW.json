@@ -151,12 +151,13 @@
     "toggle": "側邊欄",
     "bridgeShort": "接入",
     "pinned": "置頂",
-    "searchPlaceholder": "搜尋聊天記錄",
+    "searchPlaceholder": "搜尋標題和對話",
     "searchClear": "清空搜尋",
     "searchTitleMatches": "標題",
-    "searchContentMatches": "正文",
+    "searchContentMatches": "對話正文",
     "searchingTitles": "正在搜尋標題…",
-    "searchingContent": "正在搜尋正文…",
+    "searchingContent": "正在搜尋對話正文…",
+    "searchingContentAfterEmptyTitles": "標題沒找到，正在搜對話正文…",
     "searchNoResults": "沒有找到相關會話",
     "searchFailed": "搜尋失敗",
     "metaRecoveryNoticeTitle": "部分對話待復原",
@@ -402,6 +403,7 @@
     "accessModeLocked": "目前無法更改權限模式",
     "deskContext": "看著書桌說",
     "pastedImage": "貼上圖片",
+    "attachmentsStillUploading": "圖片還在上傳，稍等一下再送。",
     "textModelImageFileOnly": "當前模型不能查看圖片，也未啟用輔助視覺：圖片將作為檔案發送，模型只能看到檔案路徑，看不到圖片內容。",
     "textModelVideoFileOnly": "目前模型不支援直接查看影片：影片將作為檔案發送，模型只能看到檔案路徑，看不到影片內容。",
     "textModelAudioBlocked": "目前模型不支援音訊輸入。請切換到支援音訊的模型。",
@@ -475,6 +477,14 @@
     "reviewSessionFallback": "{name} 的審閱對話",
     "interjectionUnavailable": "助手審閱不能作為插話傳送，請等待目前回覆結束"
   },
+  "loop": {
+    "banner": "循環 {current}/{max} · {task}",
+    "bannerPaused": "循環已暫停 {current}/{max} · {task}",
+    "paused": "已暫停",
+    "pause": "暫停",
+    "resume": "繼續",
+    "stop": "停止"
+  },
   "slash": {
     "diary": "寫今日日記",
     "diaryBusy": "正在寫日記...",
@@ -483,7 +493,7 @@
     "xing": "從對話中提煉技能",
     "compact": "壓縮上下文",
     "compactBusy": "正在壓縮...",
-    "loop": "在目前會話循環執行任務",
+    "loop": "在目前會話循環執行任務，可用 --turns N 設輪數",
     "commandError": "[命令错误] {message}",
     "usage": "用法：{usage}",
     "commandTimeout": "命令超时（>{ms}ms）"
@@ -1718,7 +1728,7 @@
       "weeklyUnknown": "週用量暫時讀不到",
       "hoursRemaining": "{hours}小時剩餘 {remaining}%",
       "searchTools": "搜尋工具",
-      "searchToolsHint": "開啟後，Hana 的 web_search 會走 Grok OAuth 搜尋，並提供 x_search（搜 X）。使用本週額度。"
+      "searchToolsHint": "開啟後，web_search 用 Grok 搜網頁，並單獨提供 x_search 搜 X。要不要搜 X 由模型自己判斷。使用本週額度。"
     },
     "api": {
       "title": "模型與介面",
@@ -2652,6 +2662,8 @@
     "promptPlaceholder": "寫下你想讓 {agent} 做什麼",
     "promptRequired": "先寫下想讓 Agent 做什麼，再啟用這條自動化",
     "createFailed": "建立自動化失敗",
+    "createSuccess": "已建立定時任務：{label}",
+    "updateSuccess": "已更新定時任務：{label}",
     "agentRequired": "需要先選擇一個 Agent",
     "field": {
       "label": "名稱",

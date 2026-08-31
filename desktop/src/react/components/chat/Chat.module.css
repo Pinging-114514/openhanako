@@ -625,6 +625,16 @@
     background: color-mix(in srgb, var(--text-muted) 32%, transparent);
 }
 
+.interludeRow[data-interlude-variant="loop"] {
+    color: var(--accent);
+}
+.interludeRow[data-interlude-variant="loop"] .interludeLine {
+    background: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+.interludeRow[data-interlude-variant="loop"] .interludeText {
+    color: var(--accent);
+}
+
 .interludeText {
     min-width: 0;
     max-width: min(72%, 520px);

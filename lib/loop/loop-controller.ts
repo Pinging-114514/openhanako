@@ -12,7 +12,7 @@
  * 本层将循环终止（循环只活在一个物理会话里）。
  */
 import { buildLoopKickoffMessage, buildLoopWakeupMessage, buildLoopNoticeMessage } from "./loop-messages.ts";
-import { loopKeyForTarget } from "./loop-store.ts";
+import { clampLoopTurns, loopKeyForTarget } from "./loop-store.ts";
 
 const FALLBACK_ALARM_REASON = "loop invariant fallback: the previous turn scheduled no alarm and left no live background work";
 const BOOT_RECOVERY_REASON = "loop recovery after restart";
@@ -78,15 +78,28 @@ export class LoopController {
     return this._resolveTargetFromSessionRef(ref, opts);
   }
 
-  async start(target, prompt) {
+  async start(target, prompt, limitsOverride: any = null) {
     const key = loopKeyForTarget(target);
     const existing = this._store.get(key);
     if (existing && (existing.status === "running" || existing.status === "paused")) {
       throw new LoopError("loop_already_active", "该会话已有活跃循环，先 /loop stop 再启动新的");
     }
-    this._store.create(target, prompt);
+    this._store.create(target, prompt, limitsOverride);
     const loop = this._store.get(key);
     await this._injectLoopTurn(key, target, buildLoopKickoffMessage(loop));
+    return this._store.get(key);
+  }
+
+  async setMaxTurns(target, maxTurns) {
+    const key = loopKeyForTarget(target);
+    const loop = this._requireLoop(key);
+    const nextTurns = clampLoopTurns(maxTurns);
+    this._store.update(key, { limits: { ...loop.limits, maxTurns: nextTurns } });
+    const fresh = this._store.get(key);
+    if (fresh.status === "running" && fresh.turnCount >= nextTurns) {
+      await this._pause(key, "budget_exhausted",
+        `（循环已用完 ${nextTurns} 轮预算，自动暂停。/loop resume 可重置并继续）`);
+    }
     return this._store.get(key);
   }
 

@@ -151,12 +151,13 @@
     "toggle": "사이드바",
     "bridgeShort": "연결",
     "pinned": "고정",
-    "searchPlaceholder": "채팅 검색",
+    "searchPlaceholder": "제목과 대화 검색",
     "searchClear": "검색 지우기",
     "searchTitleMatches": "제목",
-    "searchContentMatches": "본문",
+    "searchContentMatches": "대화 본문",
     "searchingTitles": "제목 검색 중…",
-    "searchingContent": "본문 검색 중…",
+    "searchingContent": "대화 검색 중…",
+    "searchingContentAfterEmptyTitles": "제목 없음. 대화를 검색하는 중…",
     "searchNoResults": "일치하는 채팅이 없습니다",
     "searchFailed": "검색 실패",
     "metaRecoveryNoticeTitle": "일부 대화가 복구 대기 중입니다",
@@ -402,6 +403,7 @@
     "accessModeLocked": "지금은 접근 모드를 변경할 수 없습니다",
     "deskContext": "책상 컨텍스트 포함",
     "pastedImage": "붙여넣은 이미지",
+    "attachmentsStillUploading": "첨부 파일이 아직 업로드 중이에요. 잠시 후 다시 보내 주세요.",
     "textModelImageFileOnly": "현재 모델은 이미지를 볼 수 없고 보조 비전도 활성화되어 있지 않습니다. 이미지는 파일로 전송되며 모델은 파일 경로만 볼 수 있고 이미지 내용은 볼 수 없습니다.",
     "textModelVideoFileOnly": "현재 모델은 비디오를 직접 볼 수 없습니다. 비디오는 파일로 전송되며 모델은 파일 경로만 볼 수 있고 비디오 내용은 볼 수 없습니다.",
     "textModelAudioBlocked": "현재 모델은 오디오 입력을 지원하지 않아요. 오디오 지원 모델로 전환해 주세요.",
@@ -475,6 +477,14 @@
     "reviewSessionFallback": "{name}의 검토 대화",
     "interjectionUnavailable": "Agent 검토는 끼어들기로 보낼 수 없습니다. 현재 답변이 끝날 때까지 기다려 주세요"
   },
+  "loop": {
+    "banner": "루프 {current}/{max} · {task}",
+    "bannerPaused": "루프 일시정지 {current}/{max} · {task}",
+    "paused": "일시정지",
+    "pause": "일시정지",
+    "resume": "계속",
+    "stop": "중지"
+  },
   "slash": {
     "diary": "오늘의 일기 쓰기",
     "diaryBusy": "일기 작성 중...",
@@ -483,7 +493,7 @@
     "xing": "대화에서 스킬 만들기",
     "compact": "컨텍스트 압축",
     "compactBusy": "압축 중...",
-    "loop": "이 세션에서 반복 작업 실행",
+    "loop": "이 세션에서 반복 작업 실행. --turns N 으로 횟수 지정",
     "commandError": "[명령 오류] {message}",
     "usage": "사용법: {usage}",
     "commandTimeout": "명령 시간 초과 (>{ms}ms)"
@@ -1718,7 +1728,7 @@
       "weeklyUnknown": "주간 한도를 아직 읽지 못했어요",
       "hoursRemaining": "{hours}시간 남은 용량 {remaining}%",
       "searchTools": "검색 도구",
-      "searchToolsHint": "켜면 Hana web_search가 Grok OAuth 검색을 쓰고, X 검색용 x_search도 추가됩니다. 주간 한도를 씁니다."
+      "searchToolsHint": "켜면 web_search는 Grok으로 웹을 찾고, x_search는 X용 별도 도구입니다. X를 찾을지는 모델이 판단합니다. 주간 한도를 씁니다."
     },
     "api": {
       "title": "모델 & API",
@@ -2652,6 +2662,8 @@
     "promptPlaceholder": "{agent}에게 시키고 싶은 일을 적어 주세요",
     "promptRequired": "이 자동화를 사용하기 전에 Agent가 할 일을 먼저 적어 주세요.",
     "createFailed": "자동화 생성 실패",
+    "createSuccess": "예약 작업이 생성되었습니다: {label}",
+    "updateSuccess": "예약 작업이 업데이트되었습니다: {label}",
     "agentRequired": "먼저 Agent를 선택해 주세요",
     "field": {
       "label": "이름",

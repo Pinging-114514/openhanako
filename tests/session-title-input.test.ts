@@ -8,7 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { generateSessionTitle } from "../server/routes/chat.ts";
-import { visiblePromptText } from "../core/session-reminders.ts";
+import { leadingPromptEnvelope, visiblePromptText } from "../core/session-reminders.ts";
 
 const REFERENCE_BLOCK = [
   "[hana_reference]",
@@ -65,6 +65,14 @@ describe("visiblePromptText", () => {
     expect(visiblePromptText(envelopedPrompt("帮我看看这张图"))).toBe("帮我看看这张图");
   });
 
+  it("removes leading image dimension notes used for model coordinates", () => {
+    expect(visiblePromptText([
+      `<file name="image-1">[Image: original 2138x420, displayed at 2000x393. Multiply coordinates by 1.07 to map to original image.]</file>`,
+      "[attached_image: /tmp/a.png]",
+      "这两种查一下愿意",
+    ].join("\n"))).toBe("这两种查一下愿意");
+  });
+
   it("keeps ordinary text untouched", () => {
     expect(visiblePromptText("hello\nworld")).toBe("hello\nworld");
   });
@@ -90,6 +98,15 @@ describe("visiblePromptText", () => {
 
   it("returns an empty string when only envelopes are present", () => {
     expect(visiblePromptText(envelopedPrompt(""))).toBe("");
+  });
+
+  it("keeps a leading media envelope that starts with a dimension note", () => {
+    const envelope = [
+      `<file name="image-1">[Image: original 2138x420, displayed at 2000x393. Multiply coordinates by 1.07 to map to original image.]</file>`,
+      SESSION_FILE_MARKER,
+      "[attached_image: /tmp/a.png]",
+    ].join("\n");
+    expect(leadingPromptEnvelope(`${envelope}\n这两种查一下愿意`)).toBe(`${envelope}\n`);
   });
 });
 

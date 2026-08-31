@@ -60,6 +60,14 @@ const DEFAULT_POLICIES = Object.freeze({
     retryJitterMs: DEFAULT_RETRY_JITTER_MS,
     maxCooldownMs: 5 * 60_000,
   }),
+  xai_oauth: Object.freeze({
+    minIntervalMs: 0,
+    jitterMs: 0,
+    maxConcurrent: 4,
+    rateLimitBaseDelayMs: 2_000,
+    retryJitterMs: DEFAULT_RETRY_JITTER_MS,
+    maxCooldownMs: 5 * 60_000,
+  }),
 });
 
 const FALLBACK_POLICIES = Object.freeze({

@@ -711,6 +711,56 @@ describe('InputArea paste and slash menu behavior', () => {
     expect(mocks.hanaFetch).not.toHaveBeenCalledWith('/api/upload-blob', expect.anything());
   });
 
+  it('keeps blob images when the clipboard also has a filesystem-path file', async () => {
+    const { attachFilesFromPaths } = await import('../../MainContent');
+    mocks.hanaFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/upload-blob') {
+        return new Response(JSON.stringify({
+          uploads: [{
+            fileId: 'sf_mixed_blob',
+            dest: '/hana/session-files/mixed.png',
+            name: 'mixed.png',
+            isDirectory: false,
+          }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    const report = new File(['report'], 'report.pdf', { type: 'application/pdf' });
+    const image = new File([new Uint8Array([1, 2, 3])], 'clip.png', { type: 'image/png' });
+    window.platform = {
+      getFilePath: vi.fn((file: File) => file.name === 'report.pdf' ? '/Users/hana/Desktop/report.pdf' : null),
+    } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [
+          { kind: 'file', type: 'application/pdf', getAsFile: () => report },
+          { kind: 'file', type: 'image/png', getAsFile: () => image },
+        ],
+        getData: () => '',
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(attachFilesFromPaths).toHaveBeenCalledWith(['/Users/hana/Desktop/report.pdf'], {
+        '/Users/hana/Desktop/report.pdf': 'report.pdf',
+      });
+    });
+    await waitFor(() => {
+      expect(useStore.getState().attachedFiles).toEqual([
+        expect.objectContaining({
+          fileId: 'sf_mixed_blob',
+          path: '/hana/session-files/mixed.png',
+        }),
+      ]);
+    });
+  });
+
   it('registers pasted image blob uploads as path-backed attachments without base64Data', async () => {
     mocks.hanaFetch.mockImplementation(async (path: string) => {
       if (path === '/api/upload-blob') {
@@ -759,6 +809,58 @@ describe('InputArea paste and slash menu behavior', () => {
       }]);
     });
     expect(useStore.getState().attachedFiles[0]).not.toHaveProperty('base64Data');
+  });
+
+  it('uploads every pasted image blob, not only the first clipboard item', async () => {
+    let uploadCount = 0;
+    mocks.hanaFetch.mockImplementation(async (path: string) => {
+      if (path === '/api/upload-blob') {
+        uploadCount += 1;
+        return new Response(JSON.stringify({
+          uploads: [{
+            fileId: `sf_pasted_${uploadCount}`,
+            dest: `/hana/session-files/pasted-${uploadCount}.png`,
+            name: `pasted-${uploadCount}.png`,
+            isDirectory: false,
+          }],
+        }), { status: 200 });
+      }
+      return new Response('{}', { status: 200 });
+    });
+    window.platform = { getFilePath: vi.fn(() => null) } as unknown as typeof window.platform;
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const first = new File([new Uint8Array([1, 2, 3])], 'one.png', { type: 'image/png' });
+    const second = new File([new Uint8Array([4, 5, 6])], 'two.png', { type: 'image/png' });
+    const handled = tiptapPasteHandler()?.(null, {
+      preventDefault,
+      clipboardData: {
+        items: [
+          { kind: 'file', type: 'image/png', getAsFile: () => first },
+          { kind: 'file', type: 'image/png', getAsFile: () => second },
+        ],
+      },
+    } as unknown as ClipboardEvent);
+
+    expect(handled).toBe(true);
+    expect(preventDefault).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(useStore.getState().attachedFiles).toEqual([
+        {
+          fileId: 'sf_pasted_1',
+          path: '/hana/session-files/pasted-1.png',
+          name: 'pasted-1.png',
+          isDirectory: false,
+        },
+        {
+          fileId: 'sf_pasted_2',
+          path: '/hana/session-files/pasted-2.png',
+          name: 'pasted-2.png',
+          isDirectory: false,
+        },
+      ]);
+    });
   });
 
   it('compresses oversized pasted images before upload-blob', async () => {

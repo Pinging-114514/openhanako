@@ -77,6 +77,49 @@ describe("replayLatestUserTurn", () => {
     }));
   });
 
+  it("keeps image dimension notes and session-file markers when they lead the prompt", async () => {
+    const manager = SessionManager.inMemory("/workspace");
+    const envelope = [
+      `<file name="image-1">[Image: original 2138x420, displayed at 2000x393. Multiply coordinates by 1.07 to map to original image.]</file>`,
+      `[SessionFile] {"fileId":"sf-1","sessionPath":"/tmp/main.jsonl","label":"5.png","kind":"attachment"}`,
+      "[attached_image: /tmp/a.png]",
+      "[attached_image: /tmp/b.png]",
+    ].join("\n");
+    const latestUserId = manager.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: `${envelope}\n这两种查一下愿意` }],
+    } as any);
+    manager.appendMessage({ role: "assistant", content: [{ type: "text", text: "bad answer" }] } as any);
+    const session = makeNavigableSession(manager);
+    const submit = vi.fn(async () => ({ text: "new answer", toolMedia: [] }));
+    const readFile = vi.fn(async (filePath: string) => Buffer.from(String(filePath).endsWith("b.png") ? "png-b" : "png-a"));
+    const engine = {
+      ensureSessionLoaded: vi.fn(async () => session),
+      isSessionStreaming: vi.fn(() => false),
+      emitEvent: vi.fn(),
+      setSessionBranchHead: vi.fn(),
+    };
+
+    await replayLatestUserTurn(engine, {
+      sessionPath: "/tmp/main.jsonl",
+      sourceEntryId: latestUserId,
+      replacementText: "这两种查一下原因",
+      displayMessage: { text: "这两种查一下原因" },
+    }, { submit, readFile });
+
+    expect(submit).toHaveBeenCalledWith(engine, expect.objectContaining({
+      text: `${envelope}\n这两种查一下原因`,
+      imageAttachmentPaths: ["/tmp/a.png", "/tmp/b.png"],
+      displayMessage: expect.objectContaining({
+        text: "这两种查一下原因",
+        attachments: [
+          expect.objectContaining({ path: "/tmp/a.png", name: "a.png" }),
+          expect.objectContaining({ path: "/tmp/b.png", name: "b.png" }),
+        ],
+      }),
+    }));
+  });
+
   it("replaces only the visible text when editing and preserves attachment markers", async () => {
     const manager = SessionManager.inMemory("/workspace");
     const latestUserId = manager.appendMessage({

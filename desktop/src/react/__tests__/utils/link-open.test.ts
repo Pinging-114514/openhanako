@@ -2,7 +2,7 @@
  * @vitest-environment jsdom
  */
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openInternalLink, resolveLinkTarget } from '../../utils/link-open';
+import { openInternalLink, openLinkFromUserClick, resolveLinkTarget } from '../../utils/link-open';
 
 afterEach(() => {
   document.documentElement.removeAttribute('data-platform');
@@ -75,5 +75,35 @@ describe('resolveLinkTarget', () => {
       sessionPath: '/tmp/hana-session.jsonl',
     });
     expect(openExternal).not.toHaveBeenCalled();
+  });
+
+  it('opens http links in the system browser on ctrl-click', async () => {
+    const openBrowserViewer = vi.fn();
+    const openExternal = vi.fn();
+    window.platform = {
+      openBrowserViewer,
+      openExternal,
+    } as unknown as typeof window.platform;
+
+    await openLinkFromUserClick('https://example.com/', {
+      sessionPath: '/tmp/hana-session.jsonl',
+    }, { ctrlKey: true });
+
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/');
+    expect(openBrowserViewer).not.toHaveBeenCalled();
+  });
+
+  it('opens http links in the system browser on cmd-click', async () => {
+    const openBrowserViewer = vi.fn();
+    const openExternal = vi.fn();
+    window.platform = {
+      openBrowserViewer,
+      openExternal,
+    } as unknown as typeof window.platform;
+
+    await openLinkFromUserClick('https://example.com/docs', {}, { metaKey: true });
+
+    expect(openExternal).toHaveBeenCalledWith('https://example.com/docs');
+    expect(openBrowserViewer).not.toHaveBeenCalled();
   });
 });
