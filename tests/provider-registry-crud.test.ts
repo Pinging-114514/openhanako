@@ -469,9 +469,12 @@ describe("builtin default models", () => {
     writeAddedModels({});
     const reg = new ProviderRegistry(tmpDir);
     expect(reg.get("deepseek").baseUrl).toBe("https://api.deepseek.com");
+    // Defaults mirror pi's built-in DeepSeek catalog; 0.84.4 added the
+    // experimental vision-capable flash model alongside the two V4 chat models.
     expect(reg.getDefaultModels("deepseek")).toEqual([
       "deepseek-v4-pro",
       "deepseek-v4-flash",
+      "deepseek-v4-flash-vision-exp",
     ]);
   });
 

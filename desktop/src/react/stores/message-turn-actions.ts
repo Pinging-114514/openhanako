@@ -41,7 +41,7 @@ function resolveSessionIdentity(sessionPath: string): { sessionId: string; sessi
 }
 
 function reportActionError(sessionPath: string, error: unknown): void {
-  useStore.getState().setInlineError?.(sessionPath, presentError(error), 6000);
+  useStore.getState().setInlineError?.(sessionPath, presentError(error));
 }
 
 async function readSessionActionResponse(response: Response, fallback: string): Promise<any> {

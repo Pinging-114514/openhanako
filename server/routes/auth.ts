@@ -15,16 +15,22 @@ import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.ts";
 import { createModuleLogger } from "../../lib/debug-log.ts";
 import { t } from "../../lib/i18n.ts";
-import {
-  loginOAuthProvider,
-  type OAuthLoginCallbacks,
-} from "../../lib/pi-sdk/index.ts";
+import { type OAuthLoginCallbacks } from "../../lib/pi-sdk/index.ts";
 import {
   DEFAULT_OAUTH_LOGIN_METHOD,
   isOAuthLoginMethod,
 } from "../../shared/oauth-login.ts";
-import { fetchCodexOauthUsage } from "../../lib/auth/openai-codex-oauth-usage.ts";
-import { fetchXaiOauthUsage } from "../../lib/auth/xai-oauth-usage.ts";
+import { readCodexOauthUsageCached, refreshCodexOauthUsageCache } from "../../lib/auth/openai-codex-oauth-usage.ts";
+import { readXaiOauthUsageCached, refreshXaiOauthUsageCache } from "../../lib/auth/xai-oauth-usage.ts";
+import {
+  activateOauthAccount,
+  afterOauthLogin,
+  listOauthAccounts,
+  logoutActiveOauthAccount,
+  removeStoredOauthAccount,
+  resolveEngineOauthAuthKey,
+  syncOauthSlotIntoVault,
+} from "../../lib/auth/oauth-account-vault.ts";
 
 const log = createModuleLogger("auth");
 
@@ -145,6 +151,10 @@ export function createAuthRoute(engine) {
 
     // ProviderRegistry 的 plugin ID 可能和 Pi SDK 的 provider ID 不同（如 "openai-codex-oauth" → "openai-codex"）
     const authKey = engine.providerRegistry?.getAuthJsonKey(provider) || provider;
+    const vaultKey = resolveEngineOauthAuthKey(engine, provider);
+    if (vaultKey) {
+      try { syncOauthSlotIntoVault(engine, vaultKey); } catch { /* keep going into login */ }
+    }
     const existingSessionId = pendingFlowByAuthKey.get(authKey);
     const existingFlow = existingSessionId ? pendingFlows.get(existingSessionId) : null;
     if (existingFlow?.result) {
@@ -247,7 +257,7 @@ export function createAuthRoute(engine) {
     }
 
     // 启动 OAuth（不 await，loginPromise 会异步 resolve）
-    const loginPromise = loginOAuthProvider(engine.authStorage, authKey, loginOptions).catch(err => {
+    const loginPromise = engine.authStorage.login(authKey, loginOptions).catch(err => {
       rejectUrl(err);
       throw err;
     });
@@ -309,6 +319,9 @@ export function createAuthRoute(engine) {
       } catch (err) {
         log.error(`post-login model sync failed: ${err.message}`);
       }
+      void refreshCodexOauthUsageCache(engine);
+      void refreshXaiOauthUsageCache(engine);
+      void afterOauthLogin(engine, flow.authKey);
 
       return c.json({ ok: true });
     } catch (err) {
@@ -343,6 +356,9 @@ export function createAuthRoute(engine) {
     } catch (err) {
       log.error(`post-login model sync failed: ${err.message}`);
     }
+    void refreshCodexOauthUsageCache(engine);
+    void refreshXaiOauthUsageCache(engine);
+    void afterOauthLogin(engine, flow.authKey);
     return c.json({ status: "done" });
   });
 
@@ -378,10 +394,56 @@ export function createAuthRoute(engine) {
       return c.json({ error: "provider is required" }, 400);
     }
     const authKey = engine.providerRegistry?.getAuthJsonKey(provider) || provider;
-    engine.authStorage.logout(authKey);
+    if (resolveEngineOauthAuthKey(engine, provider)) {
+      const accounts = await logoutActiveOauthAccount(engine, provider);
+      return c.json({ ok: true, accounts });
+    }
+    await engine.authStorage.logout(authKey);
     engine.providerRegistry?.clearAuthCache?.();
     await engine.onProviderChanged?.();
+    void refreshCodexOauthUsageCache(engine);
+    void refreshXaiOauthUsageCache(engine);
     return c.json({ ok: true });
+  });
+
+  route.get("/auth/oauth/:provider/accounts", async (c) => {
+    const provider = c.req.param("provider");
+    if (!resolveEngineOauthAuthKey(engine, provider)) {
+      return c.json({ error: "unsupported_provider" }, 404);
+    }
+    const refresh = c.req.query("refresh") === "1";
+    const accounts = await listOauthAccounts(engine, provider, { refresh });
+    return c.json({ accounts });
+  });
+
+  route.post("/auth/oauth/:provider/accounts/activate", async (c) => {
+    const provider = c.req.param("provider");
+    if (!resolveEngineOauthAuthKey(engine, provider)) {
+      return c.json({ error: "unsupported_provider" }, 404);
+    }
+    const body = await safeJson(c);
+    const id = typeof body?.id === "string" ? body.id.trim() : "";
+    if (!id) return c.json({ error: "id is required" }, 400);
+    try {
+      const accounts = await activateOauthAccount(engine, provider, id);
+      return c.json({ ok: true, accounts });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
+  });
+
+  route.delete("/auth/oauth/:provider/accounts/:id", async (c) => {
+    const provider = c.req.param("provider");
+    const id = c.req.param("id");
+    if (!resolveEngineOauthAuthKey(engine, provider)) {
+      return c.json({ error: "unsupported_provider" }, 404);
+    }
+    try {
+      const accounts = await removeStoredOauthAccount(engine, provider, id);
+      return c.json({ ok: true, accounts });
+    } catch (err) {
+      return c.json({ error: err instanceof Error ? err.message : String(err) }, 400);
+    }
   });
 
   // ── OAuth 自定义模型 ──
@@ -401,14 +463,11 @@ export function createAuthRoute(engine) {
       return c.json({ ok: false, error: "not_logged_in", used: null, remaining: null, resetAt: null });
     }
     if (isCodex) {
-      const usage = await fetchCodexOauthUsage({
-        accessToken: cred.access,
-        accountId: cred.accountId || cred.account_id || "",
-      });
-      return c.json(usage);
+      const usage = await readCodexOauthUsageCached(engine);
+      return c.json(usage ?? { ok: false, error: "not_logged_in", used: null, remaining: null, resetAt: null });
     }
-    const usage = await fetchXaiOauthUsage({ accessToken: cred.access });
-    return c.json(usage);
+    const usage = await readXaiOauthUsageCached(engine);
+    return c.json(usage ?? { ok: false, error: "not_logged_in", used: null, remaining: null, resetAt: null });
   });
 
   /** 获取某个 OAuth provider 的自定义模型列表 */

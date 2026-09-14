@@ -34,11 +34,11 @@ const LABELED_TOOL_NAMES = [
   'read', 'write', 'edit', 'grep', 'find', 'ls', 'bash', 'terminal', 'materialize',
   // Agent 自带
   'search_memory', 'pin_memory', 'unpin_memory', 'recall_experience', 'record_experience',
-  'web_search', 'web_fetch', 'todo_write', 'automation', 'stage_files', 'file', 'channel',
+  'web_search', 'x_search', 'web_fetch', 'todo_write', 'automation', 'stage_files', 'file', 'channel',
   'browser', 'computer', 'install_skill', 'notify', 'stop_task', 'update_settings',
   'session_folders', 'subagent', 'subagent_reply', 'subagent_close', 'workflow',
   'check_pending_tasks', 'loop_control', 'current_status', 'session',
-  'hana_card_guide', 'show_card',
+  'hana_card_guide', 'show_card', 'ask_user',
   // Hub 频道
   'channel_read_context', 'channel_reply', 'channel_pass',
   // 内置插件（PluginManager 注册时统一加 `<pluginId>_` 前缀）

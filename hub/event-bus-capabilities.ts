@@ -238,6 +238,17 @@ export const BUILTIN_EVENT_BUS_CAPABILITIES = Object.freeze([
     owner: "system",
   },
   {
+    type: "model:list",
+    title: "List available models",
+    description: "List chat models the current Hana instance can run, for plugin settings pickers.",
+    inputSchema: OBJECT_SCHEMA,
+    outputSchema: OBJECT_SCHEMA,
+    permission: "model.sample",
+    errors: ["NO_HANDLER", "TIMEOUT", "INTERNAL_ERROR"],
+    stability: "stable",
+    owner: "system",
+  },
+  {
     type: "model:sample-text",
     title: "Sample text model",
     description: "Run a non-streaming utility text-model call for plugin RAG, routing, and summarization.",

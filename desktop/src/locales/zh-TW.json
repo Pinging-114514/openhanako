@@ -355,6 +355,17 @@
       "done": "✓ 已完成",
       "failed": "✗ 失败",
       "aborted": "⊘ 已终止"
+    },
+    "askUser": {
+      "other": "其他…",
+      "otherPlaceholder": "寫下你的方案",
+      "confirm": "就這個",
+      "skip": "先跳過",
+      "hintSingle": "選一項，也可以寫自己的",
+      "hintMultiple": "可以多選，也可以再寫一項",
+      "answered": "已選",
+      "skipped": "先跳過了",
+      "timeout": "這題過期了"
     }
   },
   "time": {
@@ -440,6 +451,20 @@
       "max": "最高推理",
       "low": "轻量推理"
     },
+    "codexSpeedLabel": "速度",
+    "codexSpeed": {
+      "standard": "標準",
+      "fast": "快速",
+      "ultrafast": "超快"
+    },
+    "codexSpeedDesc": {
+      "standard": "預設速度",
+      "fast": "1.5 倍速度，用量更多",
+      "ultrafast": "最快可用"
+    },
+    "oauthAccountLabel": "帳號與額度",
+    "oauthRemaining": "餘 {remaining}%",
+    "oauthQuotaUnknown": "額度 —",
     "contextWindow": "上下文 {windowK}k",
     "tokensUsed": "已用 {tokensK}k ({pct}%)",
     "contextActions": "上下文操作",
@@ -707,6 +732,11 @@
       "done": "🌐 {name} 衝浪回來了",
       "failed": "🌐 {name} 沒衝到浪"
     },
+    "x_search": {
+      "running": "𝕏 {name} 正在搜 X",
+      "done": "𝕏 {name} 搜完了",
+      "failed": "𝕏 {name} 沒搜到"
+    },
     "web_fetch": {
       "running": "📄 {name} 正在看網頁",
       "done": "📄 {name} 瞭然於心",
@@ -946,6 +976,11 @@
       "running": "🎴 {name} 正在把卡片擺出來",
       "done": "🎴 {name} 把卡片擺出來了",
       "failed": "🎴 卡片沒擺出來"
+    },
+    "ask_user": {
+      "running": "❔ {name} 正在等你選",
+      "done": "❔ {name} 問過你了",
+      "failed": "❔ 這題沒問成"
     },
     "media_generate-image": {
       "running": "🎨 {name} 正在作圖",
@@ -1726,7 +1761,20 @@
       "weeklyUsed": "本週已用 {used}%",
       "weeklyReset": "{when} 重置",
       "weeklyUnknown": "週用量暫時讀不到",
+      "weeklyExhausted": "本週額度已用完",
+      "weeklyRevoked": "登入已失效，請重新登入",
+      "weeklyRefreshFailed": "重新整理失敗",
+      "weeklyNetwork": "用量讀取失敗（網路）",
+      "weeklyUpstream": "用量讀取失敗（伺服器）",
+      "weeklyRateLimited": "用量讀取被限流",
+      "weeklyNotLoggedIn": "還沒登入",
       "hoursRemaining": "{hours}小時剩餘 {remaining}%",
+      "addAccount": "新增帳號",
+      "useAccount": "切換",
+      "removeAccount": "移除",
+      "activeAccount": "使用中",
+      "accountInvalid": "已失效",
+      "quotaUnknown": "暫時讀不到額度",
       "searchTools": "搜尋工具",
       "searchToolsHint": "開啟後，web_search 用 Grok 搜網頁，並單獨提供 x_search 搜 X。要不要搜 X 由模型自己判斷。使用本週額度。"
     },
@@ -1792,6 +1840,11 @@
       },
       "thinkingLevelsEdit": "可用檔位",
       "thinkingLevelsEditHint": "勾選聊天裡能選的檔。沒改過就跟內建名單走，不會寫進這個模型。",
+      "codexSpeed": {
+        "standard": "標準",
+        "fast": "快速（1.5 倍速度，用量更多）",
+        "ultrafast": "超快（最快）"
+      },
       "defaultThinkingLevel": "預設檔",
       "addedModels": "已新增的模型",
       "displayName": "顯示名稱",
@@ -3213,7 +3266,8 @@
       "dreamRevisionNotFound": "找不到這個 Dream 版本，它可能已經被清理",
       "dreamRestoreFailed": "恢復 Dream 版本失敗，目前記憶沒有改動",
       "dreamRunFailed": "Dream 整理失敗，原記憶沒有改動",
-      "internalContract": "應用程式內部出了點問題，這不是你的操作問題；詳情已記錄，回報時可以附上"
+      "internalContract": "應用程式內部出了點問題，這不是你的操作問題；詳情已記錄，回報時可以附上",
+      "tokenRevoked": "登入已失效，請到設定裡重新登入"
     }
   },
   "main": {
@@ -3430,6 +3484,8 @@
       "computerUse": "Computer Use",
       "computerUseDesc": "开启后，新对话会向主 Agent 暴露 computer 工具；关闭后新对话不可见，旧对话若调用会被拒绝。",
       "thinkingBudget": "思考深度",
+      "codexSpeed": "Codex 速度",
+      "codexSpeedDesc": "Codex OAuth（ChatGPT 登入的 GPT）的速度檔：標準、快速（1.5 倍速度，用量更多）、超快（最快）。",
       "memory": "记忆系统",
       "memoryDesc": "开启/关闭当前 Agent 的记忆",
       "memoryFacts": "记忆 Facts",

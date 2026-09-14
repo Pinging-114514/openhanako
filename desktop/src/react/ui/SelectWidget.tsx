@@ -39,6 +39,8 @@ interface SelectWidgetProps {
   placement?: 'auto' | 'top' | 'bottom';
   /** Guard run before opening; return false to veto (e.g. show a toast instead) */
   onAttemptOpen?: () => boolean;
+  triggerAriaLabel?: string;
+  triggerTitle?: string;
 }
 
 export function SelectWidget({
@@ -60,6 +62,8 @@ export function SelectWidget({
   popupMinWidth,
   placement = 'auto',
   onAttemptOpen,
+  triggerAriaLabel,
+  triggerTitle,
 }: SelectWidgetProps) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -200,8 +204,9 @@ export function SelectWidget({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
+        aria-label={triggerAriaLabel}
         data-open={open}
-        title={displayText}
+        title={triggerTitle || displayText}
       >
         {renderTrigger ? renderTrigger(current, open) : (
           <>

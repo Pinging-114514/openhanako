@@ -10,6 +10,7 @@ const STRINGS: Record<string, string> = {
   'error.code.sessionForkActiveTask': '这条消息之后还有任务在跑，等它结束再从这里分支',
   'error.code.sessionBusy': '会话正忙，稍后再试',
   'error.code.unexpected': '出了点意外',
+  'error.code.tokenRevoked': '登录已失效，请到设置里重新登录',
 };
 
 const translate = (key: string): string => STRINGS[key] ?? key;
@@ -166,5 +167,18 @@ describe('localizedReasonOrRaw', () => {
 
   it('第四档：原文和错误码都没有时才落到通用兜底文案', () => {
     expect(localizedReasonOrRaw(new Error(''), translate)).toBe('出了点意外');
+  });
+});
+
+describe('error-presenter · oauth token revoked', () => {
+  it('turns the raw chatgpt sentence into a re-login prompt', () => {
+    expect(presentError(
+      new Error('Encountered invalidated oauth token for user, failing request'),
+      { translate },
+    )).toEqual({
+      text: '登录已失效，请到设置里重新登录',
+      detail: 'Encountered invalidated oauth token for user, failing request',
+      code: 'token_revoked',
+    });
   });
 });

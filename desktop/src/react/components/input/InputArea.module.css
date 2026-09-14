@@ -74,7 +74,15 @@
 }
 
 .model-split-control .thinking-pill {
+    border-radius: 0;
+}
+
+.model-split-control > :first-child .thinking-pill {
     border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.model-split-control .thinking-selector + .thinking-selector .thinking-pill {
+    border-left-color: rgba(var(--accent-rgb), 0.12);
 }
 
 .model-split-control .model-pill {
@@ -339,6 +347,54 @@
     position: relative;
     display: flex;
     align-items: center;
+}
+
+.speed-selector,
+.oauth-account-selector {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.oauth-account-pill {
+    max-width: 92px;
+    padding: 0 0.45rem;
+}
+
+.oauth-account-trigger {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.28rem;
+    min-width: 0;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.oauth-account-name {
+    max-width: 3.4em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+}
+
+.oauth-account-remaining {
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.oauth-account-option {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    text-align: left;
+}
+
+.oauth-account-option-meta {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.3;
 }
 
 .thinking-pill {
@@ -1033,65 +1089,6 @@
     border: var(--panel-card-border);
     border-radius: var(--panel-card-radius);
     box-shadow: var(--panel-card-shadow);
-}
-
-/* 带可展开详情的错误条：正文一行，展开后详情另起一段 */
-.slash-error-bar-stacked {
-    flex-direction: column;
-    align-items: stretch;
-    gap: var(--space-6);
-}
-
-.slash-error-headline {
-    display: flex;
-    align-items: center;
-    gap: var(--space-8);
-}
-
-.slash-error-text {
-    flex: 1;
-    min-width: 0;
-}
-
-.slash-error-toggle {
-    flex-shrink: 0;
-    padding: 0;
-    border: none;
-    background: none;
-    color: inherit;
-    font-size: var(--fs-caption);
-    opacity: 0.72;
-    cursor: pointer;
-    text-decoration: underline;
-    text-underline-offset: 2px;
-    transition: opacity var(--duration-fast) var(--ease-out);
-}
-
-.slash-error-toggle:hover {
-    opacity: 1;
-}
-
-/* 原始报错与错误码：等宽小字，可选中复制，左缘跟正文对齐（圆点宽 + headline 的 gap） */
-.slash-error-detail {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    padding-left: calc(var(--space-6) + var(--space-8));
-    user-select: text;
-}
-
-.slash-error-detail-line,
-.slash-error-detail-code {
-    margin: 0;
-    font-family: var(--font-mono);
-    font-size: var(--fs-caption);
-    line-height: 1.5;
-    color: var(--text-muted);
-    overflow-wrap: anywhere;
-}
-
-.slash-error-detail-code {
-    opacity: 0.72;
 }
 
 /* 输入区内所有浮层共享同一个测量与宽度上下文 */

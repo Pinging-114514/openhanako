@@ -1170,13 +1170,7 @@ function mockPermissionDefault(mode = 'ask') {
 
       await expect(ensureSession()).resolves.toBeNull();
 
-      expect(mockState.inlineErrors).toMatchObject({
-        '': {
-          text: 'Create session failed: Something went wrong',
-          detail: 'session skill snapshot failed',
-          code: null,
-        },
-      });
+      expect(mockState.inlineErrors).toEqual({});
       expect(mockState.addToast).toHaveBeenCalledWith(
         'Create session failed: Something went wrong',
         'error',
@@ -1205,13 +1199,13 @@ function mockPermissionDefault(mode = 'ask') {
 
       await expect(ensureSession()).resolves.toBeNull();
 
-      expect(mockState.inlineErrors).toMatchObject({
-        '': {
-          text: 'Create session failed: 当前没有可用的对话模型',
-          detail: 'no available model',
-          code: 'no_available_model',
-        },
-      });
+      expect(mockState.inlineErrors).toEqual({});
+      expect(mockState.addToast).toHaveBeenCalledWith(
+        'Create session failed: 当前没有可用的对话模型',
+        'error',
+        6000,
+        { errorCode: 'no_available_model' },
+      );
     });
 
     it('新建失败走顶层 onError 的嵌套形状时，仍读得出 code 和 message', async () => {
@@ -1232,13 +1226,13 @@ function mockPermissionDefault(mode = 'ask') {
 
       await expect(ensureSession()).resolves.toBeNull();
 
-      expect(mockState.inlineErrors).toMatchObject({
-        '': {
-          text: 'Create session failed: 会话索引暂时不可用，请稍后重试',
-          detail: 'session index is rebuilding',
-          code: 'session_manifest_unavailable',
-        },
-      });
+      expect(mockState.inlineErrors).toEqual({});
+      expect(mockState.addToast).toHaveBeenCalledWith(
+        'Create session failed: 会话索引暂时不可用，请稍后重试',
+        'error',
+        6000,
+        { errorCode: 'session_manifest_unavailable' },
+      );
     });
   });
 
@@ -1707,15 +1701,10 @@ function mockPermissionDefault(mode = 'ask') {
           code: null,
         },
       });
-      expect(mockState.addToast).toHaveBeenCalledWith(
-        'Switch session failed: Something went wrong',
-        'error',
-        6000,
-        undefined,
-      );
+      expect(mockState.addToast).not.toHaveBeenCalled();
     });
 
-    it('切换失败带错误码时说人话，toast 带上错误码', async () => {
+    it('切换失败带错误码时说人话，挂到当前会话而不是 toast', async () => {
       const copy: Record<string, string> = {
         'session.switchFailed': 'Switch session failed',
         'error.code.unexpected': 'Something went wrong',
@@ -1739,12 +1728,7 @@ function mockPermissionDefault(mode = 'ask') {
           code: 'session_locator_not_active',
         },
       });
-      expect(mockState.addToast).toHaveBeenCalledWith(
-        'Switch session failed: 这个会话已经不是当前版本，刷新一下列表',
-        'error',
-        6000,
-        { errorCode: 'session_locator_not_active' },
-      );
+      expect(mockState.addToast).not.toHaveBeenCalled();
     });
 
     it('切换失败走顶层 onError 的嵌套形状时，仍读得出 code 和 message', async () => {

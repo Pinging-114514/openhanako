@@ -5,6 +5,7 @@ type ToolCallVisibilityInput = Pick<ToolCall, 'name' | 'args'>;
 const CARD_BACKED_TOOL_NAMES = new Set([
   'hana_card_guide',
   'show_card',
+  'ask_user',
   'media_generate-image',
   'media_generate-video',
   'workflow',

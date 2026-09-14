@@ -146,6 +146,24 @@ describe("writeSecretFileSync", () => {
     expect(() => writeSecretFileSync(target, "{}\n")).toThrowError(/ENOSPC/);
   });
 
+  it("falls back to an in-place write when Windows rename hits EPERM", () => {
+    const root = makeTmpDir();
+    const target = path.join(root, "models.json");
+    fs.writeFileSync(target, "old\n");
+    vi.spyOn(fs, "renameSync").mockImplementation(() => {
+      const err: any = new Error("EPERM: operation not permitted, rename");
+      err.code = "EPERM";
+      throw err;
+    });
+    const platform = vi.spyOn(process, "platform", "get").mockReturnValue("win32");
+
+    writeSecretFileSync(target, "new\n");
+
+    expect(fs.readFileSync(target, "utf-8")).toBe("new\n");
+    expect(fs.existsSync(`${target}.tmp`)).toBe(false);
+    platform.mockRestore();
+  });
+
   it("does not destroy the previous content when the write fails", () => {
     const root = makeTmpDir();
     const target = path.join(root, "credential.json");

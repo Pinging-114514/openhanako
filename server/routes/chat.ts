@@ -1402,6 +1402,19 @@ export function createChatRoute(engine: any, hub: any, {
           status: "pending",
         }),
       });
+    } else if (event.type === "user_choice" && event.confirmId) {
+      if (!ss) return;
+      emitStreamEvent(sessionPath, ss, {
+        type: "content_block",
+        block: {
+          type: "user_choice",
+          confirmId: event.confirmId,
+          question: event.question || "",
+          options: Array.isArray(event.options) ? event.options : [],
+          allowMultiple: event.allowMultiple === true,
+          status: "pending",
+        },
+      });
     } else if (event.type === "settings_confirmation") {
       if (!ss) return;
       emitStreamEvent(sessionPath, ss, {

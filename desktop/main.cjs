@@ -8,7 +8,7 @@
  * 4. 关闭 splash，显示主窗口
  * 5. 优雅关闭
  */
-const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker } = require("electron");
+const { app, BrowserWindow, WebContentsView, globalShortcut, ipcMain, dialog, session, net, shell, nativeTheme, Tray, Menu, nativeImage, systemPreferences, Notification, webContents, screen, powerSaveBlocker } = require("electron");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
@@ -236,7 +236,8 @@ async function resolveOtaProxyUrl(targetUrl) {
   }
   // system: Electron PAC/TUN often reports DIRECT for GitHub CDN while
   // github.com/example.com still have a ladder proxy. Remember the last
-  // real proxy so objects.githubusercontent.com does not fall back to DIRECT.
+  // real proxy so release-assets.githubusercontent.com (and the older
+  // objects.githubusercontent.com host) does not fall back to DIRECT.
   const fromElectron = await resolveElectronProxyUrl(targetUrl);
   if (fromElectron) {
     lastResolvedOtaProxyUrl = fromElectron;
@@ -264,17 +265,22 @@ async function resolveOtaProxyUrl(targetUrl) {
   return lastResolvedOtaProxyUrl || "";
 }
 
-function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(msg))) {
-  return createOtaFetchOnce({
+function createDesktopOtaTransport(log = (msg) => console.log(redactMainLogText(msg))) {
+  return {
     getProxyUrl: resolveOtaProxyUrl,
+    electronNet: net,
+    getSession: () => session.defaultSession,
     log,
-  });
+  };
 }
 
-const desktopUpdateFetch = createProxiedFetch({
-  getProxyUrl: resolveOtaProxyUrl,
-  log: (msg) => console.log(redactMainLogText(`[update-fetch] ${msg}`)),
-});
+function createDesktopOtaFetchOnce(log = (msg) => console.log(redactMainLogText(msg))) {
+  return createOtaFetchOnce(createDesktopOtaTransport(log));
+}
+
+const desktopUpdateFetch = createProxiedFetch(createDesktopOtaTransport(
+  (msg) => console.log(redactMainLogText(`[update-fetch] ${msg}`)),
+));
 
 async function applyDesktopNetworkProxy(config, { reason = "runtime" } = {}) {
   const normalized = normalizeNetworkProxyConfig(config);

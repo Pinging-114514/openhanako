@@ -47,6 +47,8 @@ export const ERROR_CODE_MESSAGE_KEYS: Readonly<Record<string, string>> = Object.
   invalid_path: 'error.code.invalidPath',
 
   // 模型 / 工作区 / 权限
+  token_revoked: 'error.code.tokenRevoked',
+  refresh_token_invalidated: 'error.code.tokenRevoked',
   no_available_model: 'error.code.noAvailableModel',
   agent_model_not_available: 'error.code.agentModelNotAvailable',
   workspace_not_found: 'error.code.workspaceNotFound',

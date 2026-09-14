@@ -22,6 +22,9 @@ describe("cards route", () => {
     const code = '<button onclick="x()">开始</button>';
     const put = await putCard(app, "c_abc123", { code, title: "pomodoro", varsCss: "--accent: #537D96;" });
     expect(put.status).toBe(200);
+    const registered = await put.json() as { ok?: boolean; ticket?: string };
+    expect(registered.ok).toBe(true);
+    expect(registered.ticket).toMatch(/^[A-Za-z0-9_-]+$/);
 
     const get = await app.request("/api/cards/c_abc123");
     expect(get.status).toBe(200);
@@ -29,6 +32,20 @@ describe("cards route", () => {
     const html = await get.text();
     expect(html).toContain(code);
     expect(html).toContain("--accent: #537D96;");
+  });
+
+  it("GET with a matching iframe ticket succeeds and a wrong ticket is rejected", async () => {
+    const app = buildApp();
+    const put = await putCard(app, "c_ticket", { code: "<div>ticketed</div>" });
+    const registered = await put.json() as { ticket?: string };
+    expect(registered.ticket).toBeTruthy();
+
+    const ok = await app.request(`/api/cards/c_ticket?cardIframeTicket=${encodeURIComponent(registered.ticket!)}`);
+    expect(ok.status).toBe(200);
+    expect(await ok.text()).toContain("ticketed");
+
+    const denied = await app.request("/api/cards/c_ticket?cardIframeTicket=nope");
+    expect(denied.status).toBe(403);
   });
 
   it("GET on an unknown cardId returns 404", async () => {

@@ -5,6 +5,7 @@ import type {
 
 export const XAI_OAUTH_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 export const XAI_OAUTH_DISCOVERY_URL = "https://auth.x.ai/.well-known/openid-configuration";
+export const XAI_OAUTH_USERINFO_URL = "https://auth.x.ai/oauth2/userinfo";
 export const XAI_OAUTH_SCOPES = "openid profile email offline_access grok-cli:access api:access";
 export const XAI_OAUTH_RESOURCE_URL = "https://cli-chat-proxy.grok.com/v1";
 
@@ -328,18 +329,20 @@ export function createXaiOAuthProvider(options: XaiOAuthDriverOptions = {}): Sdk
       throw new Error("xAI OAuth device code expired");
     },
 
-    async refreshToken(credentials: OAuthCredentials): Promise<OAuthCredentials> {
+    // 0.84.0 起 SDK 会传入一个具体的 AbortSignal，刷新必须尊重它（登录中止、
+    // 请求超时都靠这个信号收尾）。
+    async refreshToken(credentials: OAuthCredentials, signal?: AbortSignal): Promise<OAuthCredentials> {
       if (typeof credentials.refresh !== "string" || !credentials.refresh) {
         throw new Error("xAI OAuth credentials missing refresh token");
       }
       const tokenEndpoint = credentials.tokenEndpoint === undefined
-        ? (await discover()).tokenEndpoint
+        ? (await discover(signal)).tokenEndpoint
         : trustedXaiAuthEndpoint(credentials.tokenEndpoint, "cached token_endpoint");
       const { response, payload } = await postToken(tokenEndpoint, {
         grant_type: "refresh_token",
         refresh_token: credentials.refresh,
         client_id: XAI_OAUTH_CLIENT_ID,
-      });
+      }, signal);
       if (!response.ok || payload.error) {
         throw new Error(`xAI OAuth token refresh failed: ${oauthErrorMessage(payload, `HTTP ${response.status}`)}`);
       }

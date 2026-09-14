@@ -82,7 +82,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     expect(manager.authStorage.getOAuthProviders()).toEqual(expect.arrayContaining([
@@ -119,7 +119,7 @@ describe("ModelManager AuthStorage ownership", () => {
       "x-grok-model-override": "grok-4.5",
     });
 
-    manager.authStorage.logout("xai-oauth");
+    await manager.authStorage.logout("xai-oauth");
     await manager.reloadAndSync();
     expect(manager.availableModels.filter((model) => model.provider === "xai-oauth")).toEqual([]);
   });
@@ -149,7 +149,7 @@ describe("ModelManager AuthStorage ownership", () => {
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
     manager.providerRegistry.register(plugin("First OAuth"));
-    manager.init();
+    await manager.init();
     expect(manager.authStorage.getOAuthProviders()).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: "reloadable-sdk-provider", name: "First OAuth" }),
     ]));
@@ -185,7 +185,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const sol = manager.availableModels.find((model) => model.provider === "openai-codex" && model.id === "gpt-5.6-sol");
@@ -210,7 +210,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     expect(manager.availableModels.filter((model) => model.provider === "openai-codex")).toEqual([]);
@@ -218,7 +218,7 @@ describe("ModelManager AuthStorage ownership", () => {
     expect(projection.providers["openai-codex"].models.map((model) => model.id)).toContain("gpt-5.6-sol");
   });
 
-  it("preserves OAuth auth when a conflicting API-key provider claims its runtime auth key", () => {
+  it("preserves OAuth auth when a conflicting API-key provider claims its runtime auth key", async () => {
     writeAddedModels({
       "openai-codex": {
         auth_type: "api-key",
@@ -238,7 +238,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    expect(() => manager.init()).toThrow(/collision/i);
+    await expect(manager.init()).rejects.toThrow(/collision/i);
 
     const persistedAuth = JSON.parse(fs.readFileSync(path.join(tmpDir, "auth.json"), "utf-8"));
     expect(persistedAuth["openai-codex"]).toMatchObject({
@@ -263,7 +263,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     expect(manager.availableModels
@@ -271,7 +271,7 @@ describe("ModelManager AuthStorage ownership", () => {
       .map((model) => model.id)).toEqual(expected);
 
     const restarted = new ModelManager({ hanakoHome: tmpDir });
-    restarted.init();
+    await restarted.init();
     await restarted.refreshAvailable();
     expect(restarted.availableModels
       .filter((model) => model.provider === "openai-codex")
@@ -294,7 +294,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const projected = JSON.parse(fs.readFileSync(path.join(tmpDir, "models.json"), "utf-8"));
@@ -313,7 +313,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const restarted = new ModelManager({ hanakoHome: tmpDir });
-    restarted.init();
+    await restarted.init();
     await restarted.refreshAvailable();
     expect(restarted.availableModels[0]).toMatchObject({
       id: "gpt-5.6-sol",
@@ -336,7 +336,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const model = manager.availableModels.find((item) => (
@@ -359,7 +359,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const projected = JSON.parse(fs.readFileSync(path.join(tmpDir, "models.json"), "utf-8"));
@@ -402,7 +402,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const selected = manager.availableModels.find((item) => (
@@ -456,7 +456,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.refreshAvailable();
 
     const projected = JSON.parse(fs.readFileSync(path.join(tmpDir, "models.json"), "utf-8"));
@@ -464,7 +464,7 @@ describe("ModelManager AuthStorage ownership", () => {
     expect(projected.providers.openrouter.models[0].api).toBe("openai-completions");
   });
 
-  it("rejects invalid user thinking maps instead of silently falling back", () => {
+  it("rejects invalid user thinking maps instead of silently falling back", async () => {
     writeAddedModels({
       openai: {
         api_key: "sk-openai",
@@ -477,7 +477,7 @@ describe("ModelManager AuthStorage ownership", () => {
     writeAuth({});
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    expect(() => manager.init()).toThrow(/thinkingLevelMap\.ultra/);
+    await expect(manager.init()).rejects.toThrow(/thinkingLevelMap\.ultra/);
   });
 
   it("injects added-models API keys as runtime overrides before Pi SDK env resolution", async () => {
@@ -490,7 +490,7 @@ describe("ModelManager AuthStorage ownership", () => {
       });
 
       const manager = new ModelManager({ hanakoHome: tmpDir });
-      manager.init();
+      await manager.init();
       await manager.syncAndRefresh();
 
       await expect(getDeepseekApiKey(manager)).resolves.toBe("public");
@@ -511,7 +511,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     await expect(getDeepseekApiKey(manager)).resolves.toBe("sk-legacy-4d2a");
@@ -538,7 +538,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     await expect(getDeepseekApiKey(manager)).resolves.toBe("sk-projected-6ad1");
@@ -577,7 +577,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     const persistedProviders = readPersistedProviders();
@@ -604,7 +604,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     await expect(getDeepseekApiKey(manager)).resolves.toBe("sk-new-999c");
@@ -621,7 +621,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     const persistedProviders = readPersistedProviders();
@@ -653,13 +653,15 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     const model = manager.availableModels.find((m) => m.provider === "local-max" && m.id === "internal-max-model");
     expect(model).toBeTruthy();
     expect(model?.reasoning).toBe(true);
-    expect(model?.xhigh).toBe(true);
+    // The legacy `xhigh` flag is no longer carried; the wire map is derived from thinkingLevels.
+    expect(model?.xhigh).toBeUndefined();
+    expect(model?.thinkingLevelMap).toMatchObject({ max: "max" });
     expect(model?.defaultThinkingLevel).toBe("max");
     expect(model?.thinkingLevels).toEqual(["off", "medium", "high", "max"]);
   });
@@ -688,7 +690,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     await manager.syncAndRefresh();
 
     const persistedProviders = readPersistedProviders();
@@ -706,7 +708,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
 
     const manager = new ModelManager({ hanakoHome: tmpDir });
-    manager.init();
+    await manager.init();
     writeAuth({});
 
     await manager.reloadAndSync();
@@ -761,7 +763,7 @@ describe("ModelManager AuthStorage ownership", () => {
 
     const creds = await manager.resolveProviderCredentialsFresh("openai-codex-oauth");
 
-    expect(manager._authStorage.getApiKey).toHaveBeenCalledWith("openai-codex", { includeFallback: false });
+    expect(manager._authStorage.getApiKey).toHaveBeenCalledWith("openai-codex");
     expect(creds).toEqual({
       api_key: "fresh-token",
       base_url: "https://chatgpt.com/backend-api",
@@ -850,7 +852,7 @@ describe("ModelManager AuthStorage ownership", () => {
       provider: "openai-codex",
     });
 
-    expect(manager._authStorage.getApiKey).toHaveBeenCalledWith("openai-codex", { includeFallback: false });
+    expect(manager._authStorage.getApiKey).toHaveBeenCalledWith("openai-codex");
     expect(resolved).toMatchObject({
       api: "openai-codex-responses",
       api_key: "fresh-auth-storage-token",

@@ -920,6 +920,19 @@
         "groundingMode": "prompted"
       }
     },
+    "gpt-6-astra": {
+      "name": "GPT-6 Astra",
+      "context": 1050000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true,
+      "api": "openai-responses",
+      "thinkingLevels": ["off", "low", "medium", "high", "xhigh", "max"],
+      "thinkingLevelMap": {
+        "off": "none"
+      },
+      "defaultThinkingLevel": "medium"
+    },
     "gpt-5.6": {
       "name": "GPT-5.6",
       "context": 1050000,
@@ -6933,6 +6946,21 @@
       },
       "defaultThinkingLevel": "medium",
       "legacyCompatibility": true
+    },
+    "gpt-6-astra": {
+      "name": "GPT-6 Astra",
+      "context": 872000,
+      "maxContext": 872000,
+      "maxOutput": 128000,
+      "image": true,
+      "reasoning": true,
+      "api": "openai-codex-responses",
+      "thinkingLevels": ["low", "medium", "high", "xhigh", "max"],
+      "thinkingLevelMap": {
+        "off": null,
+        "minimal": null
+      },
+      "defaultThinkingLevel": "medium"
     },
     "gpt-5.6-sol": {
       "name": "GPT-5.6 Sol",

@@ -17,16 +17,23 @@ export function buildProviderCompatOptions({
   callPurpose,
   explicitMaxTokens,
   outputBudgetSource,
+  reasoningLevel,
 }: {
   mode?: string;
   callPurpose?: unknown;
   explicitMaxTokens?: number | null;
   outputBudgetSource?: unknown;
+  reasoningLevel?: unknown;
 } = {}) {
   const normalizedPurpose = normalizeCallPurpose(callPurpose);
+  const requestedLevel = typeof reasoningLevel === "string" && reasoningLevel.trim()
+    ? reasoningLevel.trim()
+    : null;
   return {
     mode,
-    ...(mode === "utility" ? { reasoningLevel: "off" } : {}),
+    ...(requestedLevel
+      ? { reasoningLevel: requestedLevel }
+      : (mode === "utility" ? { reasoningLevel: "off" } : {})),
     ...(normalizedPurpose ? { callPurpose: normalizedPurpose } : {}),
     ...(explicitMaxTokens !== null && explicitMaxTokens !== undefined ? { outputBudgetSource } : {}),
   };

@@ -5,18 +5,26 @@
  *   - api === "openai-codex-responses"
  *   - provider ids "openai-codex" / "openai-codex-oauth"
  *
- * Protocol problem:
- *   ChatGPT Codex's Responses endpoint does not accept OpenAI public API output
- *   budget fields or temperature controls in Hana's current OAuth route.
+ * Protocol problems:
+ *   1. ChatGPT Codex's Responses endpoint does not accept OpenAI public API
+ *      output budget fields or temperature controls in Hana's current OAuth route.
+ *   2. The speed tier ("速度" in the Codex app) is a request-body `service_tier`
+ *      whose accepted values differ from the public API: `fast` is rejected,
+ *      Codex CLI itself sends `priority`; `ultrafast` is the Cerebras tier.
+ *      Hana carries the user's choice in `options.codexServiceTier` and writes
+ *      the wire value here, so the live request and the compaction request for
+ *      one session agree.
  *
  * Deletion condition:
  *   - Codex Responses accepts these request fields with the same semantics as
  *     public OpenAI Responses, or
- *   - pi-ai exposes a first-class Codex provider serializer that omits them.
+ *   - pi-ai exposes a first-class Codex provider serializer that omits them and
+ *     forwards a session-level service tier.
  */
 
+import { codexServiceTierWireValue, isCodexOauthProvider } from "../../shared/codex-service-tier.ts";
+
 const CODEX_RESPONSES_API = "openai-codex-responses";
-const CODEX_PROVIDER_IDS = new Set(["openai-codex", "openai-codex-oauth"]);
 const UNSUPPORTED_FIELDS = [
   "max_output_tokens",
   "max_completion_tokens",
@@ -33,11 +41,10 @@ export function matches(model) {
   if (!model || typeof model !== "object") return false;
   if (lower(model.api) !== CODEX_RESPONSES_API) return false;
   const provider = lower(model.provider);
-  return provider === "" || CODEX_PROVIDER_IDS.has(provider);
+  return provider === "" || isCodexOauthProvider(provider);
 }
 
-export function apply(payload) {
-  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+function stripUnsupportedFields(payload) {
   let changed = false;
   for (const field of UNSUPPORTED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(payload, field)) {
@@ -46,10 +53,32 @@ export function apply(payload) {
     }
   }
   if (!changed) return payload;
-
   const next = { ...payload };
   for (const field of UNSUPPORTED_FIELDS) {
     delete next[field];
   }
   return next;
+}
+
+/**
+ * Apply the Codex speed tier. Only acts when the caller states a tier: a
+ * request that did not go through Hana's session options (utility calls,
+ * tests) keeps whatever `service_tier` it already carries.
+ */
+function applyServiceTier(payload, options) {
+  if (!options || !Object.prototype.hasOwnProperty.call(options, "codexServiceTier")) return payload;
+  const wire = codexServiceTierWireValue(options.codexServiceTier);
+  const has = Object.prototype.hasOwnProperty.call(payload, "service_tier");
+  if (wire === null) {
+    if (!has) return payload;
+    const { service_tier: _omit, ...rest } = payload;
+    return rest;
+  }
+  if (has && payload.service_tier === wire) return payload;
+  return { ...payload, service_tier: wire };
+}
+
+export function apply(payload, _model?, options?) {
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
+  return applyServiceTier(stripUnsupportedFields(payload), options);
 }

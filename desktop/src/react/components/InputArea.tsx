@@ -460,7 +460,6 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const loopStatus = useStore(s => getSessionLoop(s, currentSessionPath));
   const screenshotBusy = useStore(s => s.screenshotTaskCount > 0);
   const screenshotProgress = useStore(s => s.screenshotProgress);
-  const inlineError = useStore(s => s.currentSessionPath ? (sessionScopedValue(s, s.inlineErrors, s.currentSessionPath) ?? null) : null);
   const sessionFiles = useStore(s => (s.currentSessionPath ? selectSessionFiles(s, s.currentSessionPath) : EMPTY_FILE_REFS));
   const attachedFiles = useStore(s => s.attachedFiles);
   const docContextAttached = useStore(s => s.docContextAttached);
@@ -2308,7 +2307,6 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           })
           : null}
         screenshotProgress={screenshotProgress}
-        inlineError={inlineError}
         modelUnavailableMessage={modelUnavailableMessage}
         slashResult={slashResult}
         onResultClick={(slashResult?.filePath || slashResult?.deskDir) ? handleSlashResultClick : undefined}

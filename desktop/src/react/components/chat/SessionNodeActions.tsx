@@ -58,7 +58,7 @@ export function useSessionNodeActions({
         await retrySessionTurn(forked.sessionPath, target, { message: retryMessage });
       }
     } catch (error) {
-      useStore.getState().setInlineError?.(sessionPath, presentError(error), 6000);
+      useStore.getState().setInlineError?.(sessionPath, presentError(error));
     } finally {
       busyRef.current = false;
       setBusy(false);

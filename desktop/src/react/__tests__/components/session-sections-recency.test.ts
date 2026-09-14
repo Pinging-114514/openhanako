@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   PROJECT_SESSION_PREVIEW_LIMIT,
+  pickRunningSessions,
   splitProjectSessionsByPreview,
 } from "../../components/session-sections";
 import type { Session } from "../../types";
@@ -66,5 +67,38 @@ describe("splitProjectSessionsByPreview", () => {
       visible: [items[0], items[1], items[3]],
       hidden: [items[2], items[4]],
     });
+  });
+});
+
+describe("pickRunningSessions", () => {
+  it("keeps running sessions in list order and matches path or sessionId", () => {
+    const items = [
+      session({ path: "/s/idle.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+      session({ path: "/s/run-a.jsonl", modified: "2026-08-18T12:00:00.000Z" }),
+      session({
+        path: "/s/run-b.jsonl",
+        sessionId: "sess_b",
+        modified: "2026-08-17T12:00:00.000Z",
+      }),
+    ];
+
+    expect(pickRunningSessions(items, ["/s/run-a.jsonl", "sess_b"])).toEqual([
+      items[1],
+      items[2],
+    ]);
+  });
+
+  it("returns nothing when no running keys match", () => {
+    expect(pickRunningSessions([
+      session({ path: "/s/idle.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+    ], ["/s/missing.jsonl"])).toEqual([]);
+  });
+
+  it("keeps the current session when its path is in the key list", () => {
+    const items = [
+      session({ path: "/s/idle.jsonl", modified: "2026-08-19T12:00:00.000Z" }),
+      session({ path: "/s/current.jsonl", modified: "2026-08-10T12:00:00.000Z" }),
+    ];
+    expect(pickRunningSessions(items, ["/s/current.jsonl"])).toEqual([items[1]]);
   });
 });

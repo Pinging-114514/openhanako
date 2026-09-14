@@ -120,6 +120,21 @@ export class ConfirmStore {
   }
 
   /**
+   * 同一 session 是否已有指定 kind 的待处理确认。
+   * @param {string} kind
+   * @param {string|{ sessionId?: string|null, sessionPath?: string|null }} sessionPath
+   */
+  hasPending(kind, sessionPath) {
+    if (typeof kind !== "string" || !kind) return false;
+    const sessionRef = this._sessionRef(sessionPath);
+    for (const entry of this._pending.values()) {
+      if (entry.kind !== kind) continue;
+      if (this._entryMatchesSession(entry, sessionRef)) return true;
+    }
+    return false;
+  }
+
+  /**
    * session 终止时，清理该 session 的所有 pending confirmation
    * @param {string|{ sessionId?: string|null, sessionPath?: string|null }} sessionPath
    */

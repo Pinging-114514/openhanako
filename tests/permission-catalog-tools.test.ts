@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { createCardGuideTool } from "../lib/tools/card-guide-tool.ts";
 import { createCheckDeferredTool } from "../lib/tools/check-deferred-tool.ts";
 import { createShowCardTool } from "../lib/tools/show-card-tool.ts";
+import { createAskUserTool } from "../lib/tools/ask-user-tool.ts";
 import {
   createSubagentCloseTool,
   createSubagentReplyTool,
@@ -29,6 +30,7 @@ describe("built-in permission catalog", () => {
         getSessionPath: () => null,
       }), {}],
       [createShowCardTool(), { title: "chart", code: "<svg></svg>" }],
+      [createAskUserTool(), { question: "Which?", options: [{ id: "a", label: "A" }, { id: "b", label: "B" }], allow_multiple: false }],
       [createTodoTool(), { todos: [] }],
       [createSubagentTool(subagentDeps), { task: "research" }],
       [createSubagentReplyTool(subagentDeps), { threadId: "th_1", task: "continue" }],
@@ -46,6 +48,7 @@ describe("built-in permission catalog", () => {
       "read",
       "read",
       "review",
+      "read",
       "routine",
       "routine",
       "routine",
@@ -55,6 +58,7 @@ describe("built-in permission catalog", () => {
       "hana_card_guide.read",
       "check_pending_tasks.read",
       "show_card.render",
+      "ask_user.prompt",
       "todo_write.replace",
       "subagent.launch",
       "subagent_reply.continue",

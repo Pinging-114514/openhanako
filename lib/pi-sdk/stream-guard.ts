@@ -3,17 +3,18 @@ import { createAssistantMessageEventStream } from "@earendil-works/pi-ai";
 import { getLocale } from "../i18n.ts";
 import { isToolProtocolFragment } from "../tool-protocol-sanitizer.ts";
 import { formatUserFacingProviderError } from "./retry-policy.ts";
+import { getAgentStreamFn, setAgentStreamFn } from "./agent-stream.ts";
 
 const STREAM_GUARD_FLAG = Symbol.for("hana.piSdk.streamGuardInstalled");
 
 export function installAssistantStreamGuard(session) {
   const agent = session?.agent;
-  if (!agent || typeof agent.streamFn !== "function" || agent[STREAM_GUARD_FLAG]) return;
-  const originalStreamFn = agent.streamFn;
-  agent.streamFn = async (model, context, options) => {
+  const originalStreamFn = getAgentStreamFn(agent);
+  if (!agent || !originalStreamFn || agent[STREAM_GUARD_FLAG]) return;
+  setAgentStreamFn(agent, async (model, context, options) => {
     const inner = await originalStreamFn(model, context, options);
     return guardAssistantMessageStream(inner);
-  };
+  });
   agent[STREAM_GUARD_FLAG] = true;
 }
 

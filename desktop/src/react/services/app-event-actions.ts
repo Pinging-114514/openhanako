@@ -8,6 +8,7 @@ import { loadChannels } from '../stores/channel-actions';
 import { applyChatLayout } from '../chat/layout';
 import { applyEditorTypography } from '../editor/typography';
 import { mergeWorkspaceHistory } from '../../../../shared/workspace-history.ts';
+import { publishOauthAccountsChanged } from '../stores/oauth-accounts-store';
 
 declare const i18n: {
   locale: string;
@@ -166,6 +167,13 @@ export function handleAppEvent(type: string, data: any = {}, options: AppEventOp
       window.dispatchEvent(new CustomEvent('hana-skills-changed', { detail: data || {} }));
       if (options.source === 'server') {
         window.platform?.settingsChanged?.('skills-changed', data || {});
+      }
+      break;
+    }
+    case 'oauth-accounts-changed': {
+      publishOauthAccountsChanged(data);
+      if (options.source === 'server') {
+        window.platform?.settingsChanged?.('oauth-accounts-changed', data || {});
       }
       break;
     }

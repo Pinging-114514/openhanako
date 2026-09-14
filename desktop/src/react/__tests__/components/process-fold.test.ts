@@ -162,6 +162,7 @@ describe('process fold grouping', () => {
         { ...tool('automation'), args: { action: 'pending_update' } },
         tool('hana_card_guide'),
         tool('show_card'),
+        tool('ask_user'),
       ])]),
     ];
 

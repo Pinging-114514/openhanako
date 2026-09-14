@@ -10,11 +10,12 @@
  */
 import path from "path";
 import {
-  FileAuthStorageBackend,
   createModelRegistry,
+  createModelRuntime,
   registerModelProvider,
   unregisterModelProvider,
 } from "../lib/pi-sdk/index.ts";
+import { PiAuthStore } from "../lib/pi-sdk/auth-store.ts";
 import { createAuthStorageWithRetry } from "../lib/auth/auth-storage-boot.ts";
 import { createModuleLogger } from "../lib/debug-log.ts";
 import { forceRefreshOAuthApiKey } from "./oauth-force-refresh.ts";
@@ -30,6 +31,7 @@ import { enrichModelFromKnownMetadata } from "./model-known-enrichment.ts";
 import { lookupKnownProvider } from "../shared/known-models.ts";
 import { migrateLegacyApiKeyAuthToProviders } from "./provider-auth-migration.ts";
 import {
+  deriveThinkingLevelMap,
   normalizePiSdkThinkingLevel,
   normalizeSessionThinkingLevel,
   normalizeThinkingLevelChoices,
@@ -73,7 +75,6 @@ function buildProviderModelMetadataMap(projectionPlans: unknown) {
       const known = lookupKnownProvider(provider, modelId);
       const meta: Record<string, unknown> = {};
       if (isRecord(modelEntry)) {
-        if (modelEntry.xhigh !== undefined) meta.xhigh = modelEntry.xhigh === true;
         if (modelEntry.defaultThinkingLevel !== undefined) meta.defaultThinkingLevel = modelEntry.defaultThinkingLevel;
         const thinkingLevels = normalizeThinkingLevelChoices(modelEntry.thinkingLevels);
         if (thinkingLevels) meta.thinkingLevels = thinkingLevels;
@@ -98,10 +99,6 @@ function buildProviderModelMetadataMap(projectionPlans: unknown) {
       if (typeof known?.maxContext === "number") meta.maxContext = known.maxContext;
       const defaultThinkingLevel = providerModelDefault(rawProvider, modelId);
       if (defaultThinkingLevel !== undefined) meta.defaultThinkingLevel = defaultThinkingLevel;
-      if ((Array.isArray(meta.thinkingLevels) && meta.thinkingLevels.includes("xhigh"))
-        || isRecord(meta.thinkingLevelMap) && typeof meta.thinkingLevelMap.xhigh === "string") {
-        if (meta.xhigh === undefined) meta.xhigh = true;
-      }
       if (Object.keys(meta).length > 0) {
         map.set(modelMetadataKey(runtimeProvider, modelId), meta);
         map.set(modelMetadataKey(provider, modelId), meta);
@@ -118,10 +115,15 @@ function applyProviderModelMetadata(model, metadataByModel) {
   const thinkingLevels = normalizeThinkingLevelChoices(merged.thinkingLevels);
   if (thinkingLevels) {
     merged.thinkingLevels = thinkingLevels;
-    if (thinkingLevels.includes("xhigh")) merged.xhigh = true;
+    // This object is what the session hands to pi, and pi gates xhigh / max on
+    // the map alone; a level Hana lists must therefore be present in it.
+    const wireMap = deriveThinkingLevelMap(thinkingLevels, merged.thinkingLevelMap);
+    if (wireMap) merged.thinkingLevelMap = wireMap;
   } else {
     delete merged.thinkingLevels;
   }
+  // `xhigh` is a legacy display flag; the wire map is the only truth now.
+  delete merged.xhigh;
   if (typeof merged.defaultThinkingLevel === "string") {
     merged.defaultThinkingLevel = normalizeThinkingLevelForModel(merged.defaultThinkingLevel, merged);
   }
@@ -129,12 +131,13 @@ function applyProviderModelMetadata(model, metadataByModel) {
 }
 
 export class ModelManager {
-  declare _authBackend: any;
+  /** PiAuthStore in production; tests substitute partial doubles, so this stays untyped. */
   declare _authStorage: any;
   declare _availableModels: any;
   declare _defaultModel: any;
   declare _hanakoHome: any;
   declare _modelRegistry: any;
+  declare _modelRuntime: any;
   declare _registeredSdkProviderIds: Set<string>;
   declare executionRouter: any;
   declare providerRegistry: any;
@@ -145,7 +148,7 @@ export class ModelManager {
   constructor({ hanakoHome }) {
     this._hanakoHome = hanakoHome;
     this._authStorage = null;
-    this._authBackend = null;
+    this._modelRuntime = null;
     this._modelRegistry = null;
     this._registeredSdkProviderIds = new Set();
     this._defaultModel = null;   // 设置页面选的，持久化，bridge 用这个
@@ -156,26 +159,36 @@ export class ModelManager {
     this.executionRouter = null;
   }
 
-  /** 初始化 AuthStorage + ModelRegistry + 新架构模块 */
-  init() {
-    this._authStorage = createAuthStorageWithRetry(path.join(this._hanakoHome, "auth.json"), {
+  /**
+   * 初始化凭证存储 + ModelRuntime + ModelRegistry + 新架构模块。
+   *
+   * 0.80.8 起 SDK 把 auth.json 存储和 provider/登录/刷新编排拆成 AuthStorage 与
+   * ModelRuntime 两层，runtime 的创建是 async 的，所以 init 也是。
+   */
+  async init() {
+    const authPath = this.authJsonPath;
+    const credentials = createAuthStorageWithRetry(authPath, {
       log: (line) => log.warn(line),
     });
-    // Same file, same lock: forced OAuth rotation writes through this backend.
-    this._authBackend = new FileAuthStorageBackend(path.join(this._hanakoHome, "auth.json"));
+    // Same file, same lock: forced OAuth rotation and pi's own refresh both go
+    // through this CredentialStore's modify().
+    this._authStorage = new PiAuthStore({ credentials, authPath });
     this.providerRegistry.reload();
-    this._removeApiKeyProviderAuthEntries();
+    await this._removeApiKeyProviderAuthEntries();
     const projection = this._buildChatProjectionInputs();
-    this._applyRuntimeApiKeyOverrides(projection);
     syncModels(projection.providers, {
       modelsJsonPath: this.modelsJsonPath,
       chatProjectionPlans: projection.planMap,
     });
-    this._modelRegistry = createModelRegistry(
-      this._authStorage,
-      path.join(this._hanakoHome, "models.json"),
-    );
+    this._modelRuntime = await createModelRuntime({
+      credentials,
+      authPath,
+      modelsJsonPath: this.modelsJsonPath,
+    });
+    this._authStorage.attachRuntime(this._modelRuntime);
+    this._modelRegistry = createModelRegistry(this._modelRuntime);
     this._syncSdkProviderRegistrations();
+    await this._applyRuntimeApiKeyOverrides(projection);
 
     this.executionRouter = new ExecutionRouter(
       (ref) => this._resolveFromAvailable(ref),
@@ -187,6 +200,7 @@ export class ModelManager {
   // ── Getters ──
 
   get authStorage() { return this._authStorage; }
+  get modelRuntime() { return this._modelRuntime; }
   get modelRegistry() { return this._modelRegistry; }
   get defaultModel() { return this._defaultModel; }
   set defaultModel(m) { this._defaultModel = m; }
@@ -231,6 +245,7 @@ export class ModelManager {
 
   /** 刷新可用模型列表，用 Provider Catalog v2 过滤 */
   async refreshAvailable() {
+    // 0.80.8 起 getAvailable() 是同步快照；await 对数组无害，保留以兼容测试替身。
     const allModels = await this._modelRegistry.getAvailable();
     const plans = this.providerRegistry.getChatProjectionPlans();
     const effectiveModelSets = new Map();
@@ -267,15 +282,16 @@ export class ModelManager {
    * @returns {boolean} 是否有变化
    */
   async syncAndRefresh() {
-    this._removeApiKeyProviderAuthEntries();
+    await this._removeApiKeyProviderAuthEntries();
     const projection = this._buildChatProjectionInputs();
     const changed = syncModels(projection.providers, {
       modelsJsonPath: this.modelsJsonPath,
       chatProjectionPlans: projection.planMap,
     });
-    this._applyRuntimeApiKeyOverrides(projection);
+    await this._applyRuntimeApiKeyOverrides(projection);
     if (changed) {
-      this._modelRegistry.refresh();
+      // 0.84.0 起 refresh() 是 async 的；不 await 就读 getAvailable() 会拿到旧快照。
+      await this._modelRegistry.refresh();
     }
     await this.refreshAvailable();
     this._rebindDefaultModel();
@@ -337,8 +353,9 @@ export class ModelManager {
     return { plans, providers, planMap };
   }
 
-  _applyRuntimeApiKeyOverrides(projection) {
-    if (!this._authStorage?.setRuntimeApiKey) return;
+  async _applyRuntimeApiKeyOverrides(projection) {
+    const store = this._authStorage;
+    if (!store || typeof store.setRuntimeApiKey !== "function" || !store.hasRuntime) return;
     for (const plan of projection?.plans || []) {
       const provider = projection.providers?.[plan.sourceProviderId] || {};
       const runtimeProviderId = plan.runtimeProviderId || plan.sourceProviderId;
@@ -346,12 +363,12 @@ export class ModelManager {
       if (plan.credentialSource === "provider-catalog"
         && typeof provider.api_key === "string"
         && provider.api_key.length > 0) {
-        this._authStorage.setRuntimeApiKey(runtimeProviderId, provider.api_key);
+        await store.setRuntimeApiKey(runtimeProviderId, provider.api_key);
         for (const providerId of cleanupIds) {
-          if (providerId !== runtimeProviderId) this._authStorage.removeRuntimeApiKey?.(providerId);
+          if (providerId !== runtimeProviderId) await store.removeRuntimeApiKey?.(providerId);
         }
       } else {
-        for (const providerId of cleanupIds) this._authStorage.removeRuntimeApiKey?.(providerId);
+        for (const providerId of cleanupIds) await store.removeRuntimeApiKey?.(providerId);
       }
     }
   }
@@ -376,7 +393,7 @@ export class ModelManager {
    * AuthStorage 只保留 OAuth 条目，避免 Pi SDK 优先读取 stale auth.json。
    * @private
    */
-  _removeApiKeyProviderAuthEntries() {
+  async _removeApiKeyProviderAuthEntries() {
     if (!this._authStorage || !this.providerRegistry) return;
     migrateLegacyApiKeyAuthToProviders({
       hanakoHome: this._hanakoHome,
@@ -402,7 +419,7 @@ export class ModelManager {
         // while surfacing the collision.
         if (oauthOwnedAuthKeys.has(authKey)) continue;
         if (!authKey || !this._authStorage.has?.(authKey)) continue;
-        this._authStorage.remove(authKey);
+        await this._authStorage.remove(authKey);
       }
     }
   }
@@ -534,12 +551,11 @@ export class ModelManager {
       }
       refreshedOAuthKey = options.forceRefresh
         ? await forceRefreshOAuthApiKey({
-            authStorage: this._authStorage,
-            backend: this._authBackend,
+            authStore: this._authStorage,
             authKey,
             staleApiKey: options.staleApiKey,
           })
-        : await this._authStorage.getApiKey(authKey, { includeFallback: false });
+        : await this._authStorage.getApiKey(authKey);
       this._authStorage.reload?.();
       this.providerRegistry.clearAuthCache?.();
       if (!refreshedOAuthKey) {

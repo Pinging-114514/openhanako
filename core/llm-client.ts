@@ -56,6 +56,7 @@ export type CallTextOptions = {
   outputBudgetSource?: unknown;
   outputPolicy?: "provider-default" | "bounded";
   callPurpose?: unknown;
+  reasoningLevel?: string;
   timeoutMs?: number;
   signal?: AbortSignal;
   returnUsage?: boolean;
@@ -412,6 +413,7 @@ export async function callText({
   outputBudgetSource = "system",
   outputPolicy,
   callPurpose,
+  reasoningLevel,
   timeoutMs = 60_000,
   signal,
   returnUsage = false,
@@ -554,6 +556,7 @@ export async function callText({
     callPurpose,
     explicitMaxTokens,
     outputBudgetSource,
+    reasoningLevel,
   }));
 
   // ── 4. 发送请求 ──

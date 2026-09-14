@@ -37,15 +37,33 @@ export function observationsFromCaptureText(text: string): Observation[] {
 
 export { parseObservationsJsonResult } from "./ledger.ts";
 
+export const OBSERVATIONAL_CAPTURE_MIN_SOURCES = 6;
+export const OBSERVATIONAL_CAPTURE_MIN_CHARS = 4000;
+export const OBSERVATIONAL_CAPTURE_COOLDOWN_MS = 3 * 60 * 1000;
+
+export function observationalChunkHasUserMessage(entries: any[]): boolean {
+  return (Array.isArray(entries) ? entries : []).some((entry) => {
+    const role = entry?.message?.role || entry?.role;
+    return role === "user";
+  });
+}
+
 export function shouldCaptureObservationalNotes({
   sourceCount,
   chunkChars,
+  hasUserMessage = true,
 }: {
   sourceCount: number;
   chunkChars: number;
+  hasUserMessage?: boolean;
 }): boolean {
-  if (sourceCount <= 0 || chunkChars <= 0) return false;
-  return sourceCount >= 2 || chunkChars >= 1200;
+  if (!hasUserMessage || sourceCount <= 0 || chunkChars <= 0) return false;
+  return sourceCount >= OBSERVATIONAL_CAPTURE_MIN_SOURCES || chunkChars >= OBSERVATIONAL_CAPTURE_MIN_CHARS;
+}
+
+export function observationalCaptureOnCooldown(lastAttemptAt: number | null | undefined, now = Date.now()): boolean {
+  const previous = Number(lastAttemptAt);
+  return Number.isFinite(previous) && previous > 0 && now - previous < OBSERVATIONAL_CAPTURE_COOLDOWN_MS;
 }
 
 export { serializeSourceEntries };

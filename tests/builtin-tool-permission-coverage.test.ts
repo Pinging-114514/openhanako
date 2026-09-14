@@ -114,6 +114,7 @@ describe("built-in tool permission/category coverage (full snapshot)", () => {
     agent.setCallbacks({
       getLearnSkills: () => ({ enabled: true }),
       isChannelsEnabled: () => true,
+      isXaiOauthSearchEnabled: () => true,
     });
 
     await agent.init(() => {});

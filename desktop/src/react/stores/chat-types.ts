@@ -287,7 +287,16 @@ export type RichBlock =
     finishedAt?: number | null;
   }
   | { type: 'plugin_card'; card: import('../types').PluginCardDetails }
-  | { type: 'interactive_card'; cardId: string; title: string; code: string };
+  | { type: 'interactive_card'; cardId: string; title: string; code: string }
+  | {
+    type: 'user_choice';
+    confirmId?: string;
+    question: string;
+    options: Array<{ id: string; label: string; description?: string }>;
+    allowMultiple: boolean;
+    status: 'pending' | 'answered' | 'skipped' | 'timeout';
+    answer?: { selected: string[]; free_text?: string; skipped?: true };
+  };
 
 export type ContentBlock = TextDecorator | RichBlock;
 

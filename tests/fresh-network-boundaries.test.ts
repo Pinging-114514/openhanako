@@ -32,7 +32,7 @@ describe("fresh credential network boundaries", () => {
       expect(handler).toContain("await engine.resolveUtilityConfigFresh");
       expect(handler).not.toMatch(/engine\.resolveUtilityConfig\s*\(/);
       expect(handler).toContain("await callText");
-      expect(handler).toContain("...callTextConfigFromUtilityConfig(utility)");
+      expect(handler).toContain("...callTextConfigFromUtilityConfig(utility");
       expect(handler).not.toContain("apiKey: utility.api_key");
       expect(handler).not.toContain("baseUrl: utility.base_url");
     }

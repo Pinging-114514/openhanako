@@ -43,6 +43,11 @@ import {
   normalizeXaiOauthSearchTools,
 } from "../../shared/search-providers.ts";
 import {
+  CODEX_SERVICE_TIERS,
+  DEFAULT_CODEX_SERVICE_TIER,
+  normalizeCodexServiceTier,
+} from "../../shared/codex-service-tier.ts";
+import {
   normalizeSharedModelsPatch,
   sharedModelsPatchRequiresModelSync,
 } from "../../core/config-coordinator.ts";
@@ -307,6 +312,39 @@ export function createPreferencesRoute(engine: any, options: Record<string, any>
       return c.json({ ok: true, appearance });
     } catch (err) {
       return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.get("/preferences/codex-service-tier", async (c) => {
+    try {
+      return c.json({
+        tier: engine.getCodexServiceTier?.() ?? DEFAULT_CODEX_SERVICE_TIER,
+        options: CODEX_SERVICE_TIERS,
+      });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.put("/preferences/codex-service-tier", async (c) => {
+    try {
+      const settingsDenied = denyWithoutScope(c, "settings.write");
+      if (settingsDenied) return settingsDenied;
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      if (typeof engine.setCodexServiceTier !== "function") {
+        return c.json({ error: "Codex service tier preferences unavailable" }, 500);
+      }
+      const requested = typeof body.tier === "string" ? body.tier.trim().toLowerCase() : "";
+      if (!(CODEX_SERVICE_TIERS as readonly string[]).includes(requested) && requested !== "priority") {
+        return c.json({ error: `tier must be one of ${CODEX_SERVICE_TIERS.join(", ")}` }, 400);
+      }
+      const saved = engine.setCodexServiceTier(normalizeCodexServiceTier(requested));
+      return c.json({ ok: true, tier: saved, options: CODEX_SERVICE_TIERS });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
     }
   });
 

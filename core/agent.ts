@@ -48,6 +48,7 @@ import { createWorkflowTool } from "../lib/tools/workflow-tool.ts";
 import { createCardGuideTool } from "../lib/tools/card-guide-tool.ts";
 import { createSessionTool } from "../lib/tools/session-tool.ts";
 import { createShowCardTool } from "../lib/tools/show-card-tool.ts";
+import { createAskUserTool } from "../lib/tools/ask-user-tool.ts";
 import { runCompatChecks } from "../lib/compat/index.ts";
 import { getPlatformPromptNote } from "./platform-prompt.ts";
 import { assertAgentConfigPatchYuan, getAgentConfigRepairState } from "./yuan-registry.ts";
@@ -147,6 +148,7 @@ export class Agent {
   declare _xSearchTool: any;
   declare _cardGuideTool: any;
   declare _showCardTool: any;
+  declare _askUserTool: any;
   declare _workflowTool: any;
   declare agentDir: any;
   declare agentName: any;
@@ -241,6 +243,7 @@ export class Agent {
     this._subagentCloseTool = null;
     this._cardGuideTool = null;
     this._showCardTool = null;
+    this._askUserTool = null;
     this._sessionTool = null;
     this._workflowTool = null;
     this._currentStatusTool = null;
@@ -732,6 +735,10 @@ export class Agent {
     // 14. Interactive Card 工具（设计手册 + 渲染工具）
     this._cardGuideTool = createCardGuideTool();
     this._showCardTool = createShowCardTool();
+    this._askUserTool = createAskUserTool({
+      getConfirmStore: () => this._cb?.getConfirmStore?.(),
+      emitEvent: (event, sp) => { if (sp) this._cb?.emitEvent?.(event, sp); },
+    });
 
     // 15. session 工具（跨 session 协作：list/read/send/create）。desktop-only，
     // 见 getToolsSnapshot 的 surface 裁剪；subagent 上下文由 SUBAGENT_BLOCKED_TOOLS 拦截。
@@ -972,6 +979,7 @@ export class Agent {
       ...(surface === "desktop" ? [this._sessionTool] : []),
       this._cardGuideTool,
       this._showCardTool,
+      this._askUserTool,
     ].filter(Boolean);
   }
   get tools() {

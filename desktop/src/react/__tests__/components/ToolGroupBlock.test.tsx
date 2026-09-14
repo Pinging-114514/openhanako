@@ -221,6 +221,15 @@ describe('ToolGroupBlock', () => {
             done: true,
             success: true,
           },
+          {
+            name: 'ask_user',
+            args: {
+              question: 'Which plan?',
+              allow_multiple: false,
+            },
+            done: true,
+            success: true,
+          },
         ]}
       />,
     );

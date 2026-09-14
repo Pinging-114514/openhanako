@@ -62,6 +62,7 @@ import {
 } from "../../shared/compaction-mode.ts";
 import { collectObservationalNoteSources, foldObservationalNotes } from "../observational-compaction/ledger.ts";
 import { renderObservationalSummary } from "../observational-compaction/render.ts";
+import { observationalCaptureOnCooldown } from "../observational-compaction/capture.ts";
 import { captureObservationalNotes, observationalCaptureModelRef } from "../observational-compaction/capture-run.ts";
 import { convertAgentMessagesToLlm } from "../pi-sdk/index.ts";
 import { createModuleLogger } from "../debug-log.ts";
@@ -176,6 +177,7 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
     ? opts.captureObservationalText
     : null;
   const observationalCaptureInFlight = new Map();
+  const observationalCaptureLastAttempt = new Map();
 
   function resolveReasoningLevelForRequest(ctx: any) {
     if (!getRequestReasoningLevel) {
@@ -219,16 +221,23 @@ export function createCompactionGuardExtension(opts: Record<string, any> = {}) {
         if (typeof sessionManager?.appendCustomEntry !== "function") return;
         const sessionKey = sessionManager.getSessionFile?.() || sessionManager.getSessionId?.() || "unknown";
         if (observationalCaptureInFlight.has(sessionKey)) return;
+        if (observationalCaptureOnCooldown(observationalCaptureLastAttempt.get(sessionKey))) return;
         const entries = collectObservationalNoteSources({ sessionManager });
+        observationalCaptureLastAttempt.set(sessionKey, Date.now());
         const pending = captureObservationalNotes({
           entries,
           completeText: (input) => captureObservationalText({ ...input, ctx }),
           appendCustomEntry: (type, data) => sessionManager.appendCustomEntry(type, data),
         }).then((result) => {
-          if (result?.recorded) {
+          if (!result) {
+            observationalCaptureLastAttempt.delete(sessionKey);
+            return;
+          }
+          if (result.recorded) {
             const modelRef = observationalCaptureModelRef(ctx);
-            log.log(`[om] capture recorded ${result.recorded} notes` + (modelRef ? ` via ${modelRef.provider}/${modelRef.id}` : ""));
-          } else if (result?.skipped) {
+            const via = result.via === "utility" ? "utility fallback" : (modelRef ? `${modelRef.provider}/${modelRef.id}` : "primary");
+            log.log(`[om] capture recorded ${result.recorded} notes via ${via}`);
+          } else if (result.skipped) {
             log.warn(`[om] capture skipped (${result.skipped}, kept cursor): ${result.preview || "(no model text)"}`);
           }
         }).catch((err) => {

@@ -1,4 +1,5 @@
-import { AuthStorage } from "../pi-sdk/index.ts";
+import fs from "node:fs";
+import { AuthStorage, type SdkCredentialStore } from "../pi-sdk/index.ts";
 
 export type AuthStorageBootLog = (line: string) => void;
 
@@ -7,41 +8,58 @@ function sleepSync(ms: number) {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 }
 
-function loadErrors(storage: { drainErrors?: () => unknown[] }) {
-  const drained = storage.drainErrors?.();
-  return Array.isArray(drained) ? drained : [];
+/**
+ * auth.json 能不能被解析成对象。文件不存在算可读（空存储），只有存在但
+ * 读不出 / 不是合法 JSON 对象才算失败。
+ */
+function readAuthFileError(authPath: string): string | null {
+  let raw: string;
+  try {
+    raw = fs.readFileSync(authPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    return error instanceof Error ? error.message : String(error);
+  }
+  if (!raw.trim()) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return "auth.json is not a JSON object";
+    return null;
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
 }
 
 /**
- * AuthStorage.create() 读盘失败时会吞掉错误、内存留空。
- * 开机第一次常见：上次没卸干净的 auth.json 锁、或时钟还没对上导致锁看起来没过期。
- * 设置页就会显示未登录；logout 在 loadError 时也不写盘，所以退出是空操作。
+ * 开机读 auth.json 的短暂失败不能让登录态变成空存储。
+ * 典型的是上一次进程还没写完就退出、或另一个进程正持锁写文件：此时读到的是半截
+ * 内容，直接开店会让设置页显示未登录，logout 时还会把空内容写回去，凭证就丢了。
+ *
+ * 0.80.8 起 AuthStorage 不再暴露 drainErrors，所以在创建存储之前先自己读一遍文件
+ * 确认可解析，短暂失败就重试几次再创建。
  */
 export function createAuthStorageWithRetry(
   authPath: string,
   options: { log?: AuthStorageBootLog; retries?: number; delayMs?: number } = {},
-) {
+): SdkCredentialStore {
   const log = options.log || (() => {});
   const retries = Number.isInteger(options.retries) && (options.retries as number) > 0
     ? options.retries as number
     : 5;
   const delayMs = Number.isFinite(options.delayMs) ? Math.max(0, Number(options.delayMs)) : 50;
 
-  const storage = AuthStorage.create(authPath);
   for (let attempt = 0; attempt <= retries; attempt++) {
-    const errors = loadErrors(storage);
-    if (errors.length === 0) {
-      if (attempt > 0) log(`[auth-storage] auth.json loaded after ${attempt} reload(s)`);
-      return storage;
+    const detail = readAuthFileError(authPath);
+    if (detail === null) {
+      if (attempt > 0) log(`[auth-storage] auth.json loaded after ${attempt} retry(ies)`);
+      break;
     }
-    const detail = errors[0] instanceof Error ? errors[0].message : String(errors[0] || "unknown error");
     if (attempt === retries) {
-      log(`[auth-storage] auth.json still unreadable after ${retries} reload(s): ${detail}`);
-      return storage;
+      log(`[auth-storage] auth.json still unreadable after ${retries} retry(ies): ${detail}`);
+      break;
     }
     log(`[auth-storage] auth.json load failed (${detail}); retry ${attempt + 1}/${retries}`);
     sleepSync(delayMs);
-    storage.reload();
   }
-  return storage;
+  return AuthStorage.create(authPath);
 }

@@ -238,6 +238,12 @@ describe("HTTP route security policy", () => {
       .toMatchObject({ allowed: true });
     expect(authorizeHttpRoute({ method: "GET", path: "/api/sessions", principal }))
       .toMatchObject({ allowed: true });
+    expect(authorizeHttpRoute({ method: "GET", path: "/api/cards/c_demo", principal }))
+      .toMatchObject({ allowed: true });
+    expect(authorizeHttpRoute({ method: "PUT", path: "/api/cards/c_demo", principal }))
+      .toMatchObject({ allowed: true });
+    expect(authorizeHttpRoute({ method: "GET", path: "/api/cards/c_demo", principal: devicePrincipal([]) }))
+      .toMatchObject({ allowed: false, error: "insufficient_scope", requiredScope: "chat" });
     expect(authorizeHttpRoute({ method: "GET", path: "/api/session-projects", principal }))
       .toMatchObject({ allowed: true });
     expect(authorizeHttpRoute({ method: "POST", path: "/api/session-projects/session-assignment", principal }))
@@ -599,6 +605,8 @@ describe("HTTP route security policy", () => {
       ["GET", "/api/session-thinking-level"],
       ["POST", "/api/session-thinking-level"],
       ["POST", "/api/confirm/confirm_1"],
+      ["GET", "/api/cards/c_demo"],
+      ["PUT", "/api/cards/c_demo"],
       ["GET", "/api/browser/session-states"],
       ["GET", "/api/mobile/workbench/files"],
       ["GET", "/api/mobile/workbench/search"],

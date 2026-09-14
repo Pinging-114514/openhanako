@@ -189,4 +189,63 @@ describe('PluginsTab', () => {
     expect(tags.value.startsWith('"')).toBe(false);
     expect(tags.value).not.toContain('\\n');
   });
+
+  it('lets a model config field pick from /api/models instead of a text box', async () => {
+    const plugin = {
+      ...configurablePlugin,
+      id: 'model-picker-plugin',
+      name: 'Model Picker',
+    };
+    let savedValues = { enabled: true, modelKey: '', effort: 'medium' };
+    hanaFetch.mockImplementation(async (path: string, options?: RequestInit) => {
+      if (path === '/api/plugins?source=community') return jsonResponse([plugin]);
+      if (path === '/api/models') {
+        return jsonResponse({
+          models: [{ id: 'grok-4.6', name: 'Grok 4.6', provider: 'xai-oauth' }],
+          utilityRoles: {
+            utility: { name: '小工具模型' },
+            utility_large: { name: '大工具模型 · GPT-6 Astra' },
+          },
+        });
+      }
+      if (path === `/api/plugins/${plugin.id}/config` && options?.method === 'PUT') {
+        const body = JSON.parse(String(options.body));
+        savedValues = { ...savedValues, ...body.values };
+        return jsonResponse({
+          pluginId: plugin.id,
+          schema: {
+            properties: {
+              modelKey: { type: 'string', title: '评审模型', ui: { control: 'model' } },
+            },
+          },
+          values: savedValues,
+        });
+      }
+      if (path === `/api/plugins/${plugin.id}/config`) {
+        return jsonResponse({
+          pluginId: plugin.id,
+          schema: {
+            properties: {
+              modelKey: { type: 'string', title: '评审模型', ui: { control: 'model' } },
+            },
+          },
+          values: savedValues,
+        });
+      }
+      return jsonResponse([]);
+    });
+
+    const { PluginsTab } = await import('../PluginsTab');
+    render(<PluginsTab />);
+    fireEvent.click(await screen.findByTitle('settings.plugins.configure'));
+
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await waitFor(() => expect(hanaFetch).toHaveBeenCalledWith('/api/models'));
+    fireEvent.click(await screen.findByRole('button', { name: 'settings.api.selectModel' }));
+    expect(await screen.findByRole('option', { name: '大工具模型 · GPT-6 Astra' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('option', { name: 'Grok 4.6' }));
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.save' }));
+
+    await waitFor(() => expect(savedValues.modelKey).toBe('xai-oauth/grok-4.6'));
+  });
 });

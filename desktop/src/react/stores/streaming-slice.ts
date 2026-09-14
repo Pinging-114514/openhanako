@@ -32,9 +32,9 @@ export interface StreamingSlice {
   /** 按 session path 存储的内联错误（权威源）。null 表示无 error。 */
   inlineErrors: Record<string, InlineErrorEntry | null>;
   /**
-   * 写入某个 session 的 inline error；ttl>0 时 ttl 毫秒后自动清除（默认 5s）。
-   * 新 error 覆盖旧 error 会取消旧定时器。传字符串表示这句话已经是给用户看的成品，
-   * 没有额外详情；带 detail/code 的错误传 InlineErrorEntry。
+   * 写入某个 session 的 inline error。默认常驻：新 error 覆盖，或会话重新开流
+   * （新输出顶走）时才清。ttl>0 时 ttl 毫秒后自动清除，只留给明确要闪一下的调用方。
+   * 传字符串表示这句话已经是给用户看的成品，没有额外详情；带 detail/code 的错误传 InlineErrorEntry。
    */
   setInlineError: (path: string, error: string | InlineErrorEntry, ttlMs?: number) => void;
   /** 清除某个 session 的 inline error（同时取消其定时器）。 */
@@ -201,7 +201,7 @@ export const createStreamingSlice = (
     return { unreadOutputSessionPaths: filterLegacyAndIdentity(s.unreadOutputSessionPaths, path, key) };
   }),
   inlineErrors: {},
-  setInlineError: (path, error, ttlMs = 5000) => {
+  setInlineError: (path, error, ttlMs = 0) => {
     const key = identityKeyForPath(get, path);
     const entry = toInlineErrorEntry(error);
     cancelTimer(key);

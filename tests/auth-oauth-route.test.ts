@@ -302,6 +302,31 @@ describe("auth oauth route", () => {
     });
   });
 
+  it("returns the startup-cached Grok quota without calling grok again", async () => {
+    const engine = makeEngine(() => new Promise<void>(() => {}));
+    engine.providerRegistry.getAuthJsonKey = vi.fn(() => "xai-oauth");
+    engine.providerRegistry.resolveChatProvider = vi.fn(() => ({
+      sourceProviderId: "xai-oauth",
+      entry: { authType: "oauth" },
+    }));
+    engine.authStorage.get = vi.fn(() => ({ type: "oauth", access: "grok-access" }));
+    engine.xaiOauthUsage = {
+      ok: true,
+      used: 20,
+      remaining: 80,
+      resetAt: "2026-08-23T04:00:00.000Z",
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const app = new Hono();
+    app.route("/api", createAuthRoute(engine));
+    const response = await app.request("/api/auth/oauth/xai-oauth/usage");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, remaining: 80 });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("returns chatgpt plan remaining quota for openai-codex-oauth", async () => {
     const engine = makeEngine(() => new Promise<void>(() => {}));
     engine.authStorage.get = vi.fn(() => ({
@@ -331,5 +356,32 @@ describe("auth oauth route", () => {
       remaining: 97,
       windowKind: "week",
     });
+  });
+
+  it("returns the startup-cached Codex quota without calling chatgpt again", async () => {
+    const engine = makeEngine(() => new Promise<void>(() => {}));
+    engine.authStorage.get = vi.fn(() => ({
+      type: "oauth",
+      access: "codex-access",
+      accountId: "acct-1",
+    }));
+    engine.codexOauthUsage = {
+      ok: true,
+      planType: "plus",
+      used: 20,
+      remaining: 80,
+      windowKind: "week",
+      resetAt: null,
+      windowSeconds: 604800,
+    };
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    const app = new Hono();
+    app.route("/api", createAuthRoute(engine));
+    const response = await app.request("/api/auth/oauth/openai-codex-oauth/usage");
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ ok: true, remaining: 80, planType: "plus" });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

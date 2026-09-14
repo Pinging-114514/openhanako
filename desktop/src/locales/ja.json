@@ -355,6 +355,17 @@
       "done": "✓ 完了",
       "failed": "✗ 失敗",
       "aborted": "⊘ 停止"
+    },
+    "askUser": {
+      "other": "その他…",
+      "otherPlaceholder": "自分の案を書く",
+      "confirm": "これにする",
+      "skip": "スキップ",
+      "hintSingle": "1つ選ぶか、自分で書く",
+      "hintMultiple": "複数選べる。自分の案も足せる",
+      "answered": "選んだ",
+      "skipped": "スキップした",
+      "timeout": "この質問は期限切れ"
     }
   },
   "time": {
@@ -440,6 +451,20 @@
       "max": "最大推論",
       "low": "軽量推論"
     },
+    "codexSpeedLabel": "速度",
+    "codexSpeed": {
+      "standard": "標準",
+      "fast": "高速",
+      "ultrafast": "超高速"
+    },
+    "codexSpeedDesc": {
+      "standard": "デフォルト速度",
+      "fast": "1.5倍速・使用量増",
+      "ultrafast": "最速"
+    },
+    "oauthAccountLabel": "アカウントと残量",
+    "oauthRemaining": "残 {remaining}%",
+    "oauthQuotaUnknown": "残量 —",
     "contextWindow": "コンテキスト {windowK}k",
     "tokensUsed": "使用済み {tokensK}k ({pct}%)",
     "contextActions": "コンテキスト操作",
@@ -707,6 +732,11 @@
       "done": "🌐 {name} サーフィンから戻ってきた",
       "failed": "🌐 {name} 波に乗れなかった"
     },
+    "x_search": {
+      "running": "𝕏 {name} は X を検索中",
+      "done": "𝕏 {name} は X の検索を終えた",
+      "failed": "𝕏 {name} は X を検索できなかった"
+    },
     "web_fetch": {
       "running": "📄 {name} はウェブページを覗いている",
       "done": "📄 {name} しっかり読んだ",
@@ -946,6 +976,11 @@
       "running": "🎴 {name} はカードを並べている",
       "done": "🎴 {name} はカードを並べた",
       "failed": "🎴 カードを出せなかった"
+    },
+    "ask_user": {
+      "running": "❔ {name} は選択を待っている",
+      "done": "❔ {name} は聞いた",
+      "failed": "❔ 聞けなかった"
     },
     "media_generate-image": {
       "running": "🎨 {name} は画像を作成中",
@@ -1726,7 +1761,20 @@
       "weeklyUsed": "今週の使用 {used}%",
       "weeklyReset": "{when} にリセット",
       "weeklyUnknown": "週間クォータを取得できません",
+      "weeklyExhausted": "今週のクォータは使い切りました",
+      "weeklyRevoked": "ログインの期限が切れました。再ログインしてください",
+      "weeklyRefreshFailed": "更新に失敗",
+      "weeklyNetwork": "クォータを読めません（ネットワーク）",
+      "weeklyUpstream": "クォータを読めません（サーバー）",
+      "weeklyRateLimited": "クォータ取得が制限されました",
+      "weeklyNotLoggedIn": "未ログイン",
       "hoursRemaining": "{hours}時間ウィンドウ残り {remaining}%",
+      "addAccount": "アカウントを追加",
+      "useAccount": "切り替える",
+      "removeAccount": "削除",
+      "activeAccount": "使用中",
+      "accountInvalid": "失効",
+      "quotaUnknown": "残量を取得できません",
       "searchTools": "検索ツール",
       "searchToolsHint": "オンにすると web_search は Grok でウェブ検索し、x_search は X 用の別ツールです。X を探すかはモデルが判断します。週間クォータを消費します。"
     },
@@ -1792,6 +1840,11 @@
       },
       "thinkingLevelsEdit": "使えるレベル",
       "thinkingLevelsEditHint": "チャットで選べるレベルを選びます。変更しなければ内蔵リストのまま保存しません。",
+      "codexSpeed": {
+        "standard": "標準",
+        "fast": "高速（1.5 倍速、使用量増）",
+        "ultrafast": "超高速（最速）"
+      },
       "defaultThinkingLevel": "デフォルト",
       "addedModels": "追加済みモデル",
       "displayName": "表示名",
@@ -3213,7 +3266,8 @@
       "dreamRevisionNotFound": "この Dream バージョンが見つかりません。すでに整理された可能性があります",
       "dreamRestoreFailed": "Dream バージョンを復元できませんでした。現在の記憶は変更されていません",
       "dreamRunFailed": "Dream 整理に失敗しました。元の記憶は変更されていません",
-      "internalContract": "アプリ内部で問題が起きました。操作の誤りではありません。詳細は記録済みで、報告の際に添付できます"
+      "internalContract": "アプリ内部で問題が起きました。操作の誤りではありません。詳細は記録済みで、報告の際に添付できます",
+      "tokenRevoked": "ログインの期限が切れました。設定から再ログインしてください"
     }
   },
   "main": {
@@ -3430,6 +3484,8 @@
       "computerUse": "Computer Use",
       "computerUseDesc": "有効にすると、新しい会話でプライマリ Agent に computer ツールが公開されます。無効にすると新しい会話では表示されず、凍結された古い会話が呼び出した場合は拒否されます。",
       "thinkingBudget": "思考の深さ",
+      "codexSpeed": "Codex 速度",
+      "codexSpeedDesc": "Codex OAuth（ChatGPT ログインの GPT）の速度ティア：標準、高速（1.5 倍速、使用量増）、超高速（最速）。",
       "memory": "メモリシステム",
       "memoryDesc": "現在の Agent のメモリを有効/無効にする",
       "memoryFacts": "メモリ Facts",

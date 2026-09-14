@@ -79,6 +79,7 @@ describe("Agent interactive card tools", () => {
 
     expect(toolNames).toContain("hana_card_guide");
     expect(toolNames).toContain("show_card");
+    expect(toolNames).toContain("ask_user");
 
     await agent.dispose();
   });

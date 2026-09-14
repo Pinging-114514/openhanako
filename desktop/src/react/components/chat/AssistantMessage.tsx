@@ -13,6 +13,7 @@ import { SubagentCard } from './SubagentCard';
 import { WorkflowInlineCard } from './WorkflowInlineCard';
 import { InterludeBlock } from './InterludeBlock';
 import { SettingsConfirmCard } from './SettingsConfirmCard';
+import { UserChoiceCard } from './UserChoiceCard';
 import { SettingsUpdateCard } from './SettingsUpdateCard';
 import { InteractiveCard } from './InteractiveCard';
 import { SessionCollabDraftCard } from './SessionCollabDraftCard';
@@ -1218,6 +1219,10 @@ const SettingsConfirmBlock = memo(function SettingsConfirmBlock({ block }: { blo
   return <SettingsConfirmCard {...block} />;
 });
 
+const UserChoiceBlock = memo(function UserChoiceBlock({ block }: { block: any }) {
+  return <UserChoiceCard {...block} />;
+});
+
 const SettingsUpdateBlock = memo(function SettingsUpdateBlock({ block }: { block: any }) {
   return <SettingsUpdateCard update={block.update} />;
 });
@@ -1235,3 +1240,4 @@ BLOCK_RENDERERS['suggestion_card'] = SuggestionCardDispatch;
 BLOCK_RENDERERS['settings_confirm'] = SettingsConfirmBlock;
 BLOCK_RENDERERS['settings_update'] = SettingsUpdateBlock;
 BLOCK_RENDERERS['interactive_card'] = InteractiveCard;
+BLOCK_RENDERERS['user_choice'] = UserChoiceBlock;

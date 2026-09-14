@@ -355,6 +355,17 @@
       "done": "✓ 완료",
       "failed": "✗ 실패",
       "aborted": "⊘ 중단"
+    },
+    "askUser": {
+      "other": "기타…",
+      "otherPlaceholder": "직접 적어 주세요",
+      "confirm": "이걸로 할게요",
+      "skip": "건너뛰기",
+      "hintSingle": "하나만 고르거나 직접 적어요",
+      "hintMultiple": "여러 개 골라도 되고, 직접 적어도 돼요",
+      "answered": "선택함",
+      "skipped": "건너뛰었어요",
+      "timeout": "이 질문은 만료됐어요"
     }
   },
   "time": {
@@ -440,6 +451,20 @@
       "max": "최대 추론",
       "low": "가벼운 추론"
     },
+    "codexSpeedLabel": "속도",
+    "codexSpeed": {
+      "standard": "표준",
+      "fast": "빠름",
+      "ultrafast": "초고속"
+    },
+    "codexSpeedDesc": {
+      "standard": "기본 속도",
+      "fast": "1.5배 속도, 사용량 증가",
+      "ultrafast": "가장 빠름"
+    },
+    "oauthAccountLabel": "계정과 잔여량",
+    "oauthRemaining": "남은 {remaining}%",
+    "oauthQuotaUnknown": "잔여량 —",
     "contextWindow": "컨텍스트 {windowK}k",
     "tokensUsed": "사용 {tokensK}k ({pct}%)",
     "contextActions": "컨텍스트 작업",
@@ -707,6 +732,11 @@
       "done": "🌐 {name} 서핑 다녀왔어요",
       "failed": "🌐 {name} 파도를 못 탔어요"
     },
+    "x_search": {
+      "running": "𝕏 {name}이(가) X를 검색하는 중",
+      "done": "𝕏 {name}이(가) X 검색을 마쳤어요",
+      "failed": "𝕏 {name}이(가) X를 검색하지 못했어요"
+    },
     "web_fetch": {
       "running": "📄 {name}이(가) 웹페이지를 보고 있어요",
       "done": "📄 {name} 다 파악했어요",
@@ -946,6 +976,11 @@
       "running": "🎴 {name}이(가) 카드를 꺼내는 중",
       "done": "🎴 {name}이(가) 카드를 꺼냈어요",
       "failed": "🎴 카드가 나오지 않았어요"
+    },
+    "ask_user": {
+      "running": "❔ {name}이(가) 선택을 기다리는 중",
+      "done": "❔ {name}이(가) 물어봤어요",
+      "failed": "❔ 묻지 못했어요"
     },
     "media_generate-image": {
       "running": "🎨 {name}이(가) 이미지를 만드는 중",
@@ -1726,7 +1761,20 @@
       "weeklyUsed": "이번 주 사용 {used}%",
       "weeklyReset": "{when}에 초기화",
       "weeklyUnknown": "주간 한도를 아직 읽지 못했어요",
+      "weeklyExhausted": "이번 주 한도를 다 썼어요",
+      "weeklyRevoked": "로그인이 만료됐어요. 다시 로그인해 주세요",
+      "weeklyRefreshFailed": "새로고침 실패",
+      "weeklyNetwork": "한도를 읽지 못했어요 (네트워크)",
+      "weeklyUpstream": "한도를 읽지 못했어요 (서버)",
+      "weeklyRateLimited": "한도 조회가 제한됐어요",
+      "weeklyNotLoggedIn": "로그인되지 않음",
       "hoursRemaining": "{hours}시간 남은 용량 {remaining}%",
+      "addAccount": "계정 추가",
+      "useAccount": "전환",
+      "removeAccount": "삭제",
+      "activeAccount": "사용 중",
+      "accountInvalid": "만료됨",
+      "quotaUnknown": "잔여량을 읽을 수 없음",
       "searchTools": "검색 도구",
       "searchToolsHint": "켜면 web_search는 Grok으로 웹을 찾고, x_search는 X용 별도 도구입니다. X를 찾을지는 모델이 판단합니다. 주간 한도를 씁니다."
     },
@@ -1792,6 +1840,11 @@
       },
       "thinkingLevelsEdit": "사용 가능한 수준",
       "thinkingLevelsEditHint": "채팅에서 고를 수준을 고르세요. 안 바꾸면 내장 목록을 유지하고 이 모델에는 쓰지 않아요.",
+      "codexSpeed": {
+        "standard": "표준",
+        "fast": "빠름(1.5배 속도, 사용량 증가)",
+        "ultrafast": "초고속(가장 빠름)"
+      },
       "defaultThinkingLevel": "기본 수준",
       "addedModels": "추가된 모델",
       "displayName": "표시 이름",
@@ -3213,7 +3266,8 @@
       "dreamRevisionNotFound": "이 Dream 버전을 찾을 수 없어요. 이미 정리되었을 수 있어요",
       "dreamRestoreFailed": "Dream 버전을 복원하지 못했어요. 현재 기억은 변경되지 않았어요",
       "dreamRunFailed": "Dream 정리에 실패했어요. 기존 기억은 변경되지 않았어요",
-      "internalContract": "앱 내부에서 문제가 생겼습니다. 조작 실수가 아닙니다. 자세한 내용은 기록되어 있으며 제보할 때 첨부할 수 있습니다"
+      "internalContract": "앱 내부에서 문제가 생겼습니다. 조작 실수가 아닙니다. 자세한 내용은 기록되어 있으며 제보할 때 첨부할 수 있습니다",
+      "tokenRevoked": "로그인이 만료됐어요. 설정에서 다시 로그인해 주세요"
     }
   },
   "main": {
@@ -3430,6 +3484,8 @@
       "computerUse": "Computer Use",
       "computerUseDesc": "활성화하면 새 대화에서 주 Agent에 computer 도구가 노출돼요. 비활성화하면 새 대화에서 볼 수 없고, 고정된 이전 대화에서 호출하면 거부돼요.",
       "thinkingBudget": "사고 깊이",
+      "codexSpeed": "Codex 속도",
+      "codexSpeedDesc": "Codex OAuth(ChatGPT 로그인 GPT)의 속도 등급: 표준, 빠름(1.5배 속도, 사용량 증가), 초고속(가장 빠름).",
       "memory": "메모리 시스템",
       "memoryDesc": "현재 Agent의 메모리 활성화/비활성화",
       "memoryFacts": "메모리 Facts",

@@ -70,6 +70,7 @@ const BRIDGE_OWNER_DENIED_TOOL_NAMES = Object.freeze([
   "browser",
   "hana_card_guide",
   "show_card",
+  "ask_user",
 ]);
 
 function computeBridgeOwnerActiveToolNames(allToolNames) {

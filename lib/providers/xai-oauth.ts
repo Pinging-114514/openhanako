@@ -11,6 +11,15 @@ const XAI_OAUTH_CLI_PROVIDER_HEADERS = buildXaiOauthCliProviderHeaders();
 
 const GROK_OAUTH_MODELS = [
   {
+    id: "grok-4.6",
+    name: "Grok 4.6",
+    api: "openai-responses",
+    context: 500_000,
+    maxOutput: 128_000,
+    image: true,
+    reasoning: true,
+  },
+  {
     id: "grok-4.5",
     name: "Grok 4.5",
     api: "openai-responses",

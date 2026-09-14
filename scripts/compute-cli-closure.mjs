@@ -331,6 +331,39 @@ export const DYNAMIC_CALL_ALLOWLIST = Object.freeze([
       + "xdg-open); cmd is a local variable holding one of those literals, not an "
       + "import target.",
   },
+  // The three entries below are Pi SDK internals pulled into the source graph
+  // by lib/pi-sdk/index.ts's relative deep import of
+  // node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js
+  // (the auth.json CredentialStore stopped being exported from the package
+  // root in pi-coding-agent 0.80.8). They are child-process calls inside Pi's
+  // own utilities, not import targets, and every argument is a fixed system
+  // binary or a user-configured `!command` api-key resolver. Re-check them on
+  // every Pi upgrade: the census fails closed if the text drifts.
+  {
+    file: "node_modules/@earendil-works/pi-coding-agent/dist/utils/shell.js",
+    callee: "spawn",
+    argText: "join(process.env.SystemRoot ?? \"C:\\\\Windows\", \"System32\", \"taskkill.exe\")",
+    reason:
+      "Pi's Windows process-tree kill helper spawns System32\\taskkill.exe from the "
+      + "SystemRoot; the only variable part is the Windows install directory.",
+  },
+  {
+    file: "node_modules/@earendil-works/pi-coding-agent/dist/core/resolve-config-value.js",
+    callee: "spawnSync",
+    argText: "shell",
+    reason:
+      "Pi resolves `!command` api-key values in models.json/auth.json by running the "
+      + "user's configured command through the platform shell; `shell` is the "
+      + "resolved shell binary for the current platform, not an import target.",
+  },
+  {
+    file: "node_modules/@earendil-works/pi-coding-agent/dist/core/resolve-config-value.js",
+    callee: "execSync",
+    argText: "command",
+    reason:
+      "Same `!command` api-key resolver as above, non-stdin variant; `command` is "
+      + "the user-configured shell command string from the credential entry.",
+  },
 ]);
 
 const SPAWN_FAMILY_NAMES = new Set([

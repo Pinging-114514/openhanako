@@ -51,6 +51,25 @@ export interface ProviderSummary {
   config_status?: 'ok' | 'needs_setup' | 'invalid';
   config_error?: string | null;
   missing_fields?: string[];
+  oauth_usage?: {
+    ok?: boolean;
+    remaining?: number | null;
+    resetAt?: string | null;
+    planType?: string | null;
+    windowKind?: 'week' | 'hours' | 'window';
+    windowSeconds?: number | null;
+    error?: string | null;
+    stale?: boolean;
+  };
+  oauth_accounts?: Array<{
+    id: string;
+    accountId?: string;
+    email?: string;
+    displayName?: string;
+    shortLabel?: string;
+    active?: boolean;
+    usage?: ProviderSummary['oauth_usage'] | null;
+  }>;
 }
 
 export interface SettingsSnapshot {

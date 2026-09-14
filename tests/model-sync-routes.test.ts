@@ -1223,6 +1223,162 @@ describe("model sync related routes", () => {
       models: [],
       missing_fields: ["models"],
     });
+    expect(data.providers["openai-codex-oauth"].oauth_usage).toBeUndefined();
+  });
+
+  it("providers summary includes startup-cached Codex quota", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    const engine = {
+      providerRegistry: {
+        getAllProvidersRaw: vi.fn(() => ({
+          "openai-codex-oauth": { models: ["gpt-6-astra"] },
+        })),
+        get: vi.fn(() => ({
+          authType: "oauth",
+          displayName: "OpenAI Codex (OAuth)",
+        })),
+        isOAuth: vi.fn(() => true),
+        getAuthType: vi.fn(() => "oauth"),
+        getAuthJsonKey: vi.fn(() => "openai-codex"),
+        getChatModelEntries: vi.fn(() => ["gpt-6-astra"]),
+        getOAuthProviderIds: vi.fn(() => ["openai-codex-oauth"]),
+        getAll: vi.fn(() => new Map()),
+      },
+      authStorage: {
+        getOAuthProviders: () => [{ id: "openai-codex", name: "OpenAI Codex" }],
+        get: () => ({ type: "oauth", access: "codex-access" }),
+      },
+      preferences: { getOAuthCustomModels: () => ({}) },
+      hanakoHome: "/tmp",
+      codexOauthUsage: {
+        ok: true,
+        remaining: 97,
+        planType: "pro",
+        windowKind: "week",
+        resetAt: "2026-08-27T03:33:52.000Z",
+        windowSeconds: 604800,
+      },
+    };
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/summary");
+    const data = await res.json();
+    expect(data.providers["openai-codex-oauth"].oauth_usage).toMatchObject({
+      ok: true,
+      remaining: 97,
+      planType: "pro",
+      windowKind: "week",
+    });
+  });
+
+  it("providers summary includes startup-cached Grok quota", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    const engine = {
+      providerRegistry: {
+        getAllProvidersRaw: vi.fn(() => ({
+          "xai-oauth": { models: ["grok-4.6"] },
+        })),
+        get: vi.fn(() => ({
+          authType: "oauth",
+          displayName: "xAI Grok (OAuth)",
+        })),
+        isOAuth: vi.fn(() => true),
+        getAuthType: vi.fn(() => "oauth"),
+        getAuthJsonKey: vi.fn(() => "xai-oauth"),
+        getChatModelEntries: vi.fn(() => ["grok-4.6"]),
+        getOAuthProviderIds: vi.fn(() => ["xai-oauth"]),
+        getAll: vi.fn(() => new Map()),
+      },
+      authStorage: {
+        getOAuthProviders: () => [{ id: "xai-oauth", name: "xAI Grok" }],
+        get: () => ({ type: "oauth", access: "grok-access" }),
+      },
+      preferences: { getOAuthCustomModels: () => ({}) },
+      hanakoHome: "/tmp",
+      xaiOauthUsage: {
+        ok: true,
+        remaining: 80,
+        resetAt: "2026-08-23T04:00:00.000Z",
+      },
+    };
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/summary");
+    const data = await res.json();
+    expect(data.providers["xai-oauth"].oauth_usage).toMatchObject({
+      ok: true,
+      remaining: 80,
+      resetAt: "2026-08-23T04:00:00.000Z",
+    });
+  });
+
+  it("providers summary includes saved OAuth accounts from the vault", async () => {
+    const {
+      emptyOauthAccountVault,
+      upsertOauthCredential,
+      writeOauthAccountVault,
+    } = await import("../lib/auth/oauth-account-vault.ts");
+    const tmpHome = fs.mkdtempSync(path.join(os.tmpdir(), "hana-oauth-summary-"));
+    try {
+      const access = `hdr.${Buffer.from(JSON.stringify({
+        email: "work@example.com",
+        "https://api.openai.com/auth": { chatgpt_account_id: "acct-work" },
+      })).toString("base64url")}.sig`;
+      const { vault } = upsertOauthCredential(emptyOauthAccountVault(), "openai-codex", {
+        type: "oauth",
+        access,
+        refresh: "refresh-work",
+        accountId: "acct-work",
+      });
+      writeOauthAccountVault(tmpHome, vault);
+
+      const { createProvidersRoute } = await import("../server/routes/providers.ts");
+      const app = new Hono();
+      const engine = {
+        providerRegistry: {
+          getAllProvidersRaw: vi.fn(() => ({
+            "openai-codex-oauth": { models: ["gpt-6-astra"] },
+          })),
+          get: vi.fn(() => ({
+            authType: "oauth",
+            displayName: "OpenAI Codex (OAuth)",
+          })),
+          isOAuth: vi.fn(() => true),
+          getAuthType: vi.fn(() => "oauth"),
+          getAuthJsonKey: vi.fn(() => "openai-codex"),
+          getChatModelEntries: vi.fn(() => ["gpt-6-astra"]),
+          getOAuthProviderIds: vi.fn(() => ["openai-codex-oauth"]),
+          getAll: vi.fn(() => new Map()),
+        },
+        authStorage: {
+          getOAuthProviders: () => [{ id: "openai-codex", name: "OpenAI Codex" }],
+          get: () => ({ type: "oauth", access }),
+        },
+        preferences: { getOAuthCustomModels: () => ({}) },
+        hanakoHome: tmpHome,
+        codexOauthUsage: {
+          ok: true,
+          remaining: 42,
+          planType: "plus",
+        },
+      };
+      app.route("/api", createProvidersRoute(engine));
+
+      const res = await app.request("/api/providers/summary");
+      const data = await res.json();
+      expect(data.providers["openai-codex-oauth"].oauth_accounts).toEqual([
+        expect.objectContaining({
+          email: "work@example.com",
+          displayName: "work@example.com",
+          active: true,
+          usage: expect.objectContaining({ ok: true, remaining: 42 }),
+        }),
+      ]);
+    } finally {
+      fs.rmSync(tmpHome, { recursive: true, force: true });
+    }
   });
 
   it("providers summary distinguishes configured providers from registry-only setup entries", async () => {

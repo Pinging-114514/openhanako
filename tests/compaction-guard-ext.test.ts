@@ -218,7 +218,10 @@ describe("CompactionGuardExtension", () => {
         tools: [],
         messages: await convertAgentMessagesToLlm(messages),
       };
-      expect(clampMaxTokensToContext(model, providerContextBefore, 32_000)).toBe(1);
+      // pi 0.80.6+ already ignores stale pre-compaction assistant usage in its own
+      // output-token budgeting; Hana's usage epoch projection stays as the belt to
+      // that suspenders, so the un-projected context must no longer collapse either.
+      expect(clampMaxTokensToContext(model, providerContextBefore, 32_000)).toBe(32_000);
 
       const result = await pi.trigger("context", { messages });
       const providerContextAfter = {
@@ -1797,11 +1800,12 @@ describe("CompactionGuardExtension", () => {
         reasoning: true,
         contextWindow: 128_000,
       };
-      const glmHistory = {
-        role: "assistant",
-        content: "",
-        tool_calls: [{ id: "call_1", type: "function", function: { name: "read", arguments: "{}" } }],
-      };
+      // Session history is stored in pi's canonical shape (content blocks); pi 0.85
+      // converters assume that shape, so the fixture must not use the wire form.
+      const glmHistory = assistantMessage(
+        [{ type: "toolCall", id: "call_1", name: "read", arguments: {} }],
+        "toolUse",
+      );
       const res = await pi.trigger(
         "session_before_compact",
         {

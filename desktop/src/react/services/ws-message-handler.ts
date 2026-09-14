@@ -398,6 +398,7 @@ export function applyStreamingStatus(
   if (sessionPath) {
     if (isStreaming) {
       useStore.getState().addStreamingSession(sessionPath, identity);
+      // 新一轮输出顶走上一轮的 transcript 错误，和 Codex「继续生成就把旧错挤掉」同一条规则。
       useStore.getState().clearInlineError(sessionPath);
     } else {
       const applied = options.force
@@ -1067,6 +1068,11 @@ export function handleServerMessage(msg: any): void {
       // 更新所有 session 中匹配 confirmId 的确认卡片状态。确认块可能不在最后一条消息，
       // 输入区也从消息块派生 pending 状态，所以这里按 session/message/block 三层显式定位。
       const nextStatusFor = (blockType: string): string => {
+        if (blockType === 'user_choice') {
+          if (msg.action === 'confirmed') return 'answered';
+          if (msg.action === 'timeout') return 'timeout';
+          return 'skipped';
+        }
         if (msg.action === 'confirmed') return blockType === 'cron_confirm' || blockType === 'suggestion_card' ? 'approved' : 'confirmed';
         if (msg.action === 'timeout') return 'timeout';
         return 'rejected';
@@ -1086,10 +1092,16 @@ export function handleServerMessage(msg: any): void {
               const matchesType = b.type === 'settings_confirm'
                 || b.type === 'cron_confirm'
                 || b.type === 'suggestion_card'
-                || b.type === 'session_confirmation';
+                || b.type === 'session_confirmation'
+                || b.type === 'user_choice';
               if (!matchesType || b.confirmId !== msg.confirmId) return b;
               messageChanged = true;
-              return { ...b, status: nextStatusFor(b.type) };
+              const status = nextStatusFor(b.type);
+              if (b.type !== 'user_choice') return { ...b, status };
+              const answer = msg.action === 'confirmed'
+                ? (msg.value || b.answer || { selected: [] })
+                : { selected: [], skipped: true };
+              return { ...b, status, answer };
             });
             if (!messageChanged) return item;
             sessionChanged = true;

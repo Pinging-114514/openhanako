@@ -175,13 +175,11 @@ describe('streaming-slice · inlineError TTL', () => {
     });
   });
 
-  it('默认 5s 后自动清除', () => {
+  it('默认不自动清除', () => {
     slice.setInlineError('/s1', 'boom');
     expect(slice.inlineErrors['/s1']?.text).toBe('boom');
-    vi.advanceTimersByTime(4999);
+    vi.advanceTimersByTime(60_000);
     expect(slice.inlineErrors['/s1']?.text).toBe('boom');
-    vi.advanceTimersByTime(1);
-    expect(slice.inlineErrors['/s1']).toBeNull();
   });
 
   it('自定义 ttl 生效', () => {

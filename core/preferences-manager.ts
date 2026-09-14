@@ -49,6 +49,7 @@ import { createModuleLogger } from "../lib/debug-log.ts";
 import { isValidAgentId } from "../shared/agent-id.ts";
 import { normalizeSessionThinkingLevel } from "./session-thinking-level.ts";
 import { normalizeXaiOauthSearchTools } from "../shared/search-providers.ts";
+import { normalizeCodexServiceTier } from "../shared/codex-service-tier.ts";
 
 const log = createModuleLogger("preferences");
 const RETIRED_EXPERIMENT_IDS = new Set([
@@ -473,6 +474,18 @@ export class PreferencesManager {
     prefs.computer_use = revokeComputerUseApp(prefs.computer_use || {}, approval);
     this.savePreferences(prefs);
     return prefs.computer_use;
+  }
+
+  /** Codex OAuth speed tier (standard / fast / ultrafast); see shared/codex-service-tier.ts. */
+  getCodexServiceTier() {
+    return normalizeCodexServiceTier(this._cache.codex_service_tier);
+  }
+
+  setCodexServiceTier(tier) {
+    const prefs = this._mutableCopy();
+    prefs.codex_service_tier = normalizeCodexServiceTier(tier);
+    this.savePreferences(prefs);
+    return prefs.codex_service_tier;
   }
 
   getXaiOauthSearchTools() {

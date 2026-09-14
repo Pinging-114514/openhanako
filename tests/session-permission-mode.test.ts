@@ -264,6 +264,7 @@ describe("session permission modes", () => {
       "pin_memory", "unpin_memory", "record_experience", // 长期记忆（subagent 不碰）
       "automation", "cron", "channel", "dm", "notify", "install_skill", "update_settings", "session_folders", // agent 生命周期/对外
       "workflow",         // 间接扇出
+      "ask_user",         // 选方案问主会话
     ];
     for (const name of BLOCKED) {
       expect(

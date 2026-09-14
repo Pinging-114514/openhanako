@@ -1116,3 +1116,53 @@ h1 { color: var(--accent); }
     expect(result[0].code).toBe(code);
   });
 });
+
+describe('ask_user', () => {
+  const extractor = BLOCK_EXTRACTORS.ask_user;
+  const details = {
+    confirmId: 'c_ask',
+    question: 'Which plan?',
+    options: [
+      { id: 'a', label: 'A' },
+      { id: 'b', label: 'B' },
+    ],
+    allowMultiple: true,
+    status: 'answered',
+    answer: { selected: ['a', 'b'], free_text: 'also C' },
+  };
+
+  it('rebuilds the conversation choice card from tool details', () => {
+    expect(extractor(details)).toEqual([{
+      type: 'user_choice',
+      confirmId: 'c_ask',
+      question: 'Which plan?',
+      options: details.options,
+      allowMultiple: true,
+      status: 'answered',
+      answer: { selected: ['a', 'b'], free_text: 'also C' },
+    }]);
+  });
+
+  it('maps skipped details to a skipped card', () => {
+    const result = extractor({
+      ...details,
+      allowMultiple: false,
+      status: 'skipped',
+      answer: { selected: [], skipped: true },
+    });
+    expect(result[0].status).toBe('skipped');
+    expect(result[0].answer).toEqual({ selected: [], skipped: true });
+  });
+
+  it('returns null without a question or options', () => {
+    expect(extractor({ options: details.options })).toBeNull();
+    expect(extractor({ question: 'Q' })).toBeNull();
+  });
+
+  it('works through extractBlocks', () => {
+    const blocks = extractBlocks('ask_user', details, undefined);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].type).toBe('user_choice');
+    expect(blocks[0].answer.selected).toEqual(['a', 'b']);
+  });
+});

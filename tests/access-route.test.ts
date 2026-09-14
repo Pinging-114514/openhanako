@@ -201,6 +201,70 @@ describe("access route", () => {
     });
   });
 
+  it("applies custom_remote without restart when the server still listens on loopback", async () => {
+    tmpDir = makeTmpDir();
+    writeIdentity(tmpDir);
+    const runtimeState = { mode: "loopback", listenHost: "127.0.0.1", actualPort: 14500 };
+    const app = await makeApp(tmpDir, runtimeState);
+
+    const res = await app.request("/api/access/network", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: "custom_remote",
+        listenPort: 14500,
+        customRemote: { baseUrl: "https://demo.trycloudflare.com" },
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      network: {
+        mode: "custom_remote",
+        listenHost: "127.0.0.1",
+        runtimeMode: "custom_remote",
+        runtimeHost: "127.0.0.1",
+        restartRequired: false,
+      },
+    });
+    expect(JSON.parse(fs.readFileSync(path.join(tmpDir, "server-network.json"), "utf-8")))
+      .toMatchObject({
+        mode: "custom_remote",
+        listenHost: "127.0.0.1",
+        customRemote: { enabled: true, baseUrl: "https://demo.trycloudflare.com" },
+      });
+  });
+
+  it("issues a tunnel-trusted mobile key after custom_remote is enabled", async () => {
+    tmpDir = makeTmpDir();
+    writeIdentity(tmpDir);
+    writeJson(path.join(tmpDir, "server-network.json"), {
+      schemaVersion: 1,
+      mode: "custom_remote",
+      listenHost: "127.0.0.1",
+      listenPort: 14500,
+      customRemote: { enabled: true, baseUrl: "https://demo.trycloudflare.com", wsUrl: null },
+      createdAt: "2026-05-16T00:00:00.000Z",
+      updatedAt: "2026-05-16T00:00:00.000Z",
+    });
+    const app = await makeApp(tmpDir, { mode: "custom_remote", listenHost: "127.0.0.1", actualPort: 14500 });
+
+    const res = await app.request("/api/access/mobile-credentials", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ displayName: "Tunnel Phone" }),
+    });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toMatchObject({
+      device: {
+        displayName: "Tunnel Phone",
+        deviceKind: "mobile",
+        trustState: "tunnel",
+      },
+    });
+  });
+
   it("issues a one-time visible mobile access key and persists only its hash", async () => {
     tmpDir = makeTmpDir();
     writeIdentity(tmpDir);

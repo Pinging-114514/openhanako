@@ -127,7 +127,6 @@ describe('message turn actions', () => {
     expect(setInlineError).toHaveBeenCalledWith(
       sessionPath,
       expect.objectContaining({ detail: expect.stringContaining('sessionId') }),
-      6000,
     );
   });
 
@@ -150,7 +149,6 @@ describe('message turn actions', () => {
         detail: 'active workflow must finish before Fork',
         code: 'session_fork_active_task',
       },
-      6000,
     );
   });
 
@@ -169,7 +167,6 @@ describe('message turn actions', () => {
     expect(setInlineError).toHaveBeenCalledWith(
       sessionPath,
       { text: '会话正忙，稍后再试', detail: null, code: 'session_busy' },
-      6000,
     );
   });
 
@@ -192,7 +189,6 @@ describe('message turn actions', () => {
         detail: 'session pin order is empty',
         code: 'session_pin_order_empty',
       },
-      6000,
     );
   });
 });

@@ -88,3 +88,27 @@ describe("provider-compat/codex-responses", () => {
     });
   });
 });
+
+describe("provider-compat/codex-responses speed tier", () => {
+  const base = { model: "gpt-6-astra", store: false, stream: true, input: [] };
+
+  it("writes the Codex wire value for the chosen tier through normalizeProviderPayload", () => {
+    const fast = normalizeProviderPayload(base, CODEX_MODEL, { mode: "chat", codexServiceTier: "fast" });
+    expect(fast.service_tier).toBe("priority");
+    const ultrafast = normalizeProviderPayload(base, CODEX_MODEL, { mode: "chat", codexServiceTier: "ultrafast" });
+    expect(ultrafast.service_tier).toBe("ultrafast");
+  });
+
+  it("removes service_tier for the standard tier and when the tier is unknown", () => {
+    const carried = { ...base, service_tier: "priority" };
+    expect(normalizeProviderPayload(carried, CODEX_MODEL, { mode: "chat", codexServiceTier: "standard" })).not.toHaveProperty("service_tier");
+    expect(normalizeProviderPayload(carried, CODEX_MODEL, { mode: "chat", codexServiceTier: "bogus" })).not.toHaveProperty("service_tier");
+  });
+
+  it("leaves service_tier alone when the caller states no tier and never touches non-Codex models", () => {
+    const carried = { ...base, service_tier: "priority" };
+    expect(normalizeProviderPayload(carried, CODEX_MODEL, { mode: "chat" }).service_tier).toBe("priority");
+    const openai = { id: "gpt-6-astra", provider: "openai", api: "openai-responses" };
+    expect(normalizeProviderPayload(base, openai, { mode: "chat", codexServiceTier: "fast" })).not.toHaveProperty("service_tier");
+  });
+});

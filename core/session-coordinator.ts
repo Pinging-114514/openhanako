@@ -9,6 +9,7 @@ import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
 import { createAgentSession, SessionManager, estimateTokens, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.ts";
+import { getAgentStreamFn, setAgentStreamFn } from "../lib/pi-sdk/agent-stream.ts";
 import { isSessionJsonlFilename } from "../lib/session-jsonl.ts";
 import { createDefaultSettings } from "./session-defaults.ts";
 import { isDefaultWorkspacePath, restoreDefaultWorkspaceIfMissing } from "../shared/default-workspace.ts";
@@ -1621,7 +1622,7 @@ export class SessionCoordinator {
 
   getSessionStreamFn(sessionPath: any) {
     const entry = this._getSessionEntryByPath(sessionPath);
-    return entry?.session?.agent?.streamFn || null;
+    return getAgentStreamFn(entry?.session?.agent) || null;
   }
 
   getSessionAgentRunRuntime(sessionPath: any) {
@@ -1631,7 +1632,8 @@ export class SessionCoordinator {
     }
     const session = entry.session;
     const agent = session.agent;
-    if (typeof agent?.streamFn !== "function") {
+    const agentStreamFn = getAgentStreamFn(agent);
+    if (typeof agentStreamFn !== "function") {
       throw new SessionAgentRunRuntimeResolutionError(sessionPath, "missing streamFn for session");
     }
     const tools = Object.freeze(
@@ -1647,7 +1649,7 @@ export class SessionCoordinator {
       maxRetryDelayMs: agent.maxRetryDelayMs,
     });
     return Object.freeze({
-      streamFn: agent.streamFn,
+      streamFn: agentStreamFn,
       tools,
       streamOptions,
     });
@@ -4321,7 +4323,7 @@ export class SessionCoordinator {
           "Summarize the old transcript so the new primary Agent can continue without depending on the deleted Agent runtime.",
         ].join(" "),
         thinkingLevel: session.thinkingLevel ?? session.agent?.state?.thinkingLevel,
-        streamFn: session.agent?.streamFn,
+        streamFn: getAgentStreamFn(session.agent),
         streamOptions: {
           sessionId: session.agent?.sessionId,
           onPayload: session.agent?.onPayload,
@@ -7081,11 +7083,11 @@ export class SessionCoordinator {
 
   _installCachePrefixGuard(sessionPath: any, entry: any) {
     const agent = entry?.session?.agent;
-    if (!agent || typeof agent.streamFn !== "function" || entry.cachePrefixGuardInstalled) return;
-    const originalStreamFn = agent.streamFn;
+    const originalStreamFn = getAgentStreamFn(agent);
+    if (!agent || !originalStreamFn || entry.cachePrefixGuardInstalled) return;
     entry.cachePrefixGuardInstalled = true;
     entry.cachePrefixOriginalStreamFn = originalStreamFn;
-    agent.streamFn = async (model, context, options) => {
+    setAgentStreamFn(agent, async (model, context, options) => {
       // 这份前缀契约是诊断工具，不是闸门：发现漂移就记下原文级 diff 并按现状续签放行，
       // 请求照常发出。漂移意味着有人在重建 prompt / 工具表时没走续签，凭那条记录去定位。
       // 契约只覆盖普通轮次，原生压缩与分支摘要用的是各自的 prompt；保缓存的旁路任务
@@ -7099,7 +7101,7 @@ export class SessionCoordinator {
         context,
         withProviderCacheAffinity(options, model, entry.providerCacheAffinityKey),
       );
-    };
+    });
   }
 
   _applyFinalPromptSnapshot(session: any, finalSystemPrompt: any) {
@@ -7933,16 +7935,16 @@ export class SessionCoordinator {
       // no long-lived task to resume, so no mid-run compaction is installed.
       installDynamicCompactionReserve(session);
 
-      if (isolatedProviderCacheAffinityKey && typeof session?.agent?.streamFn === "function") {
-        const originalStreamFn = session.agent.streamFn;
-        session.agent.streamFn = function providerCacheAffinityStream(model, context, options) {
-          return originalStreamFn.call(
+      const isolatedStreamFn = getAgentStreamFn(session?.agent);
+      if (isolatedProviderCacheAffinityKey && typeof isolatedStreamFn === "function") {
+        setAgentStreamFn(session.agent, function providerCacheAffinityStream(model, context, options) {
+          return isolatedStreamFn.call(
             this,
             model,
             context,
             withProviderCacheAffinity(options, model, isolatedProviderCacheAffinityKey),
           );
-        };
+        });
       }
 
       childSessionPath = session.sessionManager?.getSessionFile?.() || null;

@@ -19,6 +19,32 @@ import { enrichOllamaModelMetadata } from "../../shared/ollama-model-metadata.ts
 import { clearConfigCache } from "../../lib/memory/config-loader.ts";
 import { collectSecretPatchPaths, isMaskedSecretValue, maskSecretValue } from "../../shared/secret-custody.ts";
 import { denySecretMutationWithoutScope, denyWithoutScope } from "../http/capability-guard.ts";
+import { publicCodexOauthUsage } from "../../lib/auth/openai-codex-oauth-usage.ts";
+import { publicXaiOauthUsage } from "../../lib/auth/xai-oauth-usage.ts";
+import { listCachedOauthAccounts } from "../../lib/auth/oauth-account-vault.ts";
+import { isCodexOauthProvider } from "../../shared/codex-service-tier.ts";
+
+function attachCachedOauthUsage(name, row, engine) {
+  if (isCodexOauthProvider(name)) {
+    const pub = publicCodexOauthUsage(engine.codexOauthUsage);
+    if (pub) row.oauth_usage = pub;
+  } else if (name === "xai-oauth") {
+    const pub = publicXaiOauthUsage(engine.xaiOauthUsage);
+    if (pub) row.oauth_usage = pub;
+  }
+  attachCachedOauthAccounts(name, row, engine);
+}
+
+function attachCachedOauthAccounts(name, row, engine) {
+  const accounts = listCachedOauthAccounts(engine, name);
+  if (accounts.length === 0) return;
+  const usage = row.oauth_usage;
+  row.oauth_accounts = accounts.map((account) => {
+    if (!account.active || !usage) return account;
+    if (account.usage?.ok && typeof account.usage.remaining === "number") return account;
+    return { ...account, usage };
+  });
+}
 
 // ── Models-cache helpers ──
 
@@ -157,6 +183,7 @@ export function createProvidersRoute(engine: any) {
         config_error: p.config_error || null,
         missing_fields: missingFields,
       };
+      attachCachedOauthUsage(name, result[name], engine);
     }
 
     // 追加没有 Provider Catalog overlay 的 OAuth provider。模型仍来自 Hana plugin 默认清单。
@@ -185,6 +212,7 @@ export function createProvidersRoute(engine: any) {
         config_error: null,
         missing_fields: effectiveModels.length > 0 ? [] : ["models"],
       };
+      attachCachedOauthUsage(oauthId, result[oauthId], engine);
     }
 
     // 追加 ProviderRegistry 中已声明但尚未出现的 provider（未配置状态）

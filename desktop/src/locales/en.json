@@ -355,6 +355,17 @@
       "done": "✓ Done",
       "failed": "✗ Failed",
       "aborted": "⊘ Stopped"
+    },
+    "askUser": {
+      "other": "Other…",
+      "otherPlaceholder": "Write your own option",
+      "confirm": "Choose this",
+      "skip": "Skip",
+      "hintSingle": "Pick one, or write your own",
+      "hintMultiple": "Pick any, and you can add your own",
+      "answered": "Answered",
+      "skipped": "Skipped",
+      "timeout": "This question expired"
     }
   },
   "time": {
@@ -445,6 +456,20 @@
       "xhigh": "Extra-high reasoning",
       "max": "Maximum reasoning"
     },
+    "codexSpeedLabel": "Speed",
+    "codexSpeed": {
+      "standard": "Standard",
+      "fast": "Fast",
+      "ultrafast": "Ultrafast"
+    },
+    "codexSpeedDesc": {
+      "standard": "Default speed",
+      "fast": "1.5x speed, more usage",
+      "ultrafast": "Fastest available"
+    },
+    "oauthAccountLabel": "Account and quota",
+    "oauthRemaining": "{remaining}% left",
+    "oauthQuotaUnknown": "Quota —",
     "contextWindow": "Context {windowK}k",
     "tokensUsed": "Used {tokensK}k ({pct}%)",
     "contextActions": "Context actions",
@@ -952,6 +977,11 @@
       "running": "🎴 {name} is laying out a card",
       "done": "🎴 {name} laid out the card",
       "failed": "🎴 The card wouldn't show"
+    },
+    "ask_user": {
+      "running": "❔ {name} is waiting for your pick",
+      "done": "❔ {name} asked you",
+      "failed": "❔ Couldn't ask"
     },
     "media_generate-image": {
       "running": "🎨 {name} is drawing",
@@ -1807,7 +1837,20 @@
       "weeklyUsed": "{used}% used this week",
       "weeklyReset": "resets {when}",
       "weeklyUnknown": "Weekly quota unavailable",
+      "weeklyExhausted": "Weekly quota used up",
+      "weeklyRevoked": "Sign-in expired. Please sign in again",
+      "weeklyRefreshFailed": "Refresh failed",
+      "weeklyNetwork": "Could not read quota (network)",
+      "weeklyUpstream": "Could not read quota (server)",
+      "weeklyRateLimited": "Quota request was rate-limited",
+      "weeklyNotLoggedIn": "Not signed in",
       "hoursRemaining": "{remaining}% left in {hours}h window",
+      "addAccount": "Add account",
+      "useAccount": "Switch",
+      "removeAccount": "Remove",
+      "activeAccount": "In use",
+      "accountInvalid": "Expired",
+      "quotaUnknown": "Quota unavailable",
       "searchTools": "Search tools",
       "searchToolsHint": "When on, web_search uses Grok for the public web, and x_search is a separate tool for X. The model decides whether to search X. This uses the weekly quota."
     },
@@ -1873,6 +1916,11 @@
       },
       "thinkingLevelsEdit": "Available levels",
       "thinkingLevelsEditHint": "Choose which levels appear in chat. Unchanged models keep the built-in list and are not written back.",
+      "codexSpeed": {
+        "standard": "Standard",
+        "fast": "Fast (1.5x speed, more usage)",
+        "ultrafast": "Ultrafast (fastest available)"
+      },
       "defaultThinkingLevel": "Default level",
       "addedModels": "Added models",
       "displayName": "Display name",
@@ -3224,7 +3272,8 @@
       "dreamRevisionNotFound": "This Dream version could not be found. It may have been cleaned up.",
       "dreamRestoreFailed": "The Dream version could not be restored. Current memory was not changed.",
       "dreamRunFailed": "Dream cleanup failed. The original memory was not changed.",
-      "internalContract": "Something went wrong inside the app; this is not on you. The details are recorded and can be attached to a report"
+      "internalContract": "Something went wrong inside the app; this is not on you. The details are recorded and can be attached to a report",
+      "tokenRevoked": "Sign-in expired. Open Settings and sign in again"
     }
   },
   "main": {
@@ -3326,6 +3375,8 @@
       "computerUse": "Computer Use",
       "computerUseDesc": "When enabled, new conversations expose the computer tool to the primary Agent. When disabled, new conversations cannot see it, and frozen old conversations are rejected if they call it.",
       "thinkingBudget": "Thinking Depth",
+      "codexSpeed": "Codex speed",
+      "codexSpeedDesc": "Speed tier for Codex OAuth (GPT via ChatGPT sign-in): standard, fast (1.5x speed, higher usage), ultrafast (fastest available).",
       "memory": "Memory System",
       "memoryDesc": "Enable/disable memory for current Agent",
       "memoryFacts": "Memory Facts",

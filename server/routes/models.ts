@@ -18,6 +18,7 @@ import {
 } from "../../shared/model-capabilities.ts";
 import { callText } from "../../core/llm-client.ts";
 import { callTextConfigFromResolvedModel } from "../../core/model-execution-config.ts";
+import { publicUtilityRoles } from "../../core/plugin-sample-text.ts";
 import { getModelThinkingLevels, modelSupportsXhigh, resolveModelDefaultThinkingLevel } from "../../core/session-thinking-level.ts";
 
 const HEALTH_CHECK_PROMPT = "Reply exactly OK.";
@@ -199,6 +200,7 @@ export function createModelsRoute(engine) {
         models,
         current: cur?.id || null,
         activeModel: activeModel ? { id: activeModel.id, provider: activeModel.provider } : null,
+        utilityRoles: publicUtilityRoles(engine.getSharedModels?.() || {}, engine.availableModels || []),
       });
     } catch (err) {
       return c.json({ error: err.message }, 500);

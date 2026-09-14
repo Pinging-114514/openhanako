@@ -66,7 +66,10 @@ describe("enrichModelFromKnownMetadata", () => {
         cacheWrite: 6,
       },
     });
-    expect(enriched.headers).toEqual({ "User-Agent": "KimiCLI/1.5" });
+    // pi 0.84.3+ no longer pins a Kimi CLI User-Agent on its built-in Kimi models,
+    // so there is no provider request identity to inherit; the user entry stays
+    // header-free instead of being stamped with a header pi itself stopped sending.
+    expect(enriched.headers).toBeUndefined();
     expect(enriched.api).toBe("openai-completions");
     expect(enriched.baseUrl).toBe("https://api.kimi.com/coding/v1");
     expect(enriched.compat).toMatchObject({

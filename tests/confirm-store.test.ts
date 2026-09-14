@@ -50,4 +50,15 @@ describe("ConfirmStore", () => {
     expect(store.get(confirmId)).toBeNull();
     expect(store.size).toBe(0);
   });
+
+  it("reports pending confirmations by kind and session", () => {
+    const store = new ConfirmStore();
+    (store as any).create("user_choice", { question: "Q" }, "/sessions/a.jsonl", 60_000);
+    (store as any).create("settings", { key: "theme" }, "/sessions/b.jsonl", 60_000);
+
+    expect(store.hasPending("user_choice", "/sessions/a.jsonl")).toBe(true);
+    expect(store.hasPending("user_choice", "/sessions/b.jsonl")).toBe(false);
+    expect(store.hasPending("settings", "/sessions/a.jsonl")).toBe(false);
+    expect(store.hasPending("settings", "/sessions/b.jsonl")).toBe(true);
+  });
 });

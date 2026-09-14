@@ -97,7 +97,9 @@ describe("model sync OAuth aliases", () => {
       id: "gpt-5.6-sol",
       contextWindow: 353400,
       maxTokens: 128000,
-      thinkingLevelMap: { off: null, minimal: null, xhigh: "max" },
+      // xhigh and max are separate wire levels since pi 0.80.6; Hana derives the
+      // map keys from the Codex thinkingLevels so both actually reach the request.
+      thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
     });
   });
 

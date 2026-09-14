@@ -13,6 +13,10 @@ vi.mock('../../components/input/ContextRing', () => ({
   ContextRing: () => React.createElement('span', null, 'context'),
 }));
 
+vi.mock('../../components/input/CodexSpeedButton', () => ({
+  CodexSpeedButton: () => React.createElement('button', { type: 'button' }, 'codex-speed'),
+}));
+
 vi.mock('../../components/input/ThinkingLevelButton', () => ({
   ThinkingLevelButton: () => React.createElement('button', { type: 'button' }, 'thinking'),
 }));

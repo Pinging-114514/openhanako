@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from './store';
+import { publishOauthAccountsChanged } from '../stores/oauth-accounts-store';
 import { hanaFetch } from './api';
 import {
   createLocalServerConnection,
@@ -150,8 +151,13 @@ export function SettingsContent({
     const platform = window.platform;
     if (!platform?.onSettingsChanged) return;
     const unsubscribe = platform.onSettingsChanged((type: string, data: unknown) => {
-      if (type !== 'skills-changed') return;
-      window.dispatchEvent(new CustomEvent('hana-skills-changed', { detail: data || {} }));
+      if (type === 'skills-changed') {
+        window.dispatchEvent(new CustomEvent('hana-skills-changed', { detail: data || {} }));
+        return;
+      }
+      if (type === 'oauth-accounts-changed') {
+        publishOauthAccountsChanged(data as { provider?: string; accounts?: unknown });
+      }
     });
     return typeof unsubscribe === 'function' ? unsubscribe : undefined;
   }, []);

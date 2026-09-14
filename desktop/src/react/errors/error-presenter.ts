@@ -14,6 +14,7 @@ import {
   UNKNOWN_ERROR_MESSAGE_KEY,
   userMessageKeyForCode,
 } from '../../../../shared/error-user-messages.ts';
+import { inferOauthAuthErrorCode } from '../../../../shared/oauth-usage.ts';
 
 export interface PresentedError {
   /** 已本地化的一句话，直接显示给用户。 */
@@ -58,7 +59,9 @@ export function translateKeyOrNull(key: string, translate: Translate = defaultTr
   return trimmed;
 }
 
-function codeOf(error: unknown): string | null {
+function codeOf(error: unknown, rawMessage = ''): string | null {
+  const inferred = inferOauthAuthErrorCode(rawMessage);
+  if (inferred) return inferred;
   if (!error || typeof error !== 'object') return null;
   const candidate = (error as { code?: unknown }).code;
   if (typeof candidate !== 'string') return null;
@@ -77,8 +80,8 @@ function messageOf(error: unknown): string {
 export function presentError(error: unknown, options: PresentOptions = {}): PresentedError {
   const translate = options.translate || defaultTranslate;
   const fallbackKey = options.fallbackKey || UNKNOWN_ERROR_MESSAGE_KEY;
-  const code = codeOf(error);
   const raw = messageOf(error);
+  const code = codeOf(error, raw);
 
   const mappedKey = userMessageKeyForCode(code);
   const text = (mappedKey ? translateKeyOrNull(mappedKey, translate) : null)
@@ -111,7 +114,8 @@ export function presentError(error: unknown, options: PresentOptions = {}): Pres
  * "切换失败: "这样后面空着的半句话。
  */
 export function localizedReasonOrRaw(error: unknown, translate: Translate = defaultTranslate): string {
-  const code = codeOf(error);
+  const raw = messageOf(error);
+  const code = codeOf(error, raw);
   const mappedKey = userMessageKeyForCode(code);
   return (mappedKey ? translateKeyOrNull(mappedKey, translate) : null)
     || messageOf(error)

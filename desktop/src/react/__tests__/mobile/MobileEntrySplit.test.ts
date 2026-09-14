@@ -49,6 +49,14 @@ describe('Mobile PWA entry split', () => {
     expect(universalCardBlock).toMatch(/box-shadow:\s*var\(--panel-card-shadow\);/);
   });
 
+  it('keeps remote context menus fixed so sort and session menus stay on screen', () => {
+    const css = readFileSync(path.join(process.cwd(), 'desktop/src/react/mobile/mobile-entry.css'), 'utf8');
+    const menuBlock = css.match(/\.context-menu\s*\{[\s\S]*?\}/)?.[0] ?? '';
+
+    expect(menuBlock).toMatch(/position:\s*fixed;/);
+    expect(menuBlock).toMatch(/z-index:\s*9999;/);
+  });
+
   it('does not statically pull desktop-only app pages or heavy preview overlays into the mobile shell', () => {
     const source = readFileSync(path.join(process.cwd(), 'desktop/src/react/mobile/MobileApp.tsx'), 'utf8');
     const imports = staticImportSpecifiers(source);

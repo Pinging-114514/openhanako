@@ -28,7 +28,11 @@ const log = createModuleLogger("server");
 const checkpointLog = createModuleLogger("checkpoint");
 const sessionFilesLog = createModuleLogger("session-files");
 import { createOutboundProxyRuntime } from "../lib/net/outbound-proxy.ts";
-import { installProxiedGlobalFetch } from "../lib/net/proxied-global-fetch.ts";
+import { installProxiedGlobalFetch, installProxiedGlobalWebSocket } from "../lib/net/proxied-global-fetch.ts";
+import { refreshCodexOauthUsageCache } from "../lib/auth/openai-codex-oauth-usage.ts";
+import { startOauthUsageRefreshLoop } from "../lib/auth/oauth-usage-refresh-loop.ts";
+import { refreshXaiOauthUsageCache } from "../lib/auth/xai-oauth-usage.ts";
+import { importOauthSlotsIntoVault } from "../lib/auth/oauth-account-vault.ts";
 import { startSystemProxySync } from "../lib/net/system-proxy-sync.ts";
 import { createServerAuthService } from "../core/server-auth.ts";
 import { createWebSocketTicketService } from "../core/ws-auth-ticket.ts";
@@ -92,7 +96,10 @@ import { startCLI } from "./cli.ts";
 import { fromRoot } from "../shared/hana-root.ts";
 import { callText } from "../core/llm-client.ts";
 import { callTextConfigFromResolvedModel, callTextConfigFromUtilityConfig } from "../core/model-execution-config.ts";
-import { observationalCaptureModelRef } from "../lib/observational-compaction/capture-run.ts";
+import {
+  observationalCaptureModelRef,
+  observationalUtilityMatchesSession,
+} from "../lib/observational-compaction/capture-run.ts";
 
 const productDir = fromRoot("lib");
 
@@ -372,6 +379,10 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
       this.configuredMode = network.mode;
       this.configuredListenHost = network.listenHost;
       this.configuredPort = network.listenPort;
+      // loopback <-> custom_remote 听的都是 127.0.0.1，只换运输标签，不必重启。
+      if (this.listenHost === network.listenHost) {
+        this.mode = network.mode;
+      }
     },
   };
   const host = serverRuntimeState.bindHost;
@@ -455,6 +466,13 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
   engine.setOutboundProxyRuntime(outboundProxyRuntime);
   outboundProxyRuntime.apply(engine.getNetworkProxy());
   installProxiedGlobalFetch();
+  // pi-ai's Codex WebSocket transport dials through globalThis.WebSocket; give it
+  // the same proxy routing as fetch or it fails direct and falls back to SSE.
+  installProxiedGlobalWebSocket();
+  importOauthSlotsIntoVault(engine);
+  void refreshCodexOauthUsageCache(engine);
+  void refreshXaiOauthUsageCache(engine);
+  const stopOauthUsageRefresh = startOauthUsageRefreshLoop(engine);
   startSystemProxySync({
     getMode: () => engine.getNetworkProxy()?.mode || "system",
     apply: (config) => outboundProxyRuntime.apply(config),
@@ -517,9 +535,40 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     getProviderCompatOptions: (sessionPath) => (
       engine.getProviderCompatOptionsForSession(sessionPath)
     ),
-    captureObservationalText: async ({ systemPrompt, prompt, ctx }) => {
+    captureObservationalText: async ({ systemPrompt, prompt, ctx, lane }) => {
       const sessionPath = ctx?.sessionManager?.getSessionFile?.() || null;
       const agentId = sessionPath ? engine.resolveSessionOwnership?.(sessionPath)?.agentId || null : null;
+      const usageContext = {
+        source: {
+          subsystem: "compaction",
+          operation: "observational_capture",
+          surface: "desktop",
+          trigger: "turn",
+        },
+        attribution: sessionPath
+          ? { kind: "session", agentId, sessionPath }
+          : { kind: "session", agentId },
+      };
+      const callCapture = (execution) => callText({
+        ...execution,
+        systemPrompt,
+        messages: [{ role: "user", content: prompt }],
+        maxTokens: 2000,
+        timeoutMs: 120_000,
+        usageLedger: engine.usageLedger,
+        usageContext,
+      });
+      if (lane === "utility") {
+        const utility = await engine.resolveUtilityConfigFresh({ agentId, sessionPath });
+        const utilityModel = utility?.utility;
+        if (!utilityModel?.id) {
+          throw new Error("observational capture utility is not configured");
+        }
+        if (observationalUtilityMatchesSession(observationalCaptureModelRef(ctx), utilityModel)) {
+          throw new Error("observational capture utility matches the session model");
+        }
+        return callCapture(callTextConfigFromUtilityConfig(utility));
+      }
       const modelRef = observationalCaptureModelRef(ctx);
       if (!modelRef) {
         throw new Error("observational capture needs the current session model");
@@ -528,25 +577,7 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
       if (!resolved) {
         throw new Error(`observational capture could not resolve ${modelRef.provider}/${modelRef.id}`);
       }
-      return callText({
-        ...callTextConfigFromResolvedModel(resolved),
-        systemPrompt,
-        messages: [{ role: "user", content: prompt }],
-        maxTokens: 2000,
-        timeoutMs: 120_000,
-        usageLedger: engine.usageLedger,
-        usageContext: {
-          source: {
-            subsystem: "compaction",
-            operation: "observational_capture",
-            surface: "desktop",
-            trigger: "turn",
-          },
-          attribution: sessionPath
-            ? { kind: "session", agentId, sessionPath }
-            : { kind: "session", agentId },
-        },
-      });
+      return callCapture(callTextConfigFromResolvedModel(resolved));
     },
     getRequestReasoningLevel: (ctx) => engine.resolveRequestReasoningLevel(ctx),
     buildUsageContext: ({ ctx }) => {
@@ -651,6 +682,11 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
       return;
     }
 
+    if (isCardIframeTicketRequest(c, routePath)) {
+      await next();
+      return;
+    }
+
     if (isPluginIframeTicketRequest(c, routePath)) {
       try {
         verifyPluginIframeTicketForHostRequest(c, engine, { requireTicket: true });
@@ -708,6 +744,13 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     return (method === "GET" || method === "HEAD")
       && /^\/api\/resources\/[^/]+\/content$/.test(routePath)
       && !!c.req.query("ticket");
+  }
+
+  function isCardIframeTicketRequest(c: any, routePath: any) {
+    const method = c.req.method;
+    return (method === "GET" || method === "HEAD")
+      && /^\/api\/cards\/[^/]+$/.test(routePath)
+      && !!c.req.query("cardIframeTicket");
   }
 
   function isPluginIframeTicketRequest(c: any, routePath: any) {
@@ -1338,6 +1381,7 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
     forceTimer.unref();
 
     try {
+      stopOauthUsageRefresh();
       // 1. 先停止接受新请求
       server.close();
       log.log("HTTP server 已关闭");

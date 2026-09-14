@@ -30,6 +30,24 @@ describe("known-models dictionary", () => {
     });
   });
 
+  it("declares GPT-6 Astra metadata for Codex OAuth from the live Codex catalog", () => {
+    // The Codex backend reports context_window 272000 / max_context_window 872000
+    // for Astra and exempts it from long-context quota multipliers, so Hana runs
+    // the working window at the backend's hard ceiling instead of the default.
+    expect(lookupKnown("openai-codex-oauth", "gpt-6-astra")).toMatchObject({
+      name: "GPT-6 Astra",
+      context: 872000,
+      maxContext: 872000,
+      maxOutput: 128000,
+      image: true,
+      reasoning: true,
+      api: "openai-codex-responses",
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: null, minimal: null },
+      defaultThinkingLevel: "medium",
+    });
+  });
+
   it("declares GPT-5.5 metadata for Codex OAuth with the Hana-owned Codex contract", () => {
     expect(lookupKnown("openai-codex-oauth", "gpt-5.5")).toMatchObject({
       name: "GPT-5.5",

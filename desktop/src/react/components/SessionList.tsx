@@ -22,6 +22,7 @@ import {
   autoProjectIdForCwd,
   buildSessionProjectView,
   buildSessionSections,
+  pickRunningSessions,
   splitProjectSessionsByPreview,
   type SessionViewMode,
 } from './session-sections';
@@ -796,6 +797,7 @@ function SessionListInner() {
       collapsedProjectIds={collapsedProjectIds}
       collapsedFolderIds={collapsedFolderIds}
       showAllProjectIds={showAllProjectIds}
+      statusSessionPaths={[...streamingSessions, ...unreadOutputSessionPaths, currentSessionPath]}
       dragState={dragState}
       dropTargetId={dropTargetId}
       setDropTargetId={setDropTargetId}
@@ -979,6 +981,7 @@ function ProjectSessionView({
   collapsedProjectIds,
   collapsedFolderIds,
   showAllProjectIds,
+  statusSessionPaths,
   dragState,
   dropTargetId,
   setDropTargetId,
@@ -1004,6 +1007,7 @@ function ProjectSessionView({
   collapsedProjectIds: Set<string>;
   collapsedFolderIds: Set<string>;
   showAllProjectIds: Set<string>;
+  statusSessionPaths: string[];
   dragState: SidebarDragState;
   dropTargetId: string | null;
   setDropTargetId: (id: string | null) => void;
@@ -1076,6 +1080,7 @@ function ProjectSessionView({
             collapsed={collapsedProjectIds.has(project.id)}
             showAll={showAllProjectIds.has(project.id)}
             currentSessionPath={currentSessionPath}
+            statusSessionPaths={statusSessionPaths}
             onToggle={() => onToggleProject(project.id)}
             onShowAll={() => onShowAllProject(project.id)}
             renderSessionItem={renderSessionItem}
@@ -1096,6 +1101,7 @@ function ProjectSessionView({
             collapsedProjectIds={collapsedProjectIds}
             showAllProjectIds={showAllProjectIds}
             currentSessionPath={currentSessionPath}
+            statusSessionPaths={statusSessionPaths}
             onToggle={() => onToggleFolder(folder.id)}
             onToggleProject={onToggleProject}
             onShowAllProject={onShowAllProject}
@@ -1128,6 +1134,7 @@ function ProjectBlock({
   collapsed,
   showAll,
   currentSessionPath,
+  statusSessionPaths,
   onToggle,
   onShowAll,
   renderSessionItem,
@@ -1143,6 +1150,7 @@ function ProjectBlock({
   collapsed: boolean;
   showAll: boolean;
   currentSessionPath: string | null;
+  statusSessionPaths: string[];
   onToggle: () => void;
   onShowAll: () => void;
   renderSessionItem: (session: Session) => React.ReactNode;
@@ -1156,11 +1164,15 @@ function ProjectBlock({
 }) {
   const lastDragEndAtRef = useRef(0);
   const { t } = useI18n();
+  const runningSessions = useMemo(
+    () => pickRunningSessions(project.items, statusSessionPaths),
+    [project.items, statusSessionPaths],
+  );
   const { visible, hidden } = useMemo(
     () => splitProjectSessionsByPreview(project.items, {
-      alwaysVisiblePaths: [currentSessionPath],
+      alwaysVisiblePaths: [currentSessionPath, ...statusSessionPaths],
     }),
-    [currentSessionPath, project.items],
+    [currentSessionPath, project.items, statusSessionPaths],
   );
   const sessionsToRender = showAll ? project.items : visible;
   return (
@@ -1224,6 +1236,11 @@ function ProjectBlock({
           <NewChatIcon />
         </button>
       </div>
+      {collapsed && runningSessions.length > 0 && (
+        <div className={styles.projectSessionList}>
+          {runningSessions.map(session => renderSessionItem(session))}
+        </div>
+      )}
       <Collapse open={!collapsed}>
         <div className={styles.projectSessionList}>
           {sessionsToRender.map(session => renderSessionItem(session))}
@@ -1244,6 +1261,7 @@ function FolderBlock({
   collapsedProjectIds,
   showAllProjectIds,
   currentSessionPath,
+  statusSessionPaths,
   onToggle,
   onToggleProject,
   onShowAllProject,
@@ -1265,6 +1283,7 @@ function FolderBlock({
   collapsedProjectIds: Set<string>;
   showAllProjectIds: Set<string>;
   currentSessionPath: string | null;
+  statusSessionPaths: string[];
   onToggle: () => void;
   onToggleProject: (projectId: string) => void;
   onShowAllProject: (projectId: string) => void;
@@ -1282,6 +1301,10 @@ function FolderBlock({
   onOpenFolderMenu: (position: { x: number; y: number }, folder: SessionProjectFolderGroup) => void;
 }) {
   const lastDragEndAtRef = useRef(0);
+  const runningSessions = useMemo(
+    () => folder.projects.flatMap(project => pickRunningSessions(project.items, statusSessionPaths)),
+    [folder.projects, statusSessionPaths],
+  );
   return (
     <div className={styles.folderBlock}>
       <div
@@ -1321,6 +1344,11 @@ function FolderBlock({
         <FolderIcon className={styles.projectIcon} size={16} open={!collapsed} />
         <span className={styles.projectName}>{folder.name}</span>
       </div>
+      {collapsed && runningSessions.length > 0 && (
+        <div className={styles.projectSessionList}>
+          {runningSessions.map(session => renderSessionItem(session))}
+        </div>
+      )}
       <Collapse open={!collapsed}>
         <div className={styles.folderProjectList}>
           {folder.projects.map(project => (
@@ -1330,6 +1358,7 @@ function FolderBlock({
               collapsed={collapsedProjectIds.has(project.id)}
               showAll={showAllProjectIds.has(project.id)}
               currentSessionPath={currentSessionPath}
+              statusSessionPaths={statusSessionPaths}
               onToggle={() => onToggleProject(project.id)}
               onShowAll={() => onShowAllProject(project.id)}
               renderSessionItem={renderSessionItem}

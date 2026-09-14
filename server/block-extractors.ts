@@ -184,6 +184,28 @@ export const BLOCK_EXTRACTORS = {
     }];
   },
 
+  ask_user: (details) => {
+    if (!details?.question || !Array.isArray(details.options)) return null;
+    const answer = details.answer && typeof details.answer === "object"
+      ? details.answer
+      : null;
+    const skipped = answer?.skipped === true || details.status === "skipped";
+    const status = details.status === "timeout"
+      ? "timeout"
+      : (details.status === "pending"
+        ? "pending"
+        : (skipped ? "skipped" : "answered"));
+    return [{
+      type: "user_choice",
+      confirmId: details.confirmId || "",
+      question: details.question,
+      options: details.options,
+      allowMultiple: details.allowMultiple === true,
+      status,
+      ...(answer ? { answer } : {}),
+    }];
+  },
+
   update_settings: (details) => {
     if (details.settingsUpdate) {
       return [{

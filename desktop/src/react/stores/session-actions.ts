@@ -1316,7 +1316,7 @@ export async function continueDeletedAgentSession(path: string): Promise<boolean
       const routeError = normalizeSessionRouteError(data);
       const message = routeError.message || res.statusText || 'continue failed';
       console.error('[session] continue deleted-agent session failed:', message, routeError.code || '');
-      // 跟下面 catch 分支同一套呈现：错误码翻成人话，原始英文留在详情，toast 带码。
+      // 跟下面 catch 分支同一套呈现：错误码翻成人话。这是侧栏动作，当前会话未必能挂 inline。
       const entry = presentErrorWithLabel(
         tr('session.deletedAgent.continueFailed'),
         errorWithCode(message, routeError.code),
@@ -1632,7 +1632,7 @@ export async function refreshSessionCapabilities(path: string): Promise<boolean>
   } catch (err) {
     console.error('[session] capability refresh failed:', err);
     const state = useStore.getState();
-    state.setInlineError?.(path, presentErrorWithLabel(tr('input.refreshAndCompactFailed'), err), 6000);
+    state.setInlineError?.(path, presentErrorWithLabel(tr('input.refreshAndCompactFailed'), err));
     return false;
   } finally {
     useStore.getState().setSessionCapabilityRefreshing(path, false);
@@ -1657,11 +1657,14 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err || 'Unknown error');
 }
 
-/** 内联错误说人话、原始报错留在展开区；toast 一闪而过，只带正文和错误码。 */
+/** 有会话就挂到 transcript 最新一块下面常驻；没有会话可挂靠才退回 toast。 */
 function showSessionActionError(labelKey: string, path: string, detail: unknown): void {
   const entry = presentErrorWithLabel(tr(labelKey), detail);
   const state = useStore.getState();
-  state.setInlineError?.(path, entry, 6000);
+  if (path) {
+    state.setInlineError?.(path, entry);
+    return;
+  }
   state.addToast(entry.text, 'error', 6000, entry.code ? { errorCode: entry.code } : undefined);
 }
 

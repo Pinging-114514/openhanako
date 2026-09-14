@@ -30,6 +30,7 @@ const INFORMATION_TOOLS = new Set([
   "current_status",
   "search_memory",
   "recall_experience",
+  "ask_user",
 ]);
 
 const SIDE_EFFECT_TOOLS = new Set([
@@ -93,6 +94,7 @@ const SUBAGENT_BLOCKED_TOOLS = new Set([
   "update_settings",
   "session_folders",
   "loop_control",      // 循环归主会话管，子代理不得约闹钟/收束循环
+  "ask_user",          // 选方案问主会话的人，不从子代理弹卡
 ]);
 
 // session 工具（跨 session 协作）：读侧零副作用；send/create 的 execute 只产草稿卡，

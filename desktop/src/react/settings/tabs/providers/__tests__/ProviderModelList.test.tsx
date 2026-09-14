@@ -111,6 +111,9 @@ describe('ProviderModelList', () => {
       top: '336px',
       width: '320px',
     });
+
+    window.dispatchEvent(new Event('scroll', { bubbles: true }));
+    expect(document.body.querySelector('[data-provider-model-dropdown="true"]')).not.toBeNull();
   });
 
   it('shows image, video, audio and reasoning capability icons after the added model id', () => {
@@ -567,7 +570,6 @@ describe('ProviderModelList', () => {
       expect(JSON.parse(String(updateCall?.[1]?.body))).toEqual({
         name: 'Grok 4.6',
         thinkingLevels: ['off', 'low', 'medium', 'high'],
-        xhigh: false,
         defaultThinkingLevel: 'medium',
       });
     });

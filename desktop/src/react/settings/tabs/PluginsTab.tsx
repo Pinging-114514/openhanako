@@ -36,6 +36,60 @@ interface PluginConfigProperty {
   ui?: { control?: string };
 }
 
+interface PluginModelOption {
+  id: string;
+  name?: string;
+  provider: string;
+}
+
+interface PluginUtilityRole {
+  name?: string;
+}
+
+function PluginModelControl({
+  value,
+  onChange,
+}: {
+  value: unknown;
+  onChange: (value: string) => void;
+}) {
+  const [models, setModels] = useState<PluginModelOption[]>([]);
+  const [utilityRoles, setUtilityRoles] = useState<Record<string, PluginUtilityRole>>({});
+  useEffect(() => {
+    hanaFetch('/api/models').then(r => r.json()).then(data => {
+      setModels(Array.isArray(data.models) ? data.models : []);
+      setUtilityRoles(data.utilityRoles && typeof data.utilityRoles === 'object' ? data.utilityRoles : {});
+    }).catch(() => {
+      setModels([]);
+      setUtilityRoles({});
+    });
+  }, []);
+
+  const selected = typeof value === 'string' ? value : '';
+  const options: SelectOption[] = [
+    { value: '', label: t('settings.api.selectModel') },
+    { value: 'utility', label: utilityRoles.utility?.name || t('settings.api.utilityModel'), group: 'system' },
+    { value: 'utility_large', label: utilityRoles.utility_large?.name || t('settings.api.utilityLargeModel'), group: 'system' },
+    ...models.map((model) => ({
+      value: `${model.provider}/${model.id}`,
+      label: model.name || model.id,
+      group: model.provider,
+    })),
+  ];
+  if (selected && !options.some((option) => option.value === selected)) {
+    options.splice(1, 0, { value: selected, label: selected });
+  }
+
+  return (
+    <SelectWidget
+      options={options}
+      value={selected}
+      onChange={onChange}
+      placeholder={t('settings.api.selectModel')}
+    />
+  );
+}
+
 interface PluginConfigResponse {
   pluginId: string;
   schema: {
@@ -682,6 +736,11 @@ export function PluginsTab() {
               <button
                 className={`hana-toggle${value === true ? ' on' : ''}`}
                 onClick={() => updateConfigDraft(key, value !== true)}
+              />
+            ) : property.ui?.control === 'model' ? (
+              <PluginModelControl
+                value={value}
+                onChange={(next) => updateConfigDraft(key, next)}
               />
             ) : property.enum ? (
               <SelectWidget

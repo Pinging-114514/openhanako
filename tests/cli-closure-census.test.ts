@@ -245,7 +245,10 @@ describe("compute-cli-closure: full generation (real esbuild + nft, slow)", () =
     const generatedClosure = await computeCliRuntimeClosure({ rootDir: REPOSITORY_ROOT, includeNftTrace: true });
     const committedClosure = JSON.parse(fs.readFileSync(CLOSURE_PATH, "utf-8"));
     expect(generatedClosure).toEqual(committedClosure);
-    expect(JSON.stringify(generatedClosure)).not.toMatch(/(?:\/Users\/|\/home\/|[A-Za-z]:\\)/);
+    // Guard against a developer's home directory leaking into the committed
+    // closure. Windows is matched on the Users tree rather than any drive-letter
+    // path: the Pi SDK allowlist legitimately records System32\taskkill.exe.
+    expect(JSON.stringify(generatedClosure)).not.toMatch(/(?:\/Users\/|\/home\/|[A-Za-z]:\\+Users\\)/);
 
     const generatedBaseline = computeOpenBoundaryBaseline({ closure: generatedClosure });
     const committedBaseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf-8"));

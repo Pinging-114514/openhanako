@@ -2,11 +2,8 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import fs from "fs";
 import os from "os";
 import path from "path";
-import {
-  AuthStorage,
-  FileAuthStorageBackend,
-  InMemoryAuthStorageBackend,
-} from "@earendil-works/pi-coding-agent";
+import { AuthStorage, createModelRuntime } from "../lib/pi-sdk/index.ts";
+import { PiAuthStore } from "../lib/pi-sdk/auth-store.ts";
 import { forceRefreshOAuthApiKey } from "../core/oauth-force-refresh.ts";
 
 const TOKEN_URL = "https://auth.openai.com/oauth/token";
@@ -57,43 +54,53 @@ function seedData(access = "stale-A"): Record<string, any> {
   };
 }
 
-/** The SDK types credentials as a union; these tests only ever seed OAuth ones. */
-function storedCred(authStorage): any {
-  return authStorage.get(AUTH_KEY);
-}
-
-function inMemoryStore(raw) {
-  const backend = new InMemoryAuthStorageBackend();
-  backend.withLock(() => ({ result: undefined, next: raw }));
-  return { backend, authStorage: AuthStorage.fromStorage(backend) };
-}
-
-function seededInMemoryStore(data = seedData()) {
-  return inMemoryStore(JSON.stringify(data, null, 2));
-}
-
 describe("forceRefreshOAuthApiKey", () => {
   let tmpDir;
+  let authPath;
 
   beforeEach(() => {
     mockFetch.mockReset();
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-force-refresh-"));
+    authPath = path.join(tmpDir, "auth.json");
   });
 
   afterEach(() => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /**
+   * A real ModelRuntime over a throwaway auth.json: the rotation has to go
+   * through pi's own openai-codex OAuth adapter and the store's file lock, the
+   * same path production uses.
+   */
+  async function storeWithRaw(raw: string) {
+    fs.writeFileSync(authPath, raw, "utf-8");
+    const credentials = AuthStorage.create(authPath);
+    const runtime = await createModelRuntime({
+      credentials,
+      authPath,
+      modelsJsonPath: path.join(tmpDir, "models.json"),
+    });
+    return new PiAuthStore({ credentials, authPath, runtime });
+  }
+
+  function storeWith(data: Record<string, any> = seedData()) {
+    return storeWithRaw(JSON.stringify(data, null, 2));
+  }
+
+  function storedCred(store: PiAuthStore): any {
+    return store.get(AUTH_KEY);
+  }
+
   it("rotates the credential even though the local record is not expired yet", async () => {
-    const { backend, authStorage } = seededInMemoryStore();
-    expect(storedCred(authStorage).expires).toBeGreaterThan(Date.now());
+    const store = await storeWith();
+    expect(storedCred(store).expires).toBeGreaterThan(Date.now());
 
     const rotated = codexJwt("acct_new");
     mockFetch.mockResolvedValueOnce(tokenResponse({ access: rotated, refresh: "r2" }));
 
     const apiKey = await forceRefreshOAuthApiKey({
-      authStorage,
-      backend,
+      authStore: store,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
     });
@@ -102,7 +109,7 @@ describe("forceRefreshOAuthApiKey", () => {
     expect(mockFetch.mock.calls[0][0]).toBe(TOKEN_URL);
     expect(apiKey).toBe(rotated);
 
-    const stored = storedCred(authStorage);
+    const stored = storedCred(store);
     expect(stored.type).toBe("oauth");
     expect(stored.access).toBe(rotated);
     expect(stored.refresh).toBe("r2");
@@ -110,77 +117,73 @@ describe("forceRefreshOAuthApiKey", () => {
   });
 
   it("skips the network call when the stored credential was already rotated", async () => {
-    const { backend, authStorage } = seededInMemoryStore(seedData("B"));
+    const store = await storeWith(seedData("B"));
 
     const apiKey = await forceRefreshOAuthApiKey({
-      authStorage,
-      backend,
+      authStore: store,
       authKey: AUTH_KEY,
       staleApiKey: "A",
     });
 
     expect(mockFetch).not.toHaveBeenCalled();
     expect(apiKey).toBe("B");
-    expect(storedCred(authStorage).access).toBe("B");
-    expect(storedCred(authStorage).refresh).toBe("r1");
+    expect(storedCred(store).access).toBe("B");
+    expect(storedCred(store).refresh).toBe("r1");
   });
 
   it("leaves the stored credential untouched when the refresh call fails", async () => {
-    const { backend, authStorage } = seededInMemoryStore();
+    const store = await storeWith();
     mockFetch.mockResolvedValueOnce({
       ok: false,
       status: 401,
       statusText: "Unauthorized",
       text: async () => JSON.stringify({ error: "invalid_grant" }),
+      json: async () => ({ error: "invalid_grant" }),
     });
 
     await expect(forceRefreshOAuthApiKey({
-      authStorage,
-      backend,
+      authStore: store,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
     })).rejects.toThrow();
 
     expect(mockFetch).toHaveBeenCalledTimes(1);
-    const stored = storedCred(authStorage);
+    const stored = storedCred(store);
     expect(stored.access).toBe("stale-A");
     expect(stored.refresh).toBe("r1");
   });
 
   it("rejects without any network call when the entry is missing or not an OAuth credential", async () => {
-    const missing = seededInMemoryStore({});
+    const missing = await storeWith({});
     await expect(forceRefreshOAuthApiKey({
-      authStorage: missing.authStorage,
-      backend: missing.backend,
+      authStore: missing,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
-    })).rejects.toThrow();
+    })).rejects.toThrow(/no OAuth credential stored/);
 
-    const wrongType = seededInMemoryStore({
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-force-refresh-"));
+    authPath = path.join(tmpDir, "auth.json");
+    const wrongType = await storeWith({
       [AUTH_KEY]: { type: "api_key", key: "sk-test" },
     });
     await expect(forceRefreshOAuthApiKey({
-      authStorage: wrongType.authStorage,
-      backend: wrongType.backend,
+      authStore: wrongType,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
-    })).rejects.toThrow();
+    })).rejects.toThrow(/no OAuth credential stored/);
 
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("refreshes exactly once when two callers race on the same stale credential", async () => {
-    const authPath = path.join(tmpDir, "auth.json");
-    fs.writeFileSync(authPath, JSON.stringify(seedData(), null, 2), "utf-8");
-    const backend = new FileAuthStorageBackend(authPath);
-    const authStorage = AuthStorage.fromStorage(backend);
+    const store = await storeWith();
 
     const rotated = codexJwt("acct_race");
     mockFetch.mockImplementation(async () => tokenResponse({ access: rotated, refresh: "r2" }));
 
     const call = () => forceRefreshOAuthApiKey({
-      authStorage,
-      backend,
+      authStore: store,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
     });
@@ -193,15 +196,22 @@ describe("forceRefreshOAuthApiKey", () => {
   });
 
   it("rejects without any network call when the stored credentials are unreadable", async () => {
-    const { backend, authStorage } = inMemoryStore("{not json");
+    const store = await storeWithRaw("{not json");
 
     await expect(forceRefreshOAuthApiKey({
-      authStorage,
-      backend,
+      authStore: store,
       authKey: AUTH_KEY,
       staleApiKey: "stale-A",
     })).rejects.toThrow();
 
     expect(mockFetch).not.toHaveBeenCalled();
+    expect(fs.readFileSync(authPath, "utf-8")).toBe("{not json");
+  });
+
+  it("rejects when no auth store is available", async () => {
+    await expect(forceRefreshOAuthApiKey({
+      authStore: null,
+      authKey: AUTH_KEY,
+    })).rejects.toThrow(/auth storage unavailable/);
   });
 });

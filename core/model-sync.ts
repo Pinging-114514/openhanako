@@ -23,7 +23,11 @@ import { validateProviderModels } from "../shared/provider-model-validation.ts";
 import { buildRuntimeApiKeyRef } from "../shared/runtime-api-key-ref.ts";
 import { inferOllamaModelMetadata } from "../shared/ollama-model-metadata.ts";
 import { normalizeProviderBaseUrlForApi } from "../lib/llm/provider-client.ts";
-import { normalizeThinkingLevelChoices, normalizeThinkingLevelForModel } from "./session-thinking-level.ts";
+import {
+  deriveThinkingLevelMap,
+  normalizeThinkingLevelChoices,
+  normalizeThinkingLevelForModel,
+} from "./session-thinking-level.ts";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const PI_BUILTIN_METADATA_PROVIDERS = new Set(["kimi-coding", "opencode", "opencode-go"]);
@@ -195,13 +199,14 @@ function buildModelOverride(modelEntry, modelDefaults = {}, executionHeaders = {
     });
   }
   if (modelEntry.reasoning !== undefined) override.reasoning = modelEntry.reasoning;
-  if (modelEntry.xhigh !== undefined) override.xhigh = modelEntry.xhigh;
   const thinkingLevels = normalizeThinkingLevelChoices(modelEntry.thinkingLevels);
-  if (thinkingLevels) {
-    override.thinkingLevels = thinkingLevels;
-    if (modelEntry.xhigh === undefined && thinkingLevels.includes("xhigh")) override.xhigh = true;
-  }
-  const thinkingLevelMap = normalizeThinkingLevelMap(modelEntry.thinkingLevelMap);
+  if (thinkingLevels) override.thinkingLevels = thinkingLevels;
+  // Legacy `xhigh: true` on a user override is folded into the wire map instead
+  // of being copied forward; pi never read the flag.
+  const thinkingLevelMap = deriveThinkingLevelMap(
+    thinkingLevels ?? (modelEntry.xhigh === true ? ["xhigh"] : null),
+    normalizeThinkingLevelMap(modelEntry.thinkingLevelMap),
+  );
   if (thinkingLevelMap) override.thinkingLevelMap = thinkingLevelMap;
   const compat = normalizeModelProtocolCompat(modelEntry.compat);
   if (compat) override.compat = compat;
@@ -265,12 +270,12 @@ function buildModelEntry(
   const userAudio = isObj ? modelEntry.audio : undefined;
   const knownAudio = known?.audio;
   const audio = userAudio !== undefined ? userAudio : (knownAudio === true);
-  const userXhigh = isObj ? modelEntry.xhigh : undefined;
+  // `xhigh: true` is a legacy Hana-only flag (pi never read it). It is no longer
+  // written to models.json; an old entry that still carries it is translated
+  // into the wire contract below (thinkingLevelMap.xhigh) so nothing is lost.
+  const legacyXhigh = (isObj && modelEntry.xhigh === true) || known?.xhigh === true;
   const rawThinkingLevels = (isObj && modelEntry.thinkingLevels) || providerKnown?.thinkingLevels || known?.thinkingLevels;
   const thinkingLevels = normalizeThinkingLevelChoices(rawThinkingLevels);
-  const xhigh = userXhigh !== undefined
-    ? userXhigh
-    : (known?.xhigh === true || thinkingLevels?.includes("xhigh") === true);
   const entry: Record<string, any> = {
     id,
     name: (isObj && modelEntry.name) || piProtocolBaseline?.name || known?.name || humanizeName(id),
@@ -289,12 +294,14 @@ function buildModelEntry(
   };
   if (baseUrl !== providerBaseUrl) entry.baseUrl = baseUrl;
   if (thinkingLevels) entry.thinkingLevels = thinkingLevels;
-  if (xhigh === true) entry.xhigh = true;
 
   const rawThinkingLevelMap = isObj && modelEntry.thinkingLevelMap !== undefined
     ? modelEntry.thinkingLevelMap
     : (piProtocolBaseline?.thinkingLevelMap ?? providerKnown?.thinkingLevelMap);
-  const thinkingLevelMap = normalizeThinkingLevelMap(rawThinkingLevelMap);
+  const thinkingLevelMap = deriveThinkingLevelMap(
+    thinkingLevels ?? (legacyXhigh && !(isObj && modelEntry.xhigh === false) ? ["xhigh"] : null),
+    normalizeThinkingLevelMap(rawThinkingLevelMap),
+  );
   if (thinkingLevelMap) entry.thinkingLevelMap = thinkingLevelMap;
   if ((isObj && modelEntry.api) || providerKnown?.api || modelApi !== api) entry.api = modelApi;
 

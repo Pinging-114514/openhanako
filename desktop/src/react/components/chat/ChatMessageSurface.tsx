@@ -11,6 +11,7 @@ import { applyFindMarks, clearFindMarks } from '../../utils/find-marks';
 import type { ChatListItem } from '../../stores/chat-types';
 import { ChatTimelineNavigator } from './ChatTimelineNavigator';
 import { ChatTranscript } from './ChatTranscript';
+import { TranscriptInlineError } from './TranscriptInlineError';
 import { buildTimelineAnchors, type TimelineAnchor } from './timeline-anchors';
 import styles from './Chat.module.css';
 
@@ -115,6 +116,7 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
   const hasMore = useStore(s => sessionScopedValue(s, s.chatSessions, sessionPath)?.hasMore ?? false);
   const loadingMore = useStore(s => sessionScopedValue(s, s.chatSessions, sessionPath)?.loadingMore ?? false);
   const isSessionStreaming = useStore(s => sessionScopedListIncludes(s, s.streamingSessions, sessionPath));
+  const inlineError = useStore(s => sessionScopedValue(s, s.inlineErrors, sessionPath) ?? null);
   const sessionAgentId = useStore(s => s.sessions.find(se => se.path === sessionPath)?.agentId ?? null);
   const sessionReadOnly = useStore(s => s.sessions.find(se => se.path === sessionPath)?.agentDeleted === true);
   const ref = useRef<HTMLDivElement>(null);
@@ -629,6 +631,7 @@ export const ChatMessageSurface = memo(function ChatMessageSurface({
             scrollParentRef={variant === 'card' ? undefined : ref}
             pinnedMessageIds={pinnedMessageIds}
           />
+          {inlineError && <TranscriptInlineError error={inlineError} />}
           {isSessionStreaming && (
             <div className={styles.typingIndicator} />
           )}

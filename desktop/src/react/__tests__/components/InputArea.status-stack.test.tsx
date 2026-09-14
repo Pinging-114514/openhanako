@@ -113,7 +113,6 @@ vi.mock('../../components/input/InputStatusBars', () => ({
     screenshotBusy,
     screenshotLabel,
     screenshotPageLabel,
-    inlineError,
     slashResult,
     onResultClick,
   }: {
@@ -124,7 +123,6 @@ vi.mock('../../components/input/InputStatusBars', () => ({
     screenshotBusy?: boolean;
     screenshotLabel?: string;
     screenshotPageLabel?: string | null;
-    inlineError?: string | null;
     slashResult?: unknown;
     onResultClick?: () => void;
   }) => {
@@ -134,9 +132,7 @@ vi.mock('../../components/input/InputStatusBars', () => ({
         ? compactingLabel
         : screenshotBusy
           ? (screenshotPageLabel || screenshotLabel)
-          : inlineError
-            ? inlineError
-            : slashResult
+          : slashResult
               ? 'slash-result'
               : null;
     return label

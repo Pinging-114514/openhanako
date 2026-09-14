@@ -102,6 +102,20 @@ describe('ws-message-handler applyStreamingStatus', () => {
     expect(useStore.getState().streamingSessions).toEqual(['/other.jsonl']);
   });
 
+  it('新一轮输出开流时清掉该会话挂着的 transcript 错误', () => {
+    useStore.getState().setInlineError('/other.jsonl', {
+      text: '模型现在过载了，稍后再试',
+      detail: null,
+      code: null,
+    });
+    expect(useStore.getState().inlineErrors['/other.jsonl']?.text).toBe('模型现在过载了，稍后再试');
+
+    applyStreamingStatus(true, '/other.jsonl');
+
+    expect(useStore.getState().inlineErrors['/other.jsonl']).toBeNull();
+    expect(useStore.getState().streamingSessions).toEqual(['/other.jsonl']);
+  });
+
   it('isStreaming=false 对传入的 path 做 removeStreamingSession（非焦点 session 也必须清）', () => {
     useStore.setState({ streamingSessions: ['/focused.jsonl', '/other.jsonl'] } as never);
     applyStreamingStatus(false, '/other.jsonl');

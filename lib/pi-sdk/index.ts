@@ -12,13 +12,20 @@
  */
 
 import {
-  AuthStorage,
   createAgentSession as rawCreateAgentSession,
   ModelRegistry,
+  ModelRuntime,
+  readStoredCredential as rawReadStoredCredential,
   resizeImage as rawResizeImage,
   formatDimensionNote as rawFormatDimensionNote,
   convertToLlm as rawConvertToLlm,
 } from "@earendil-works/pi-coding-agent";
+// 0.80.8 起 AuthStorage / FileAuthStorageBackend 不再从包根导出（凭证编排改由
+// ModelRuntime 负责），auth.json 存储实现仍在包内。深路径保留（升级时必查此文件是否存在）
+import {
+  AuthStorage as RawAuthStorage,
+  FileAuthStorageBackend as RawFileAuthStorageBackend,
+} from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/auth-storage.js";
 // 0.80.0 起 pi-ai 老全局 API 移到 /compat 子入口（根入口是 createModels 新 API）
 import {
   getModel as rawGetPiModel,
@@ -36,7 +43,7 @@ import {
   createFindTool,
   createGrepTool,
 } from "./search-tools.ts";
-// prepareCompaction 0.80.3 仍未从包根导出，深路径保留（升级时必查此文件是否存在）
+// prepareCompaction 0.85.1 仍未从包根导出，深路径保留（升级时必查此文件是否存在）
 import {
   prepareCompaction as rawPrepareCompaction,
 } from "../../node_modules/@earendil-works/pi-coding-agent/dist/core/compaction/compaction.js";
@@ -65,9 +72,13 @@ export type {
  */
 export async function createAgentSession(options) {
   const resourceLoaderAgentDir = options?.resourceLoader?.agentDir;
-  const sessionOptions = !options?.agentDir && typeof resourceLoaderAgentDir === "string" && resourceLoaderAgentDir
+  const withAgentDir = !options?.agentDir && typeof resourceLoaderAgentDir === "string" && resourceLoaderAgentDir
     ? { ...options, agentDir: resourceLoaderAgentDir }
     : options;
+  // 0.80.8 起 createAgentSession 只认 `modelRuntime`。Hana 调用方仍传
+  // `authStorage` + `modelRegistry`（ModelManager 的两个句柄），这里翻译成
+  // registry 背后那个 runtime，并把 SDK 不再认识的两个键拿掉。
+  const sessionOptions = translateSessionRuntimeOptions(withAgentDir);
   const result = await rawCreateAgentSession(normalizeCreateAgentSessionOptions(sessionOptions));
   installToolOutcomeAdapter(result?.session);
   installAssistantStreamGuard(result?.session);
@@ -90,28 +101,128 @@ export { DefaultResourceLoader } from "@earendil-works/pi-coding-agent";
 
 // ── Utilities ──
 export { formatSkillsForPrompt, getLastAssistantUsage } from "@earendil-works/pi-coding-agent";
-export { AuthStorage };
-// The file-backed store is exported alongside AuthStorage because forcing a
-// credential rotation has to take the same auth.json lock the SDK takes.
-export { FileAuthStorageBackend } from "@earendil-works/pi-coding-agent";
 
-type OAuthProviderId = Parameters<AuthStorage["login"]>[0];
-export type OAuthLoginCallbacks = Parameters<AuthStorage["login"]>[1];
+// ── 凭证存储 / 模型运行时（0.80.8+ 契约）──
+//
+// auth.json 仍由 pi 的 AuthStorage 持有（它现在只是一个 CredentialStore：
+// read / modify / delete / list），登录、刷新、取 key 全部经 ModelRuntime。
+// Hana 侧的 OAuth 门面在 ./auth-store.ts，消费方不要直接碰这两个类。
+export const AuthStorage = RawAuthStorage;
+export const FileAuthStorageBackend = RawFileAuthStorageBackend;
+export type SdkCredentialStore = RawAuthStorage;
+export type SdkModelRuntime = ModelRuntime;
+export type SdkModelRegistry = ModelRegistry;
+
 export type SdkProviderRegistrationConfig = Parameters<ModelRegistry["registerProvider"]>[1];
 export type SdkOAuthProvider = NonNullable<SdkProviderRegistrationConfig["oauth"]>;
+/**
+ * The legacy extension login callback contract (`onAuth` / `onDeviceCode` /
+ * `onPrompt` / `onSelect` / `onManualCodeInput` / `signal`). Derived from the
+ * SDK's extension OAuth type so an upgrade fails Hana's typecheck here.
+ */
+export type OAuthLoginCallbacks = Parameters<SdkOAuthProvider["login"]>[0];
+export type SdkAuthInteraction = Parameters<ModelRuntime["login"]>[2];
+
+/** One-off synchronous read of auth.json, no store, no key resolution. */
+export function readStoredCredential(providerId: string, authPath: string) {
+  return rawReadStoredCredential(providerId, authPath);
+}
+
+export interface CreateModelRuntimeOptions {
+  credentials: RawAuthStorage;
+  authPath: string;
+  modelsJsonPath: string;
+}
 
 /**
- * OAuth login adapter.
- *
- * The callback contract is deliberately derived from AuthStorage.login so an
- * SDK upgrade fails Hana's typecheck at this boundary instead of at runtime.
+ * ModelRuntime 工厂（0.80.8 起取代 ModelRegistry.create(authStorage, modelsJsonPath)）。
+ * 不联网刷新目录：Hana 自己拥有 models.json，远程目录同步是 Hana 的事。
+ */
+export function createModelRuntime(options: CreateModelRuntimeOptions): Promise<ModelRuntime> {
+  return ModelRuntime.create({
+    credentials: options.credentials,
+    authPath: options.authPath,
+    modelsPath: options.modelsJsonPath,
+    allowModelNetwork: false,
+  });
+}
+
+const runtimeByRegistry = new WeakMap<object, ModelRuntime>();
+
+/**
+ * Translate Hana's `{ authStorage, modelRegistry }` session handles into the
+ * SDK's `modelRuntime` option. Unknown legacy keys are dropped so they never
+ * reach createAgentSession.
+ */
+export function translateSessionRuntimeOptions(options) {
+  if (!options || typeof options !== "object") return options;
+  const { authStorage: _authStorage, modelRegistry, modelRuntime, ...rest } = options;
+  const runtime = modelRuntime
+    ?? (modelRegistry ? runtimeByRegistry.get(modelRegistry) : undefined)
+    ?? (_authStorage && typeof _authStorage === "object" && "runtime" in _authStorage
+      ? (_authStorage as { runtime?: ModelRuntime }).runtime
+      : undefined);
+  return runtime ? { ...rest, modelRuntime: runtime } : rest;
+}
+
+/**
+ * OAuth login adapter: Hana keeps the legacy callback contract at its route
+ * boundary and translates it into the SDK's AuthInteraction here.
  */
 export function loginOAuthProvider(
-  authStorage: AuthStorage,
-  providerId: OAuthProviderId,
+  runtime: ModelRuntime,
+  providerId: string,
   callbacks: OAuthLoginCallbacks,
 ): Promise<void> {
-  return authStorage.login(providerId, callbacks);
+  return runtime.login(providerId, "oauth", toAuthInteraction(callbacks)).then(() => undefined);
+}
+
+export function toAuthInteraction(callbacks: OAuthLoginCallbacks): SdkAuthInteraction {
+  const cb = callbacks as OAuthLoginCallbacks & {
+    onManualCodeInput?: () => Promise<string>;
+    onSelect?: (prompt: any) => Promise<string>;
+    onProgress?: (message: string) => void;
+  };
+  return {
+    signal: cb.signal,
+    notify(event) {
+      switch (event.type) {
+        case "auth_url":
+          cb.onAuth?.({ url: event.url, instructions: event.instructions });
+          return;
+        case "device_code":
+          if (typeof cb.onDeviceCode === "function") {
+            cb.onDeviceCode({
+              userCode: event.userCode,
+              verificationUri: event.verificationUri,
+              intervalSeconds: event.intervalSeconds,
+              expiresInSeconds: event.expiresInSeconds,
+            });
+          } else {
+            cb.onAuth?.({ url: event.verificationUri, instructions: event.userCode });
+          }
+          return;
+        case "progress":
+        case "info":
+          cb.onProgress?.(event.message);
+          return;
+        default:
+          return;
+      }
+    },
+    async prompt(prompt) {
+      switch (prompt.type) {
+        case "manual_code":
+          if (typeof cb.onManualCodeInput === "function") return cb.onManualCodeInput();
+          return cb.onPrompt(prompt as any);
+        case "select":
+          if (typeof cb.onSelect === "function") return cb.onSelect(prompt);
+          throw new Error(`OAuth login for this provider needs a selection (${prompt.message}) that Hana does not support`);
+        default:
+          return cb.onPrompt(prompt as any);
+      }
+    },
+  };
 }
 
 // ── Session/history utilities ──
@@ -209,15 +320,22 @@ export function formatModelImageDimensionNote(result) {
 
 /**
  * ModelRegistry 工厂。
- * 0.64.0 将构造函数私有化，必须用静态方法。
- * 下次 SDK 改工厂签名，只改这里。
- * @param {import('@earendil-works/pi-coding-agent').AuthStorage} authStorage
- * @param {string} [modelsJsonPath]
- * @returns {import('@earendil-works/pi-coding-agent').ModelRegistry}
+ * 0.64.0 将构造函数私有化；0.80.8 起 registry 只是 ModelRuntime 的同步门面，
+ * 由 runtime 构造。下次 SDK 改工厂签名，只改这里。
  */
-export function createModelRegistry(authStorage, modelsJsonPath) {
-  return ModelRegistry.create(authStorage, modelsJsonPath);
+export function createModelRegistry(runtime: ModelRuntime): ModelRegistry {
+  const registry = new ModelRegistry(runtime);
+  runtimeByRegistry.set(registry, runtime);
+  return registry;
 }
+
+/** The runtime a Hana-created registry fronts; undefined for foreign objects. */
+export function getModelRegistryRuntime(registry): ModelRuntime | undefined {
+  return registry ? runtimeByRegistry.get(registry) : undefined;
+}
+
+// ── Agent stream function（0.81+ 属性名 streamFunction）──
+export { getAgentStreamFn, setAgentStreamFn } from "./agent-stream.ts";
 
 /**
  * Register a provider through the ModelRegistry instance that owns Hana's

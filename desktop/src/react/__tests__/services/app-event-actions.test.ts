@@ -179,6 +179,32 @@ describe('handleAppEvent', () => {
     expect(event.detail).toEqual({ agentId: 'agent-a' });
   });
 
+  it('oauth-accounts-changed publishes accounts and forwards them to the settings window', async () => {
+    const settingsChanged = vi.fn();
+    (globalThis as any).window.platform = { settingsChanged };
+    const { handleAppEvent } = await import('../../services/app-event-actions');
+    const payload = {
+      provider: 'xai-oauth',
+      accounts: [{
+        id: 'acc-1',
+        accountId: 'acct-1',
+        email: 'work@example.com',
+        displayName: 'work@example.com',
+        shortLabel: 'work',
+        active: true,
+        usage: { ok: true, remaining: 71 },
+      }],
+    };
+
+    handleAppEvent('oauth-accounts-changed', payload, { source: 'server' });
+
+    expect(settingsChanged).toHaveBeenCalledWith('oauth-accounts-changed', payload);
+    const event = ((globalThis as any).window.dispatchEvent as any).mock.calls
+      .map((call: unknown[]) => call[0] as CustomEvent)
+      .find((item: CustomEvent) => item?.type === 'hana-oauth-accounts');
+    expect(event?.detail).toEqual(payload);
+  });
+
   it('agent-updated for a non-current agent refreshes the agent list without applying identity', async () => {
     Object.assign(mockState, { currentAgentId: 'agent-a', agentName: 'Hana' });
     const { handleAppEvent } = await import('../../services/app-event-actions');

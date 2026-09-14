@@ -50,6 +50,39 @@ export const SECRET_DIR_MODE = 0o700;
 export const SECRET_TMP_SUFFIX = ".tmp";
 
 const SUPPORTS_POSIX_MODE = process.platform !== "win32";
+const WIN32_REPLACE_BUSY_CODES = new Set(["EPERM", "EACCES", "EBUSY"]);
+
+function isWin32ReplaceBusy(err: unknown): boolean {
+  return process.platform === "win32"
+    && !!err
+    && typeof err === "object"
+    && WIN32_REPLACE_BUSY_CODES.has((err as { code?: string }).code || "");
+}
+
+/**
+ * Atomically replace `filePath` with `tmp`. On Windows, rename-replace fails
+ * when another handle still has the destination open (Pi 0.85 ModelRuntime
+ * reloads models.json; Search/Defender also do this). In-place overwrite of
+ * the destination still works with a shared read handle; rename does not.
+ */
+function replaceSecretTargetSync(tmp: string, filePath: string): void {
+  try {
+    fs.renameSync(tmp, filePath);
+    return;
+  } catch (err) {
+    if (!isWin32ReplaceBusy(err)) {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
+      throw err;
+    }
+    try {
+      fs.writeFileSync(filePath, fs.readFileSync(tmp, "utf-8"), "utf-8");
+      try { fs.rmSync(tmp, { force: true }); } catch { /* target already has the new bytes */ }
+    } catch (writeErr) {
+      try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
+      throw writeErr;
+    }
+  }
+}
 
 function permissionError(message: string, filePath: string, cause?: unknown) {
   return new AppError("FS_PERMISSION", { message, context: { filePath }, cause });
@@ -118,12 +151,7 @@ export function writeSecretFileSync(filePath: string, content: string): void {
       try { fs.rmSync(tmp, { force: true }); } catch { /* the write already failed */ }
       throw err;
     }
-    try {
-      fs.renameSync(tmp, filePath);
-    } catch (err) {
-      try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
-      throw err;
-    }
+    replaceSecretTargetSync(tmp, filePath);
     return;
   }
 
@@ -144,12 +172,7 @@ export function writeSecretFileSync(filePath: string, content: string): void {
   // so the gap is visible rather than assumed away.
   tightenBestEffort(tmp);
 
-  try {
-    fs.renameSync(tmp, filePath);
-  } catch (err) {
-    try { fs.rmSync(tmp, { force: true }); } catch { /* leave the target untouched */ }
-    throw err;
-  }
+  replaceSecretTargetSync(tmp, filePath);
 }
 
 /**

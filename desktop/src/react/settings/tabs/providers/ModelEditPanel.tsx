@@ -91,7 +91,6 @@ export function ModelEditPanel({ modelId, providerId, modelMeta, anchorEl, onClo
     if (dirtyCapabilities.reasoning) entry.reasoning = reasoning;
     if (dirtyThinkingLevels) {
       entry.thinkingLevels = thinkingLevels;
-      entry.xhigh = thinkingLevels.includes('xhigh');
       entry.defaultThinkingLevel = defaultThinkingLevel;
     } else if (dirtyDefaultThinkingLevel) {
       entry.defaultThinkingLevel = defaultThinkingLevel;

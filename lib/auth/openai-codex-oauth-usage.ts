@@ -1,3 +1,10 @@
+import {
+  classifyOauthUsageHttpError,
+  emptyOauthUsage,
+  mergeOauthUsageSnapshot,
+  publicOauthUsage,
+} from "../../shared/oauth-usage.ts";
+
 const DEFAULT_CODEX_USAGE_URL = "https://chatgpt.com/backend-api/wham/usage";
 const CODEX_ACCOUNT_CLAIM_PATH = "https://api.openai.com/auth";
 
@@ -58,6 +65,8 @@ export function summarizeCodexOauthUsage(data) {
     windowSeconds,
     windowKind: windowKind(windowSeconds),
     resetAt: reset && !Number.isNaN(reset.getTime()) ? reset.toISOString() : null,
+    error: remaining != null ? null : "unavailable",
+    stale: false,
   };
 }
 
@@ -75,28 +84,10 @@ export async function fetchCodexOauthUsage({
 } = {}) {
   const token = String(accessToken || "").trim();
   if (!token) {
-    return {
-      ok: false,
-      error: "not_logged_in",
-      planType: null,
-      used: null,
-      remaining: null,
-      windowSeconds: null,
-      windowKind: "week",
-      resetAt: null,
-    };
+    return { ...emptyOauthUsage("not_logged_in"), used: null };
   }
   if (typeof fetchImpl !== "function") {
-    return {
-      ok: false,
-      error: "unavailable",
-      planType: null,
-      used: null,
-      remaining: null,
-      windowSeconds: null,
-      windowKind: "week",
-      resetAt: null,
-    };
+    return { ...emptyOauthUsage("unavailable"), used: null };
   }
 
   const resolvedAccountId = resolveCodexUsageAccountId({ accountId, accessToken: token });
@@ -122,30 +113,45 @@ export async function fetchCodexOauthUsage({
     let data = null;
     try { data = raw ? JSON.parse(raw) : null; } catch { data = null; }
     if (!response.ok) {
-      return {
-        ok: false,
-        error: "upstream",
-        planType: null,
-        used: null,
-        remaining: null,
-        windowSeconds: null,
-        windowKind: "week",
-        resetAt: null,
-      };
+      return { ...emptyOauthUsage(classifyOauthUsageHttpError(response.status, raw)), used: null };
     }
     return summarizeCodexOauthUsage(data);
   } catch {
-    return {
-      ok: false,
-      error: "network",
-      planType: null,
-      used: null,
-      remaining: null,
-      windowSeconds: null,
-      windowKind: "week",
-      resetAt: null,
-    };
+    return { ...emptyOauthUsage("network"), used: null };
   } finally {
     clearTimeout(timer);
   }
+}
+
+export function publicCodexOauthUsage(usage) {
+  return publicOauthUsage(usage);
+}
+
+export async function refreshCodexOauthUsageCache(engine, { fetchImpl } = {}) {
+  if (engine?.codexOauthUsageInflight) return engine.codexOauthUsageInflight;
+  const work = (async () => {
+    const cred = engine?.authStorage?.get?.("openai-codex");
+    if (cred?.type !== "oauth" || !cred.access) {
+      if (engine) engine.codexOauthUsage = null;
+      return null;
+    }
+    const usage = await fetchCodexOauthUsage({
+      accessToken: cred.access,
+      accountId: cred.accountId || cred.account_id || "",
+      fetchImpl,
+    });
+    engine.codexOauthUsage = mergeOauthUsageSnapshot(engine.codexOauthUsage, usage) || usage;
+    return engine.codexOauthUsage;
+  })();
+  if (engine) engine.codexOauthUsageInflight = work;
+  try {
+    return await work;
+  } finally {
+    if (engine && engine.codexOauthUsageInflight === work) engine.codexOauthUsageInflight = null;
+  }
+}
+
+export async function readCodexOauthUsageCached(engine, { fetchImpl } = {}) {
+  if (engine?.codexOauthUsage) return engine.codexOauthUsage;
+  return refreshCodexOauthUsageCache(engine, { fetchImpl });
 }

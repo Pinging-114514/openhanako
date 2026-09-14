@@ -23,6 +23,14 @@ export function useAnchoredDropdown({
 }: UseAnchoredDropdownOptions): CSSProperties {
   const [panelStyle, setPanelStyle] = useState<CSSProperties>({});
 
+  const isInside = useCallback((target: EventTarget | null) => {
+    const node = target instanceof Node ? target : null;
+    if (!node) return false;
+    if (triggerRef.current?.contains(node)) return true;
+    if (panelRef.current?.contains(node)) return true;
+    return false;
+  }, [panelRef, triggerRef]);
+
   const updatePosition = useCallback(() => {
     const trigger = triggerRef.current;
     if (!open || !trigger) return;
@@ -48,33 +56,39 @@ export function useAnchoredDropdown({
 
   useEffect(() => {
     if (!open) return;
-    window.addEventListener('resize', updatePosition);
-    return () => window.removeEventListener('resize', updatePosition);
-  }, [open, updatePosition]);
+    const handleWindowChange = (event: Event) => {
+      if (event.type === 'scroll' && isInside(event.target)) return;
+      updatePosition();
+    };
+    window.addEventListener('resize', handleWindowChange);
+    window.addEventListener('scroll', handleWindowChange, true);
+    return () => {
+      window.removeEventListener('resize', handleWindowChange);
+      window.removeEventListener('scroll', handleWindowChange, true);
+    };
+  }, [isInside, open, updatePosition]);
 
   useEffect(() => {
     if (!open) return;
-    const handler = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (isInside(event.target)) return;
       onClose();
     };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, [onClose, open, panelRef, triggerRef]);
-
-  useEffect(() => {
-    if (!open) return;
-    const handler = (e: Event) => {
-      const target = e.target as Node;
-      if (triggerRef.current?.contains(target)) return;
-      if (panelRef.current?.contains(target)) return;
-      onClose();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
     };
-    window.addEventListener('scroll', handler, true);
-    return () => window.removeEventListener('scroll', handler, true);
-  }, [onClose, open, panelRef, triggerRef]);
+    // Wait out the opening click and the autoFocus scroll-into-view, otherwise
+    // the panel appears and immediately dismisses itself.
+    const timer = window.setTimeout(() => {
+      document.addEventListener('mousedown', onPointerDown);
+      document.addEventListener('keydown', onKeyDown);
+    }, 0);
+    return () => {
+      window.clearTimeout(timer);
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isInside, onClose, open]);
 
   return panelStyle;
 }

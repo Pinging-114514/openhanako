@@ -10,6 +10,7 @@ import { Type, StringEnum } from "../pi-sdk/index.ts";
 import { t } from "../i18n.ts";
 import themeRegistry from "../../desktop/src/shared/theme-registry.cjs";
 import { parseModelRef } from "../../shared/model-ref.ts";
+import { CODEX_SERVICE_TIERS } from "../../shared/codex-service-tier.ts";
 import { emitAppEvent } from "../../server/app-events.ts";
 import {
   migrateLegacyEditableFacts,
@@ -42,6 +43,12 @@ const THINKING_I18N = {
   "high": "settings.agent.thinkingLevels.high",
   "max": "settings.agent.thinkingLevels.max",
   "xhigh": "settings.agent.thinkingLevels.xhigh",
+};
+
+const CODEX_SPEED_I18N = {
+  standard: "settings.api.codexSpeed.standard",
+  fast: "settings.api.codexSpeed.fast",
+  ultrafast: "settings.api.codexSpeed.ultrafast",
 };
 
 const LOCALE_LABELS = {
@@ -215,6 +222,21 @@ const SETTINGS_REGISTRY = {
         return engine.setDefaultThinkingLevel(v);
       }
       return engine.setThinkingLevel(v);
+    },
+  },
+  codex_speed: {
+    type: "list",
+    get label() { return t("toolDef.updateSettings.codexSpeed"); },
+    get description() { return t("toolDef.updateSettings.codexSpeedDesc"); },
+    options: [...CODEX_SERVICE_TIERS],
+    get optionLabels() { return i18nLabels(CODEX_SPEED_I18N); },
+    searchTerms: ["speed", "fast", "ultrafast", "priority", "service tier", "速度", "快速", "超快", "codex"],
+    get: (engine, _agent) => engine.getCodexServiceTier?.() || "standard",
+    apply: (engine, _agent, v) => {
+      if (typeof engine.setCodexServiceTier !== "function") {
+        throw new Error("Codex speed preferences are not available");
+      }
+      return engine.setCodexServiceTier(v);
     },
   },
   "memory.enabled": {

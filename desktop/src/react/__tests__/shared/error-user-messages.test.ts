@@ -147,3 +147,10 @@ describe('error-user-messages · session_create_failed', () => {
     expect(userMessageKeyForCode('session_create_failed')).toBe('error.code.sessionCreateFailed');
   });
 });
+
+describe('error-user-messages · oauth token revoked', () => {
+  it('maps both chatgpt codes to the same re-login sentence', () => {
+    expect(userMessageKeyForCode('token_revoked')).toBe('error.code.tokenRevoked');
+    expect(userMessageKeyForCode('refresh_token_invalidated')).toBe('error.code.tokenRevoked');
+  });
+});

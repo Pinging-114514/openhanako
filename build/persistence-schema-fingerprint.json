@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:7b11942374b8c15a4b96c989a232b79dc405b1555279912a0d9e28ac3d767ff3",
+  "payloadFingerprint": "sha256:7b5a558ce716296a38155fc8799bef7cd345d9a352fb8b383699ab4dc4cc06b6",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -3122,8 +3122,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "Renames the per-agent persona files from ishiki.md and public-ishiki.md to AGENTS.md and AGENTS.public.md. Only the file names change: the Markdown content, its role in the system prompt, and every reader are the same. A startup pass renames existing files in place before anything reads them, so no data needs converting and no reader has to try two names.",
-    "payloadFingerprint": "sha256:7b11942374b8c15a4b96c989a232b79dc405b1555279912a0d9e28ac3d767ff3"
+    "compatibilityReason": "pi-coding-agent 0.80.3 -> 0.85.1: session jsonl CURRENT_SESSION_VERSION stays 3 and no Hana SQLite store schema changed; only the external package version/integrity in the guarded source inventory moved",
+    "payloadFingerprint": "sha256:7b5a558ce716296a38155fc8799bef7cd345d9a352fb8b383699ab4dc4cc06b6"
   },
   "schemas": [
     {
@@ -3205,7 +3205,7 @@
       "contract": "agent config and authored Markdown/image profile protocol",
       "kind": "directory-contract",
       "module": "core/agent-manager.ts",
-      "sourceHash": "sha256:077173fbec071cc4b86099c186392bb1e85340d689f4d75702130687473f737d",
+      "sourceHash": "sha256:943a5e7d7013d7a18ef7c0f18ce569dfb7e612191e1bf7738826fdad4121f9be",
       "storeId": "agent-profile"
     },
     {
@@ -3285,7 +3285,7 @@
       "contract": "bounded base64 cover upload temporary-directory lifecycle",
       "kind": "directory-contract",
       "module": "server/routes/desk.ts",
-      "sourceHash": "sha256:7d2cf25f7dbcdf256dc4188fb0256ddf413fa726fbf1ea934abb8e9514a45fc6",
+      "sourceHash": "sha256:e3cd9cd3bf23e7e4eec3cc509ba4828dd2b64c1f0e73a01233428ac306c24686",
       "storeId": "desk-cover-upload-staging"
     },
     {
@@ -3306,7 +3306,7 @@
       "contract": "update channel record version, device identifier, activation flag, update feed address, activation time, and held invite codes",
       "kind": "runtime-contract",
       "module": "desktop/auto-updater.cjs",
-      "sourceHash": "sha256:739190e68c9f0a66775c72424e335f3182abec97c91dc932179be8aabf46a591",
+      "sourceHash": "sha256:2256ea4ff2e513ba8b7f46940e740bb74a62f6fe18c272e35efd9f7d5b2fd23c",
       "storeId": "desktop-update-channel"
     },
     {
@@ -3320,7 +3320,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:03b3ae01457b17c263ef26b82bca6aa620dc8928eb60ffc171f5f4f489c632fa",
+      "sourceHash": "sha256:0ba08f1c6bb4d35617fb0876bbca17b2a3c3275beb974f31c4b7288ff0a96280",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3411,7 +3411,7 @@
       "contract": "LoopStore schemaVersion-1 sessionId-keyed record shape, corrupt-file quarantine, and atomic serializer",
       "kind": "runtime-contract",
       "module": "lib/loop/loop-store.ts",
-      "sourceHash": "sha256:ecd35c3e891fd553e0a1ce992947df946fd14d28612cb522e026fe7a7ef2561d",
+      "sourceHash": "sha256:3dff9f83447d2a9cd7d79be35af231fbf885a26f03b2bd072bbf2866fb7fee1e",
       "storeId": "loop-state"
     },
     {
@@ -3522,7 +3522,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:a63a67ce8d4f09cb70a3aaab7728146cae2dab7c32a6efa4e24bdf7efe7e36db",
+      "sourceHash": "sha256:663421adffde271b75b58f94b007f733180f9fde8bd9fded4fdd6065819d74b4",
       "storeId": "server-runtime-info"
     },
     {
@@ -3544,7 +3544,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:9bd93a7f479b160a2a4133f29769531e23037442d6adada445c43bedd2017922"
+          "sourceHash": "sha256:8c9d669f756056b997099e671a0165e8dfe1bfd535bc1f2e850b0286e7547f5b"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3554,10 +3554,10 @@
       ],
       "kind": "external-versioned",
       "lockfile": "package-lock.json",
-      "packageIntegrity": "sha512-TIggw9gCXpA+Ph7OjdTA7ka2NPwTVuPmy39KDSyUzaKq8VvHfMGR7vtRz4JB7Um/RMRblmzhu4p9tUCk6MTgGA==",
+      "packageIntegrity": "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ==",
       "packageName": "@earendil-works/pi-coding-agent",
-      "packageVersion": "0.80.3",
-      "requestedVersion": "0.80.3",
+      "packageVersion": "0.85.1",
+      "requestedVersion": "0.85.1",
       "storeId": "session-jsonl",
       "versionSource": {
         "currentSessionVersion": 3,
@@ -3698,7 +3698,7 @@
       "contract": "PreferencesManager defaults, coercion, and _dataVersion migration driver",
       "kind": "runtime-contract",
       "module": "core/preferences-manager.ts",
-      "sourceHash": "sha256:08db73ab9defe36e3c0f64e4a37298785293e89031f82379e13ba7b47be09def",
+      "sourceHash": "sha256:a5cbbabdd902ace09aba6a9d4ad07375e24d9196cc175b5a13ccadf4c9da1b48",
       "storeId": "user-preferences"
     },
     {

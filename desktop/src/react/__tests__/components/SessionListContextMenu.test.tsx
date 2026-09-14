@@ -1077,6 +1077,375 @@ describe('SessionList context menu', () => {
     });
   });
 
+  it('keeps a running session visible when its parent project is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/running.jsonl',
+          title: 'Running chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      streamingSessions: ['/tmp/agents/hana/sessions/running.jsonl'],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [],
+            projects: [{ id: 'project-root', name: 'Root Project', folderId: null, order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: ['project-root'], collapsedFolderIds: [], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Root Project')).toBeInTheDocument();
+    expect(await screen.findByText('Running chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Idle chat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps a running session visible when its parent folder is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/running.jsonl',
+          title: 'Running folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      streamingSessions: ['/tmp/agents/hana/sessions/running.jsonl'],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [{ id: 'folder-work', name: 'Work Folder', order: 0 }],
+            projects: [{ id: 'project-child', name: 'Child Project', folderId: 'folder-work', order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: [], collapsedFolderIds: ['folder-work'], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Work Folder')).toBeInTheDocument();
+    expect(await screen.findByText('Running folder chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Child Project')).not.toBeInTheDocument();
+      expect(screen.queryByText('Idle folder chat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps an unread session visible when its parent project is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/unread.jsonl',
+          title: 'Unread chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      streamingSessions: [],
+      unreadOutputSessionPaths: ['/tmp/agents/hana/sessions/unread.jsonl'],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [],
+            projects: [{ id: 'project-root', name: 'Root Project', folderId: null, order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: ['project-root'], collapsedFolderIds: [], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Root Project')).toBeInTheDocument();
+    expect(await screen.findByText('Unread chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Idle chat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps an unread session visible when its parent folder is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/unread.jsonl',
+          title: 'Unread folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      streamingSessions: [],
+      unreadOutputSessionPaths: ['/tmp/agents/hana/sessions/unread.jsonl'],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [{ id: 'folder-work', name: 'Work Folder', order: 0 }],
+            projects: [{ id: 'project-child', name: 'Child Project', folderId: 'folder-work', order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: [], collapsedFolderIds: ['folder-work'], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Work Folder')).toBeInTheDocument();
+    expect(await screen.findByText('Unread folder chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Child Project')).not.toBeInTheDocument();
+      expect(screen.queryByText('Idle folder chat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps the current session visible when its parent project is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/current.jsonl',
+          title: 'Current chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-root',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      currentSessionPath: '/tmp/agents/hana/sessions/current.jsonl',
+      streamingSessions: [],
+      unreadOutputSessionPaths: [],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [],
+            projects: [{ id: 'project-root', name: 'Root Project', folderId: null, order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: ['project-root'], collapsedFolderIds: [], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Root Project')).toBeInTheDocument();
+    expect(await screen.findByText('Current chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Idle chat')).not.toBeInTheDocument();
+    });
+  });
+
+  it('keeps the current session visible when its parent folder is collapsed', async () => {
+    useStore.setState({
+      sessions: [
+        {
+          path: '/tmp/agents/hana/sessions/current.jsonl',
+          title: 'Current folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+        {
+          path: '/tmp/agents/hana/sessions/idle.jsonl',
+          title: 'Idle folder chat',
+          firstMessage: 'hello',
+          modified: new Date().toISOString(),
+          messageCount: 1,
+          agentId: 'hana',
+          agentName: 'Hana',
+          cwd: '/tmp/project',
+          projectId: 'project-child',
+          pinnedAt: null,
+          hasSummary: false,
+        },
+      ],
+      currentSessionPath: '/tmp/agents/hana/sessions/current.jsonl',
+      streamingSessions: [],
+      unreadOutputSessionPaths: [],
+    });
+    hanaFetchMock.mockImplementation(async (url: string) => {
+      if (url === '/api/browser/session-states') return jsonResponse({});
+      if (url === '/api/session-projects') {
+        return jsonResponse({
+          catalog: {
+            folders: [{ id: 'folder-work', name: 'Work Folder', order: 0 }],
+            projects: [{ id: 'project-child', name: 'Child Project', folderId: 'folder-work', order: 0 }],
+          },
+        });
+      }
+      return jsonResponse({});
+    });
+    act(() => {
+      useStore.getState().applySidebarUiPrefs({
+        sidebarUi: { projectView: { collapsedProjectIds: [], collapsedFolderIds: ['folder-work'], showAllProjectIds: [] } },
+      });
+    });
+
+    render(<SessionList />);
+    await switchToProjectView();
+
+    expect(await screen.findByText('Work Folder')).toBeInTheDocument();
+    expect(await screen.findByText('Current folder chat')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText('Child Project')).not.toBeInTheDocument();
+      expect(screen.queryByText('Idle folder chat')).not.toBeInTheDocument();
+    });
+  });
+
   it('assigns a session when dragged onto a project row', async () => {
     makeSessionsToday();
     hanaFetchMock.mockImplementation(async (url: string, init?: RequestInit) => {

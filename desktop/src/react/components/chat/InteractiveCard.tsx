@@ -11,7 +11,8 @@
  *
  * 数据流：
  *   挂载 → 采集当前主题变量 → PUT /api/cards/:cardId {code,title,varsCss} 注册
- *        → iframe src 指向 GET /api/cards/:cardId（带 token query）
+ *        → iframe src 指向 GET /api/cards/:cardId
+ *          本机 loopback 仍可带 token query；远程改带 PUT 返回的一次性 cardIframeTicket
  *   直播与历史走同一条路（两者 block 都带 cardId+code），server 缓存为瞬态 LRU，
  *   重启后下次渲染自动回填。
  *
@@ -23,6 +24,25 @@ import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import s from './InteractiveCard.module.css';
 import { useStore } from '../../stores';
 import { hanaFetch, hanaUrl } from '../../hooks/use-hana-fetch';
+import { canUseQueryToken } from '../../services/server-connection';
+
+export function buildInteractiveCardFrameSrc(
+  base: string,
+  version: number,
+  ticket?: string | null,
+): string {
+  const extra = ticket ? { cardIframeTicket: ticket } : {};
+  try {
+    const url = new URL(base);
+    url.searchParams.set('v', String(version));
+    if (ticket) url.searchParams.set('cardIframeTicket', ticket);
+    return url.toString();
+  } catch {
+    const params = new URLSearchParams({ v: String(version), ...extra });
+    const sep = base.includes('?') ? '&' : '?';
+    return `${base}${sep}${params.toString()}`;
+  }
+}
 
 // ── 宿主注入 iframe 的主题 CSS 变量 ──
 // 从 document root 的 computed style 中提取，随注册 PUT 给 server 注入到 iframe :root。
@@ -79,16 +99,19 @@ export const InteractiveCard = memo(function InteractiveCard({ block }: Interact
     const varsCss = collectThemeVars();
     (async () => {
       try {
-        await hanaFetch(`/api/cards/${encodeURIComponent(cardId)}`, {
+        const registered = await hanaFetch(`/api/cards/${encodeURIComponent(cardId)}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ code: block.code, title: block.title, varsCss }),
         });
+        const payload = await registered.json().catch(() => null) as { ticket?: unknown } | null;
         if (cancelled) return;
         const base = hanaUrl(`/api/cards/${encodeURIComponent(cardId)}`);
         verRef.current += 1;
-        const sep = base.includes('?') ? '&' : '?';
-        setSrc(`${base}${sep}v=${verRef.current}`);
+        const ticket = !canUseQueryToken(connection) && typeof payload?.ticket === 'string'
+          ? payload.ticket
+          : null;
+        setSrc(buildInteractiveCardFrameSrc(base, verRef.current, ticket));
       } catch (err) {
         if (!cancelled) {
           console.error('[InteractiveCard] register failed:', err);

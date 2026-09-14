@@ -91,15 +91,25 @@ export function createAccessRoute({
       const mode = normalizeNetworkMode(body?.mode);
       const listenPort = normalizePort(body?.listenPort ?? body?.configuredPort ?? existing.listenPort);
       const listenHost = mode === "lan" ? "0.0.0.0" : "127.0.0.1";
+      const customRemote = mode === "custom_remote"
+        ? {
+          enabled: true,
+          baseUrl: firstNonEmptyString(body?.baseUrl, body?.customRemote?.baseUrl, existing.customRemote?.baseUrl),
+          wsUrl: firstNonEmptyString(body?.wsUrl, body?.customRemote?.wsUrl, existing.customRemote?.wsUrl),
+        }
+        : {
+          enabled: false,
+          baseUrl: existing.customRemote?.baseUrl ?? null,
+          wsUrl: existing.customRemote?.wsUrl ?? null,
+        };
       const network = saveServerNetworkConfig(engine.hanakoHome, {
         ...existing,
         mode,
         listenHost,
         listenPort,
+        customRemote,
       }, { now: now() });
-      runtimeState.configuredMode = network.mode;
-      runtimeState.configuredListenHost = network.listenHost;
-      runtimeState.configuredPort = network.listenPort;
+      applyRuntimeNetworkConfig(runtimeState, network);
       recordSecurityAuditEvent(c, engine, {
         action: "access.network.update",
         target: "server-network",
@@ -135,7 +145,7 @@ export function createAccessRoute({
         studioIds: [runtimeContext.studioId],
         displayName: normalizeDisplayName(body?.displayName, profile.fallbackDisplayName),
         deviceKind: profile.deviceKind,
-        trustState: "lan",
+        trustState: loadServerNetworkConfig(engine.hanakoHome).mode === "custom_remote" ? "tunnel" : "lan",
         scopes,
         expiresAt: body?.expiresAt ?? null,
         now: now(),
@@ -326,9 +336,34 @@ function resolveRuntimeContext(c, engine) {
   return { serverNodeId, userId, studioId };
 }
 
+function applyRuntimeNetworkConfig(runtimeState, network) {
+  if (!runtimeState || typeof runtimeState !== "object") return;
+  if (typeof runtimeState.applyNetworkConfig === "function") {
+    runtimeState.applyNetworkConfig(network);
+    return;
+  }
+  runtimeState.configuredMode = network.mode;
+  runtimeState.configuredListenHost = network.listenHost;
+  runtimeState.configuredPort = network.listenPort;
+  const runtimeHost = runtimeState.listenHost || "127.0.0.1";
+  const runtimePort = Number.isInteger(runtimeState.actualPort)
+    ? runtimeState.actualPort
+    : network.listenPort;
+  if (runtimeHost === network.listenHost && runtimePort === network.listenPort) {
+    runtimeState.mode = network.mode;
+  }
+}
+
+function firstNonEmptyString(...values) {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+  return null;
+}
+
 function normalizeNetworkMode(value) {
-  if (value === "loopback" || value === "lan") return value;
-  throw new Error("mode must be loopback or lan");
+  if (value === "loopback" || value === "lan" || value === "custom_remote") return value;
+  throw new Error("mode must be loopback, lan, or custom_remote");
 }
 
 function normalizePort(value) {

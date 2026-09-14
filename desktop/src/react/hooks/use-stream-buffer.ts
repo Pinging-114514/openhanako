@@ -579,6 +579,16 @@ export const streamBufferManager = new StreamBufferManager();
 
 function mergeContentBlock(blocks: ContentBlock[], block: ContentBlock): ContentBlock[] {
   if (isInterludeBlock(block)) return blocks;
+  if (block.type === 'user_choice' && block.confirmId) {
+    const idx = blocks.findIndex((existing) => (
+      existing.type === 'user_choice' && existing.confirmId === block.confirmId
+    ));
+    if (idx >= 0) {
+      const next = [...blocks];
+      next[idx] = { ...blocks[idx], ...block } as ContentBlock;
+      return next;
+    }
+  }
   if (block.type === 'media_generation' && block.status === 'pending') {
     const resolved = blocks.some((existing) => isResolvedTaskBlock(existing, block.taskId));
     if (resolved) return blocks;

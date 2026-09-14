@@ -11,6 +11,7 @@
  * 清理器管，符合 build-to-delete。
  */
 
+import crypto from "node:crypto";
 import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.ts";
 import { buildCardDocument } from "../cards/card-document.ts";
@@ -38,9 +39,12 @@ const CARD_CONTENT_SECURITY_POLICY = [
   "navigate-to 'none'",
 ].join("; ");
 
+export const CARD_IFRAME_TICKET_QUERY = "cardIframeTicket";
+
 interface CardEntry {
   code: string;
   varsCss: string;
+  viewTicket: string;
 }
 
 export function createCardsRoute(_engine: unknown) {
@@ -72,8 +76,9 @@ export function createCardsRoute(_engine: unknown) {
     }
     let varsCss = typeof body?.varsCss === "string" ? body.varsCss : "";
     if (Buffer.byteLength(varsCss, "utf8") > MAX_VARS_BYTES) varsCss = "";
-    touch(cardId, { code, varsCss });
-    return c.json({ ok: true });
+    const viewTicket = crypto.randomBytes(32).toString("base64url");
+    touch(cardId, { code, varsCss, viewTicket });
+    return c.json({ ok: true, ticket: viewTicket });
   });
 
   // 提供卡片 HTML。iframe src 指向这里。
@@ -88,6 +93,10 @@ export function createCardsRoute(_engine: unknown) {
     if (!entry) {
       return c.text("card not found", 404);
     }
+    const ticket = c.req.query(CARD_IFRAME_TICKET_QUERY);
+    if (ticket && !ticketsMatch(ticket, entry.viewTicket)) {
+      return c.text("forbidden", 403);
+    }
     // 命中刷新 LRU 时序
     cache.delete(cardId);
     cache.set(cardId, entry);
@@ -100,4 +109,10 @@ export function createCardsRoute(_engine: unknown) {
   });
 
   return route;
+}
+
+function ticketsMatch(provided: string, expected: string): boolean {
+  const left = Buffer.from(String(provided));
+  const right = Buffer.from(String(expected || ""));
+  return left.length === right.length && crypto.timingSafeEqual(left, right);
 }

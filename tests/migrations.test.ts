@@ -3685,8 +3685,14 @@ describe("migration #20: Pi model input schema compatibility", () => {
       input: ["text"],
     });
 
-    const { AuthStorage, createModelRegistry } = await import("../lib/pi-sdk/index.ts");
-    const registry = createModelRegistry(new (AuthStorage as any)(tmpDir), modelsJsonPath);
+    const { AuthStorage, createModelRegistry, createModelRuntime } = await import("../lib/pi-sdk/index.ts");
+    const authPath = path.join(tmpDir, "auth.json");
+    const runtime = await createModelRuntime({
+      credentials: AuthStorage.create(authPath),
+      authPath,
+      modelsJsonPath,
+    });
+    const registry = createModelRegistry(runtime);
     const available = await registry.getAvailable();
     expect(available.map((model) => model.id)).toEqual(["qwen3-vl-plus", "qwen-plus", "custom-video"]);
     expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);

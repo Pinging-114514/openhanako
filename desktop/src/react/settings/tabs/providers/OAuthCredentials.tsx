@@ -1,8 +1,24 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useSettingsStore, type ProviderSummary } from '../../store';
 import { hanaFetch } from '../../api';
 import { t } from '../../helpers';
+import { useOauthAccounts } from '../../../hooks/use-oauth-accounts';
 import { DEFAULT_OAUTH_LOGIN_METHOD } from '../../../../../../shared/oauth-login.ts';
+import { isCodexOauthProvider } from '../../../../../../shared/codex-service-tier.ts';
+import {
+  countSavedOauthAccounts,
+  describeOauthUsage,
+  formatOauthAccountLabel,
+  formatOauthAccountMeta,
+  isOauthAccountProvider,
+  mergeAccountUsage,
+  normalizeOauthUsage,
+  PENDING_OAUTH_ACCOUNT_ID,
+  reservedOauthAccount,
+  seedOauthAccountsFromSummary,
+  type OauthAccount,
+  type OauthAccountUsage,
+} from '../../../utils/oauth-account';
 import { Toggle } from '@/ui';
 import styles from '../../Settings.module.css';
 
@@ -18,8 +34,23 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
   const [showCodeInput, setShowCodeInput] = useState(false);
   const [deviceCode, setDeviceCode] = useState<string | null>(null);
   const [polling, setPolling] = useState(false);
+  const [accountEpoch, setAccountEpoch] = useState(0);
   const pollingRef = useRef(false);
   const oauthSessionIdRef = useRef<string | null>(null);
+  const accountSeed = useMemo(() => seedOauthAccountsFromSummary(summary), [
+    summary.oauth_accounts,
+    summary.oauth_usage,
+    summary.logged_in,
+  ]);
+  const { accounts, loading: accountsLoading, applyAccounts } = useOauthAccounts(
+    isOauthAccountProvider(providerId) ? providerId : null,
+    {
+      fetch: hanaFetch,
+      seed: accountSeed,
+      refreshEpoch: accountEpoch,
+    },
+  );
+  const hideSharedWeeklyUsage = countSavedOauthAccounts(accounts) >= 2;
 
   const login = async () => {
     try {
@@ -69,6 +100,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
       showToast(t('settings.oauth.success'), 'success');
       setShowCodeInput(false);
       await onRefresh();
+      setAccountEpoch(value => value + 1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(t('settings.oauth.failed') + ': ' + msg, 'error');
@@ -88,6 +120,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
           setPolling(false);
           pollingRef.current = false;
           await onRefresh();
+          setAccountEpoch(value => value + 1);
           return;
         }
         if (data.status === 'error') throw new Error(data.error || 'Login failed');
@@ -114,6 +147,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
       });
       showToast(t('settings.oauth.loggedOut'), 'success');
       await onRefresh();
+      setAccountEpoch(value => value + 1);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(t('settings.oauth.failed') + ': ' + msg, 'error');
@@ -127,20 +161,35 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
         {summary.logged_in ? (
           <div className={styles['pv-oauth-status']}>
             <span className={styles['oauth-status-badge']}>{t('settings.oauth.loggedIn')}</span>
+            {isOauthAccountProvider(providerId) && (
+              <button className={styles['oauth-login-btn']} onClick={login}>{t('settings.oauth.addAccount')}</button>
+            )}
             <button className={styles['oauth-logout-btn']} onClick={logout}>{t('settings.oauth.logout')}</button>
           </div>
         ) : (
           <button className={styles['oauth-login-btn']} onClick={login}>{t('settings.oauth.login')}</button>
         )}
       </div>
+      {isOauthAccountProvider(providerId) && (
+        <OauthAccountManager
+          providerId={providerId}
+          summary={summary}
+          accounts={accounts}
+          loading={accountsLoading}
+          applyAccounts={applyAccounts}
+          onRefresh={onRefresh}
+        />
+      )}
       {providerId === 'xai-oauth' && (
         <>
-          {summary.logged_in && <XaiOauthWeeklyUsage />}
+          {summary.logged_in && !hideSharedWeeklyUsage && (
+            <XaiOauthWeeklyUsage summary={summary} accounts={accounts} />
+          )}
           <XaiOauthSearchToolsToggle />
         </>
       )}
-      {(providerId === 'openai-codex-oauth' || providerId === 'openai-codex') && summary.logged_in && (
-        <CodexOauthUsage providerId={providerId} />
+      {isCodexOauthProvider(providerId) && summary.logged_in && !hideSharedWeeklyUsage && (
+        <CodexOauthUsage providerId={providerId} summary={summary} accounts={accounts} />
       )}
 
       {showCodeInput && (
@@ -179,11 +228,112 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
   );
 }
 
-type XaiOauthUsageState = {
-  remaining: number | null;
-  resetAt: string | null;
-  unknown: boolean;
-};
+function OauthAccountManager({ providerId, summary, accounts, loading, applyAccounts, onRefresh }: {
+  providerId: string;
+  summary: ProviderSummary;
+  accounts: OauthAccount[];
+  loading: boolean;
+  applyAccounts: (accounts: OauthAccount[]) => void;
+  onRefresh: () => Promise<void>;
+}) {
+  const showToast = useSettingsStore(s => s.showToast);
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const activate = async (id: string) => {
+    setBusyId(id);
+    try {
+      const res = await hanaFetch(`/api/auth/oauth/${encodeURIComponent(providerId)}/accounts/activate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id }),
+      });
+      const data = await res.json() as { accounts?: OauthAccount[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      if (Array.isArray(data.accounts)) applyAccounts(data.accounts);
+      await onRefresh();
+    } catch (err: unknown) {
+      showToast(t('settings.oauth.failed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setBusyId(id);
+    try {
+      const res = await hanaFetch(`/api/auth/oauth/${encodeURIComponent(providerId)}/accounts/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json() as { accounts?: OauthAccount[]; error?: string };
+      if (data.error) throw new Error(data.error);
+      if (Array.isArray(data.accounts)) applyAccounts(data.accounts);
+      await onRefresh();
+    } catch (err: unknown) {
+      showToast(t('settings.oauth.failed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const visible = accounts.length > 0
+    ? accounts
+    : loading
+      ? [reservedOauthAccount(summary)].filter((account): account is OauthAccount => !!account)
+      : [];
+  if (visible.length === 0) return null;
+
+  return (
+    <div className={styles['oauth-account-list']} data-testid="oauth-account-list">
+      {visible.map((account) => {
+        const pending = account.id === PENDING_OAUTH_ACCOUNT_ID;
+        const label = formatOauthAccountLabel(account);
+        const revoked = account.usage?.error === 'auth_revoked';
+        const described = describeOauthUsage(account.usage, t);
+        const statusLabel = revoked
+          ? t('settings.oauth.accountInvalid')
+          : account.active
+            ? t('settings.oauth.activeAccount')
+            : '';
+        const usageMeta = formatOauthAccountMeta(account) || described?.text || '';
+        return (
+          <div key={account.id} className={styles['oauth-account-row']}>
+            <div className={styles['oauth-account-row-copy']}>
+              <div className={styles['oauth-account-row-name']}>
+                {label}
+                {statusLabel ? `${label ? ' · ' : ''}${statusLabel}` : ''}
+              </div>
+              <div className={styles['oauth-account-row-meta']}>
+                {usageMeta || (pending ? '' : t('settings.oauth.quotaUnknown'))}
+              </div>
+            </div>
+            {!pending && (
+              <div className={styles['oauth-account-row-actions']}>
+                {!account.active && (
+                  <button
+                    type="button"
+                    className={styles['oauth-login-btn']}
+                    disabled={busyId === account.id}
+                    onClick={() => activate(account.id)}
+                  >
+                    {t('settings.oauth.useAccount')}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className={styles['oauth-logout-btn']}
+                  disabled={busyId === account.id}
+                  onClick={() => remove(account.id)}
+                >
+                  {t('settings.oauth.removeAccount')}
+                </button>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function formatResetWhen(iso: string | null): string {
   if (!iso) return '';
@@ -197,142 +347,138 @@ function formatResetWhen(iso: string | null): string {
   });
 }
 
-async function readXaiOauthUsage(): Promise<XaiOauthUsageState> {
-  const unknown: XaiOauthUsageState = { remaining: null, resetAt: null, unknown: true };
-  const urls = [
-    '/api/auth/oauth/xai-oauth/usage',
-    '/api/plugins/xai-native-search/usage',
-  ];
-  for (const url of urls) {
-    try {
-      const res = await hanaFetch(url);
-      const data = await res.json() as { ok?: boolean; remaining?: number | null; resetAt?: string | null };
-      if (data?.ok && typeof data.remaining === 'number') {
-        return {
-          remaining: data.remaining,
-          resetAt: typeof data.resetAt === 'string' ? data.resetAt : null,
-          unknown: false,
-        };
-      }
-    } catch {
-      // Core route may be missing on older servers; try the plugin fallback.
-    }
+async function readOauthUsage(url: string): Promise<OauthAccountUsage | null> {
+  try {
+    const res = await hanaFetch(url);
+    const data = await res.json();
+    return normalizeOauthUsage(data);
+  } catch {
+    return null;
   }
-  return unknown;
 }
 
-type CodexOauthUsageState = {
-  remaining: number | null;
-  resetAt: string | null;
-  planType: string | null;
-  windowKind: 'week' | 'hours' | 'window';
-  windowSeconds: number | null;
-  unknown: boolean;
-};
+async function readXaiOauthUsage(): Promise<OauthAccountUsage | null> {
+  let last: OauthAccountUsage | null = null;
+  for (const url of ['/api/auth/oauth/xai-oauth/usage', '/api/plugins/xai-native-search/usage']) {
+    const usage = await readOauthUsage(url);
+    if (usage?.ok && typeof usage.remaining === 'number') return usage;
+    if (usage) last = usage;
+  }
+  return last || { ok: false, remaining: null, error: 'unavailable' };
+}
 
-function formatPlanType(planType: string | null): string {
+function formatPlanType(planType: string | null | undefined): string {
   const raw = String(planType || '').trim();
   if (!raw) return '';
   return raw.charAt(0).toUpperCase() + raw.slice(1);
 }
 
-async function readCodexOauthUsage(providerId: string): Promise<CodexOauthUsageState> {
-  const unknown: CodexOauthUsageState = {
-    remaining: null,
-    resetAt: null,
-    planType: null,
-    windowKind: 'week',
-    windowSeconds: null,
-    unknown: true,
-  };
-  try {
-    const res = await hanaFetch(`/api/auth/oauth/${encodeURIComponent(providerId)}/usage`);
-    const data = await res.json() as {
-      ok?: boolean;
-      remaining?: number | null;
-      resetAt?: string | null;
-      planType?: string | null;
-      windowKind?: 'week' | 'hours' | 'window';
-      windowSeconds?: number | null;
-    };
-    if (data?.ok && typeof data.remaining === 'number') {
-      return {
-        remaining: data.remaining,
-        resetAt: typeof data.resetAt === 'string' ? data.resetAt : null,
-        planType: typeof data.planType === 'string' ? data.planType : null,
-        windowKind: data.windowKind === 'hours' || data.windowKind === 'window' ? data.windowKind : 'week',
-        windowSeconds: typeof data.windowSeconds === 'number' ? data.windowSeconds : null,
-        unknown: false,
-      };
-    }
-  } catch {
-    // Older servers may not expose Codex usage yet.
-  }
-  return unknown;
+async function readCodexOauthUsage(providerId: string): Promise<OauthAccountUsage | null> {
+  return await readOauthUsage(`/api/auth/oauth/${encodeURIComponent(providerId)}/usage`)
+    || { ok: false, remaining: null, error: 'unavailable' };
 }
 
-function CodexOauthUsage({ providerId }: { providerId: string }) {
-  const [usage, setUsage] = useState<CodexOauthUsageState | null>(null);
+function usageFromSummary(summary: ProviderSummary): OauthAccountUsage | null {
+  return normalizeOauthUsage(summary.oauth_usage);
+}
+
+function OauthWeeklyUsageLine({ usage }: { usage: OauthAccountUsage | null }) {
+  const described = describeOauthUsage(usage, t);
+  const reset = described && described.tone !== 'error' && described.tone !== 'muted'
+    ? formatResetWhen(usage?.resetAt ?? null)
+    : '';
+  const plan = described?.tone === 'ok' || described?.tone === 'warn'
+    ? formatPlanType(usage?.planType)
+    : '';
+  const text = described
+    ? [plan, described.text, reset ? t('settings.oauth.weeklyReset', { when: reset }) : '']
+      .filter(Boolean)
+      .join(' · ')
+    : '';
+  const tone = described?.tone || 'muted';
+
+  return (
+    <div
+      className={`${styles['oauth-weekly-usage']} ${styles[`oauth-weekly-usage-${tone}`] || ''}`}
+      data-testid="oauth-weekly-usage"
+    >
+      {text}
+    </div>
+  );
+}
+
+function activeAccountUsage(accounts: OauthAccount[]): OauthAccountUsage | null {
+  return accounts.find((account) => account.active)?.usage || accounts[0]?.usage || null;
+}
+
+function CodexOauthUsage({
+  providerId,
+  summary,
+  accounts,
+}: {
+  providerId: string;
+  summary: ProviderSummary;
+  accounts: OauthAccount[];
+}) {
+  const fromAccounts = activeAccountUsage(accounts);
+  const [usage, setUsage] = useState<OauthAccountUsage | null>(
+    () => fromAccounts || usageFromSummary(summary),
+  );
 
   useEffect(() => {
+    if (fromAccounts) {
+      setUsage((prev) => mergeAccountUsage(prev, fromAccounts) || fromAccounts);
+      return;
+    }
+    const fromSummary = usageFromSummary(summary);
+    if (fromSummary) {
+      setUsage((prev) => mergeAccountUsage(prev, fromSummary) || fromSummary);
+      return;
+    }
     let cancelled = false;
     readCodexOauthUsage(providerId).then((next) => {
-      if (!cancelled) setUsage(next);
+      if (!cancelled && next) setUsage((prev) => mergeAccountUsage(prev, next) || next);
     });
     return () => {
       cancelled = true;
     };
-  }, [providerId]);
+  }, [fromAccounts, providerId, summary.oauth_usage]);
 
-  if (!usage) return null;
-  const reset = formatResetWhen(usage.resetAt);
-  const remainingText = usage.unknown || usage.remaining == null
-    ? t('settings.oauth.weeklyUnknown')
-    : usage.windowKind === 'hours'
-      ? t('settings.oauth.hoursRemaining', {
-        hours: String(Math.max(1, Math.round((usage.windowSeconds || 18000) / 3600))),
-        remaining: String(usage.remaining),
-      })
-      : t('settings.oauth.weeklyRemaining', { remaining: String(usage.remaining) });
-  const plan = formatPlanType(usage.planType);
-  const text = [plan, remainingText, reset ? t('settings.oauth.weeklyReset', { when: reset }) : '']
-    .filter(Boolean)
-    .join(' · ');
-
-  return (
-    <div className={styles['oauth-weekly-usage']}>
-      {text}
-    </div>
-  );
+  return <OauthWeeklyUsageLine usage={usage} />;
 }
 
-function XaiOauthWeeklyUsage() {
-  const [usage, setUsage] = useState<XaiOauthUsageState | null>(null);
+function XaiOauthWeeklyUsage({
+  summary,
+  accounts,
+}: {
+  summary: ProviderSummary;
+  accounts: OauthAccount[];
+}) {
+  const fromAccounts = activeAccountUsage(accounts);
+  const [usage, setUsage] = useState<OauthAccountUsage | null>(
+    () => fromAccounts || usageFromSummary(summary),
+  );
 
   useEffect(() => {
+    if (fromAccounts) {
+      setUsage((prev) => mergeAccountUsage(prev, fromAccounts) || fromAccounts);
+      return;
+    }
+    const fromSummary = usageFromSummary(summary);
+    if (fromSummary) {
+      setUsage((prev) => mergeAccountUsage(prev, fromSummary) || fromSummary);
+      return;
+    }
     let cancelled = false;
     readXaiOauthUsage().then((next) => {
-      if (!cancelled) setUsage(next);
+      if (!cancelled && next) setUsage((prev) => mergeAccountUsage(prev, next) || next);
     });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fromAccounts, summary.oauth_usage]);
 
-  if (!usage) return null;
-  const reset = formatResetWhen(usage.resetAt);
-  const text = usage.unknown || usage.remaining == null
-    ? t('settings.oauth.weeklyUnknown')
-    : [
-      t('settings.oauth.weeklyRemaining', { remaining: String(usage.remaining) }),
-      reset ? t('settings.oauth.weeklyReset', { when: reset }) : '',
-    ].filter(Boolean).join(' · ');
-
-  return (
-    <div className={styles['oauth-weekly-usage']}>
-      {text}
-    </div>
-  );
+  return <OauthWeeklyUsageLine usage={usage} />;
 }
 
 function XaiOauthSearchToolsToggle() {

@@ -61,6 +61,33 @@ export function normalizeSessionThinkingLevel(level) {
   return canonicalThinkingLevel(level) || DEFAULT_SESSION_THINKING_LEVEL;
 }
 
+const WIRE_GATED_THINKING_LEVELS = ["xhigh", "max"];
+
+/**
+ * Make the wire map agree with the levels Hana shows.
+ *
+ * pi decides whether a model may send `xhigh` / `max` purely from
+ * `thinkingLevelMap` having that key; a missing key clamps the request down to
+ * `high` (or lower) without any error. Hana's `thinkingLevels` is what the user
+ * picks from (model editor, known-models), so every listed gated level must also
+ * exist in the map. An explicit `null` in the map is a provider saying "not
+ * supported" and is left alone.
+ */
+export function deriveThinkingLevelMap(thinkingLevels, thinkingLevelMap) {
+  const levels = normalizeThinkingLevelChoices(thinkingLevels);
+  const base = thinkingLevelMap && typeof thinkingLevelMap === "object" && !Array.isArray(thinkingLevelMap)
+    ? thinkingLevelMap
+    : null;
+  if (!levels) return base;
+  let next = base;
+  for (const level of WIRE_GATED_THINKING_LEVELS) {
+    if (!levels.includes(level)) continue;
+    if (next && next[level] !== undefined) continue;
+    next = { ...(next || {}), [level]: level };
+  }
+  return next;
+}
+
 export function normalizeRequestThinkingLevel(level, fallback = "off") {
   return canonicalThinkingLevel(level)
     || canonicalThinkingLevel(fallback)

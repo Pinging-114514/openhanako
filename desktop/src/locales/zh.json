@@ -355,6 +355,17 @@
       "done": "✓ 已完成",
       "failed": "✗ 失败",
       "aborted": "⊘ 已终止"
+    },
+    "askUser": {
+      "other": "其他…",
+      "otherPlaceholder": "写下你的方案",
+      "confirm": "就这个",
+      "skip": "先跳过",
+      "hintSingle": "选一项，也可以写自己的",
+      "hintMultiple": "可以多选，也可以再写一项",
+      "answered": "已选",
+      "skipped": "先跳过了",
+      "timeout": "这题过期了"
     }
   },
   "time": {
@@ -440,6 +451,20 @@
       "max": "最高推理",
       "low": "轻量推理"
     },
+    "codexSpeedLabel": "速度",
+    "codexSpeed": {
+      "standard": "标准",
+      "fast": "快速",
+      "ultrafast": "超快"
+    },
+    "codexSpeedDesc": {
+      "standard": "默认速度",
+      "fast": "1.5 倍速度，用量更多",
+      "ultrafast": "最快可用"
+    },
+    "oauthAccountLabel": "账号与额度",
+    "oauthRemaining": "余 {remaining}%",
+    "oauthQuotaUnknown": "额度 —",
     "contextWindow": "上下文 {windowK}k",
     "tokensUsed": "已用 {tokensK}k ({pct}%)",
     "contextActions": "上下文操作",
@@ -952,6 +977,11 @@
       "running": "🎴 {name} 正在把卡片摆出来",
       "done": "🎴 {name} 把卡片摆出来了",
       "failed": "🎴 卡片没摆出来"
+    },
+    "ask_user": {
+      "running": "❔ {name} 正在等你选",
+      "done": "❔ {name} 问过你了",
+      "failed": "❔ 这题没问成"
     },
     "media_generate-image": {
       "running": "🎨 {name} 正在作图",
@@ -1807,7 +1837,20 @@
       "weeklyUsed": "本周已用 {used}%",
       "weeklyReset": "{when} 重置",
       "weeklyUnknown": "周用量暂时读不到",
+      "weeklyExhausted": "本周额度已用完",
+      "weeklyRevoked": "登录已失效，请重新登录",
+      "weeklyRefreshFailed": "刷新失败",
+      "weeklyNetwork": "用量读取失败（网络）",
+      "weeklyUpstream": "用量读取失败（服务端）",
+      "weeklyRateLimited": "用量读取被限流",
+      "weeklyNotLoggedIn": "还没登录",
       "hoursRemaining": "{hours}小时剩余 {remaining}%",
+      "addAccount": "添加账号",
+      "useAccount": "切换",
+      "removeAccount": "移除",
+      "activeAccount": "使用中",
+      "accountInvalid": "已失效",
+      "quotaUnknown": "额度暂时读不到",
       "searchTools": "搜索工具",
       "searchToolsHint": "开启后，web_search 用 Grok 搜网页，并单独提供 x_search 搜 X。要不要搜 X 由模型自己判断。用本周额度。"
     },
@@ -1873,6 +1916,11 @@
       },
       "thinkingLevelsEdit": "可用档位",
       "thinkingLevelsEditHint": "勾选聊天里能选的档。没改过就跟内置名单走，不会写进这个模型。",
+      "codexSpeed": {
+        "standard": "标准",
+        "fast": "快速（1.5 倍速度，用量更多）",
+        "ultrafast": "超快（最快）"
+      },
       "defaultThinkingLevel": "默认档",
       "addedModels": "已添加的模型",
       "displayName": "显示名称",
@@ -3219,7 +3267,8 @@
       "dreamRevisionNotFound": "找不到这个 Dream 版本，它可能已经被清理",
       "dreamRestoreFailed": "恢复 Dream 版本失败，当前记忆没有改动",
       "dreamRunFailed": "Dream 整理失败，原记忆没有改动",
-      "internalContract": "应用内部出了点问题，这不是你的操作问题；详情已记录，可在反馈时附上"
+      "internalContract": "应用内部出了点问题，这不是你的操作问题；详情已记录，可在反馈时附上",
+      "tokenRevoked": "登录已失效，请到设置里重新登录"
     }
   },
   "main": {
@@ -3635,6 +3684,8 @@
       "computerUse": "Computer Use",
       "computerUseDesc": "开启后，新对话会向主 Agent 暴露 computer 工具；关闭后新对话不可见，旧对话若调用会被拒绝。",
       "thinkingBudget": "思考深度",
+      "codexSpeed": "Codex 速度",
+      "codexSpeedDesc": "Codex OAuth（ChatGPT 登录的 GPT）的速度档：标准、快速（1.5 倍速度，用量更多）、超快（最快）。",
       "memory": "记忆系统",
       "memoryDesc": "开启/关闭当前 Agent 的记忆",
       "experience": "经验库",

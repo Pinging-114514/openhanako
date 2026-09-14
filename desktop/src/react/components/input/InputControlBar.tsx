@@ -1,9 +1,13 @@
 import { memo, type RefObject } from 'react';
 import { PlanModeButton, type PermissionMode } from './PlanModeButton';
 import { ContextRing } from './ContextRing';
+import { CodexSpeedButton } from './CodexSpeedButton';
+import { OauthAccountButton } from './OauthAccountButton';
 import { ThinkingLevelButton } from './ThinkingLevelButton';
 import { ModelSelector } from './ModelSelector';
 import { SendButton } from './SendButton';
+import { shouldShowCodexSpeedControl } from '../../utils/codex-speed';
+import { resolveOauthAccountProvider } from '../../utils/oauth-account';
 import type { ThinkingLevel } from '../../stores/model-slice';
 import type { Model } from '../../types';
 import type { SessionModel } from '../../stores/chat-types';
@@ -47,6 +51,9 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
     showAudioInput, audioRecordingActive, audioRecordingBusy, onAudioToggle,
     onSend, onSteer, onStop,
   } = props;
+  const showCodexSpeed = shouldShowCodexSpeedControl(sessionModel, models);
+  const oauthAccountProvider = resolveOauthAccountProvider(sessionModel, models);
+  const showSplit = showThinking || showCodexSpeed || !!oauthAccountProvider;
 
   return (
     <div className={styles['input-bottom-bar']}>
@@ -75,9 +82,13 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
         <ContextRing />
       </div>
       <div className={styles['input-controls']}>
-        {showThinking ? (
+        {showSplit ? (
           <div className={styles['model-split-control']}>
-            <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} availableLevels={availableThinkingLevels} />
+            {oauthAccountProvider ? <OauthAccountButton providerId={oauthAccountProvider} isStreaming={isStreaming} /> : null}
+            {showCodexSpeed ? <CodexSpeedButton /> : null}
+            {showThinking ? (
+              <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} availableLevels={availableThinkingLevels} />
+            ) : null}
             <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
           </div>
         ) : (

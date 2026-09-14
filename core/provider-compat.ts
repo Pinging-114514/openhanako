@@ -32,6 +32,7 @@ import * as openaiVideoUrl from "./provider-compat/openai-video-url.ts";
 import * as openrouter from "./provider-compat/openrouter.ts";
 import * as anthropic from "./provider-compat/anthropic.ts";
 import * as codexResponses from "./provider-compat/codex-responses.ts";
+import { stripGpt6SamplingParameters } from "./provider-compat/gpt6-sampling.ts";
 import { normalizeImplicitOutputBudget } from "./provider-compat/output-budget.ts";
 import { stripOrphanToolResults } from "./provider-compat/tool-pairing.ts";
 import { normalizeOpenAIInputAudioPayload } from "./provider-compat/input-audio.ts";
@@ -357,6 +358,7 @@ export function normalizeProviderPayload(payload, model, options = {}) {
   result = stripIncompatibleThinking(result, model);
   result = normalizeAutoReasoningEffort(result, model);
   result = stripDisabledReasoningEffort(result);
+  result = stripGpt6SamplingParameters(result, model);
   // 孤儿 toolResult 配对兜底先于 provider 子模块：保证子模块（如 deepseek 的
   // reasoning_content 校验）拿到的是已配对的 messages，不会被孤儿干扰。
   result = stripOrphanToolMessages(result);

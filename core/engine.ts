@@ -1598,6 +1598,9 @@ export class HanaEngine {
     return {
       deepseekRoleplayReasoningPatch: this._sessionCoord.isDeepSeekRoleplayReasoningPatchEnabled(p),
       deepseekRoleplayReasoningContext: this._sessionCoord.getDeepSeekRoleplayReasoningContext(p),
+      // Codex OAuth speed tier is a global preference today; it rides along here
+      // so the live request and any compaction request agree on the wire body.
+      codexServiceTier: this.getCodexServiceTier(),
     };
   }
   /**
@@ -1931,6 +1934,12 @@ export class HanaEngine {
   }
   getSearchConfig() { return this._configCoord.getSearchConfig(); }
   setSearchConfig(p) { return this._configCoord.setSearchConfig(p); }
+  getCodexServiceTier() {
+    return this.preferences.getCodexServiceTier();
+  }
+  setCodexServiceTier(tier) {
+    return this.preferences.setCodexServiceTier(tier);
+  }
   getXaiOauthSearchTools() {
     return this.preferences.getXaiOauthSearchTools();
   }
@@ -2532,10 +2541,10 @@ export class HanaEngine {
 
     // 1. Pi SDK + 模型基础设施（必须在 agent init 之前，agent 需要解析记忆模型）
     log(`[init] 1/5 Pi SDK 初始化...`);
-    this._models.init();
+    await this._models.init();
     // 预填充 _availableModels，agent init 时需要解析 utility model
     await this._models.refreshAvailable();
-    log(`[init] 1/5 AuthStorage + ModelRegistry + ${this._models.availableModels.length} 个模型就绪`);
+    log(`[init] 1/5 ModelRuntime + ModelRegistry + ${this._models.availableModels.length} 个模型就绪`);
 
     // 2. 初始化所有 agent
     log(`[init] 2/5 初始化所有 agent...`);
@@ -2597,6 +2606,7 @@ export class HanaEngine {
           const {
             deepseekRoleplayReasoningPatch,
             deepseekRoleplayReasoningContext,
+            codexServiceTier,
           } = this.getProviderCompatOptionsForSession(sessionPath);
           // The SDK hook exposes the serialized body, but not whether maxTokens came
           // from user intent or buildBaseOptions' model-derived default. Keep source
@@ -2606,6 +2616,7 @@ export class HanaEngine {
             reasoningLevel,
             deepseekRoleplayReasoningPatch,
             deepseekRoleplayReasoningContext,
+            codexServiceTier,
           });
         });
       },

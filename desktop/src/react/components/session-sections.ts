@@ -93,6 +93,29 @@ function compareByModifiedDesc(a: Session, b: Session): number {
 /** 同项目会话数不超过这个值时全展示；更多时只露出前 N 条（列表已按最近活动排好）。 */
 export const PROJECT_SESSION_PREVIEW_LIMIT = 3;
 
+function sessionKeySet(values: Array<string | null | undefined>): Set<string> {
+  return new Set(
+    values
+      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      .map(value => value.trim()),
+  );
+}
+
+function sessionMatchesKeys(session: Session, keys: Set<string>): boolean {
+  return keys.has(session.path)
+    || (typeof session.sessionId === "string" && keys.has(session.sessionId));
+}
+
+/** 父目录折叠后仍要露出的会话（正在跑、未读、当前选中），保持原列表顺序。 */
+export function pickRunningSessions(
+  items: Session[],
+  runningKeys: Array<string | null | undefined> = [],
+): Session[] {
+  const keys = sessionKeySet(runningKeys);
+  if (keys.size === 0) return [];
+  return items.filter(session => sessionMatchesKeys(session, keys));
+}
+
 /**
  * 按条数折叠：少于等于 limit 不折叠；超过则露出前 limit 条，其余进「加载更多」。
  * alwaysVisiblePaths 里的当前会话如果落在窗口外，挤进最后一格，不把折叠区撑开。
@@ -112,15 +135,8 @@ export function splitProjectSessionsByPreview(
     return { visible: items, hidden: [] };
   }
 
-  const alwaysVisible = new Set(
-    alwaysVisiblePaths
-      .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
-      .map(value => value.trim()),
-  );
-  const isForced = (session: Session): boolean => (
-    alwaysVisible.has(session.path)
-    || (typeof session.sessionId === 'string' && alwaysVisible.has(session.sessionId))
-  );
+  const alwaysVisible = sessionKeySet(alwaysVisiblePaths);
+  const isForced = (session: Session): boolean => sessionMatchesKeys(session, alwaysVisible);
 
   const visible: Session[] = [];
   const hidden: Session[] = [];

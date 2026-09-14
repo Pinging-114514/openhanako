@@ -5,6 +5,7 @@ import {
   estimateTokens,
   prepareCompaction,
 } from "../lib/pi-sdk/index.ts";
+import { getAgentStreamFn } from "../lib/pi-sdk/agent-stream.ts";
 import { computeHardTruncation } from "./compaction-utils.ts";
 import { stripAllInlineMediaForHistory } from "./message-sanitizer.ts";
 import {
@@ -1851,7 +1852,7 @@ export async function runCachePreservingCompactionForSession(session: any, {
           })
         : null,
       outputPolicy: COMPACTION_OUTPUT_POLICIES.PROVIDER_DEFAULT,
-      streamFn: session.agent.streamFn,
+      streamFn: getAgentStreamFn(session.agent),
       streamOptions: {
         sessionId: session.agent.sessionId,
         onPayload: session.agent.onPayload,

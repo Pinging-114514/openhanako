@@ -21,11 +21,22 @@ export function applyProviderCacheAffinityToPayload(payload: any, affinityKey: a
   return next;
 }
 
+/**
+ * pi 0.80.7 replaced `compat.sendSessionIdHeader` with
+ * `compat.sessionAffinityFormat` ("openai" | "openai-nosession" | "openrouter").
+ * Keep honouring the legacy boolean for models.json entries written before that.
+ */
+function omitsOpenAiSessionIdHeader(model: any): boolean {
+  const format = model?.compat?.sessionAffinityFormat;
+  if (format === "openai-nosession" || format === "openrouter") return true;
+  return model?.compat?.sendSessionIdHeader === false;
+}
+
 function affinityHeadersForModel(model: any, affinityKey: string) {
   switch (model?.api) {
     case "openai-responses":
       return {
-        ...(model?.compat?.sendSessionIdHeader === false ? {} : { session_id: affinityKey }),
+        ...(omitsOpenAiSessionIdHeader(model) ? {} : { session_id: affinityKey }),
         "x-client-request-id": affinityKey,
       };
     case "openai-completions":

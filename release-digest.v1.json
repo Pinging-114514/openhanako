@@ -1,219 +1,219 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.452.0",
-  "version": "0.452.0",
-  "previousTag": "v0.451.0",
-  "generatedAt": "2026-08-31T08:53:23.000Z",
+  "tag": "v0.453.0",
+  "version": "0.453.0",
+  "previousTag": "v0.452.0",
+  "generatedAt": "2026-09-14T13:40:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "网页搜索改用 Grok 4.1 快模型、并发 4，X 搜索拆成独立工具。后开梯子也能跟上系统代理。侧栏能搜对话，发图、半小时定时、按停圆环这些坑也收了。",
-    "en": "Web search now uses Grok 4.1 Fast without reasoning, with concurrency 4, and X search is a separate tool. System proxy is picked up if the VPN starts later. Sidebar search, image send, 30-minute schedules, and the abort context ring are fixed."
+    "zh": "跟上 pi 0.85.1。目录有 GPT-6 Astra，思考档和 Codex 速度能对上线上。WebSocket 走同一套代理，OAuth 用量会自己刷新。远程网页的排序和卡片也能用了。",
+    "en": "Moves onto pi 0.85.1. GPT-6 Astra is in the catalog, thinking levels and Codex speed match the wire, WebSocket uses the same proxy as fetch, OAuth usage refreshes on its own, and remote sort plus cards work."
   },
   "counts": {
     "feature": 3,
     "fix": 5,
-    "improvement": 1,
-    "migration": 0
+    "improvement": 0,
+    "migration": 1
   },
   "source": {
     "owner": "Pinging-114514",
     "repo": "openhanako",
-    "commitRange": "v0.451.0..v0.452.0",
-    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.452.0",
+    "commitRange": "v0.452.0..v0.453.0",
+    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.453.0",
     "releaseNotes": ""
   },
   "items": [
     {
-      "id": "xai-search-retriever",
-      "kind": "feature",
+      "id": "pi-0851",
+      "kind": "migration",
       "importance": "high",
       "title": {
-        "zh": "网页搜索更快，X 搜索改独立",
-        "en": "Faster web search, separate X search"
+        "zh": "运行时升到 pi 0.85.1",
+        "en": "Runtime moves to pi 0.85.1"
       },
       "summary": {
-        "zh": "web_search 改走 grok-4-1-fast-non-reasoning，并发 4，只搜公开网页。要不要搜 X 由模型自己调 x_search。",
-        "en": "web_search uses grok-4-1-fast-non-reasoning at concurrency 4 and only covers the public web. The model calls x_search on its own when X posts are needed."
+        "zh": "三件套和 typebox 对齐。凭证改走 ModelRuntime，流包装认新的 streamFunction。",
+        "en": "The pi trio and typebox are aligned. Credentials go through ModelRuntime, and stream wrappers use streamFunction."
       },
       "details": [
         {
-          "zh": "不再跟聊天用的 grok-4.6 绑在一起，也不再顺手开看图和 X 搜索。",
-          "en": "Search is no longer bound to chat grok-4.6, and no longer piggybacks image understanding or X search."
+          "zh": "AuthStorage 深路径还在适配层里，下次再跟 pi 时只改这一处。",
+          "en": "The AuthStorage deep import stays behind the adapter, so the next pi bump only changes that seam."
         }
       ],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "xai search retriever"
+          "title": "pi 0.85.1 runtime"
         }
       ]
     },
     {
-      "id": "system-proxy-follow",
+      "id": "gpt-6-astra-catalog",
       "kind": "feature",
       "importance": "high",
       "title": {
-        "zh": "后开梯子，系统代理会跟上",
-        "en": "System proxy follows if the VPN starts later"
+        "zh": "Codex OAuth 加上 GPT-6 Astra",
+        "en": "GPT-6 Astra on Codex OAuth"
       },
       "summary": {
-        "zh": "不再只在开机问一次代理。Windows 系统代理变了会补上环境变量，OAuth 用的 fetch 也走代理。",
-        "en": "Proxy is no longer frozen at spawn. Windows system proxy changes are stamped into the process, and OAuth fetch uses the proxy too."
+        "zh": "本地目录写入 gpt-6-astra。窗口按 Codex 合同 872K，不是 API 的 1M。",
+        "en": "The local catalog adds gpt-6-astra. The window follows the Codex contract at 872K, not the API 1M figure."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "system proxy follow"
+          "title": "gpt-6-astra catalog"
         }
       ]
     },
     {
-      "id": "loop-turns",
+      "id": "thinking-level-map",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "思考档真正送给模型",
+        "en": "Thinking levels actually reach the model"
+      },
+      "summary": {
+        "zh": "补上 thinkingLevelMap。xhigh 和 Max 不再被 pi 钳成 high 或 low。",
+        "en": "thinkingLevelMap is filled in, so xhigh and Max are no longer clamped to high or low."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "thinkingLevelMap"
+        }
+      ]
+    },
+    {
+      "id": "codex-ws-proxy",
+      "kind": "fix",
+      "importance": "high",
+      "title": {
+        "zh": "Codex WebSocket 跟代理走",
+        "en": "Codex WebSocket follows the proxy"
+      },
+      "summary": {
+        "zh": "全局 WebSocket 和 fetch 用同一套出站决定，避免直连超时后悄悄退成 SSE。",
+        "en": "The global WebSocket uses the same outbound decision as fetch, so a direct timeout no longer silently falls back to SSE."
+      },
+      "details": [],
+      "sources": [
+        {
+          "type": "commit",
+          "ref": "HEAD",
+          "title": "proxied WebSocket"
+        }
+      ]
+    },
+    {
+      "id": "codex-speed-tier",
       "kind": "feature",
       "importance": "medium",
       "title": {
-        "zh": "/loop 可限定轮数",
-        "en": "/loop can cap turns"
+        "zh": "Codex 速度档",
+        "en": "Codex speed tier"
       },
       "summary": {
-        "zh": "/loop --turns N 限制循环次数，输入栏有循环状态条。",
-        "en": "/loop --turns N caps the loop, and the composer shows a loop status bar."
+        "zh": "标准、快速、超快。快速在线上发 priority。设置和 update_settings 都能切。",
+        "en": "Standard, fast, and ultrafast. Fast is sent as priority. Settings and update_settings can switch it."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "loop turns"
+          "title": "codex service tier"
         }
       ]
     },
     {
-      "id": "sidebar-search",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "侧栏能搜标题和对话",
-        "en": "Sidebar searches titles and transcripts"
-      },
-      "summary": {
-        "zh": "侧栏搜索会高亮命中，空标题也有文案。",
-        "en": "Sidebar search highlights hits and labels untitled chats."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "sidebar search"
-        }
-      ]
-    },
-    {
-      "id": "image-send",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "发图会把像素送给模型",
-        "en": "Pasted images send pixels to the model"
-      },
-      "summary": {
-        "zh": "修掉只传路径、服务端收到 0 张图的问题。",
-        "en": "Fixes the path-only skip that made the server receive 0 images."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "image send"
-        }
-      ]
-    },
-    {
-      "id": "cron-half-hour",
+      "id": "oauth-usage-refresh",
       "kind": "fix",
       "importance": "medium",
       "title": {
-        "zh": "30 分钟定时不再显示成每小时",
-        "en": "30-minute jobs no longer read as hourly"
+        "zh": "OAuth 用量自己刷新",
+        "en": "OAuth usage refreshes itself"
       },
       "summary": {
-        "zh": "半小时任务按分钟显示，不再四舍五入成 1 小时。",
-        "en": "Half-hour jobs stay in minutes instead of rounding to 1 hour."
+        "zh": "后台轮询用量。暂态失败不再把上次剩余数字擦掉。",
+        "en": "Usage is polled in the background. A transient failure no longer wipes the last remaining count."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "cron humanize"
+          "title": "oauth usage refresh"
         }
       ]
     },
     {
-      "id": "context-ring-abort",
+      "id": "add-model-dropdown",
       "kind": "fix",
       "importance": "medium",
       "title": {
-        "zh": "按停不再抹掉上下文圆环",
-        "en": "Abort no longer clears the context ring"
+        "zh": "添加模型不再闪关",
+        "en": "Add-model menu stays open"
       },
       "summary": {
-        "zh": "中止后仍保留上一刀已知用量，圆环不会被空值盖掉。",
-        "en": "Abort keeps the last known token usage instead of overwriting it with null."
+        "zh": "打开下拉时不再把自动滚动当成点外面。",
+        "en": "Opening the menu no longer treats the autofocus scroll as an outside click."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "context ring abort"
+          "title": "anchored dropdown"
         }
       ]
     },
     {
-      "id": "observational-jsonl",
+      "id": "remote-sort-menu",
       "kind": "fix",
       "importance": "medium",
       "title": {
-        "zh": "观察压缩会去读会话文件",
-        "en": "Observational compaction reads the session file"
+        "zh": "远程排序菜单能看见",
+        "en": "Remote sort menu is visible"
       },
       "summary": {
-        "zh": "装订笔记时不只翻内存树枝，也会读 jsonl 里已经记下的观察。",
-        "en": "Prepared notes are collected from the session jsonl, not only the in-memory branch."
+        "zh": "远程壳补上 context-menu 的定位，菜单不再画在视口外。",
+        "en": "The remote shell gets the context-menu positioning, so the menu is no longer painted off-screen."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "observational jsonl"
+          "title": "remote sort CSS"
         }
       ]
     },
     {
-      "id": "automation-created-badge",
-      "kind": "improvement",
-      "importance": "low",
+      "id": "remote-card-ticket",
+      "kind": "fix",
+      "importance": "medium",
       "title": {
-        "zh": "定时建议确认后显示已创建",
-        "en": "Schedule suggestions show created after confirm"
+        "zh": "远程卡片能加载",
+        "en": "Remote cards can load"
       },
       "summary": {
-        "zh": "点确认后卡片变成已创建，并弹出提示。",
-        "en": "After confirm, the card shows created and toasts."
+        "zh": "卡片接口改走 chat 权限，iframe 带一次性 ticket，不再靠店主钥。",
+        "en": "Card routes use chat scope, and the iframe carries a one-time ticket instead of an owner key."
       },
       "details": [],
       "sources": [
         {
           "type": "commit",
           "ref": "HEAD",
-          "title": "automation created badge"
+          "title": "card iframe ticket"
         }
       ]
     }
