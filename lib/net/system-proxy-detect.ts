@@ -210,10 +210,17 @@ export function stampDetectedProxyEnv(detected: DetectedSystemProxy, env: Record
   return detected;
 }
 
+export function effectiveSystemProxy(detected: DetectedSystemProxy | null | undefined): DetectedSystemProxy {
+  const value = detected || emptySystemProxy();
+  const httpProxy = value.httpProxy || value.httpsProxy || value.socksProxy || "";
+  const httpsProxy = value.httpsProxy || value.httpProxy || value.socksProxy || "";
+  return { httpProxy, httpsProxy, socksProxy: "" };
+}
+
 export function currentEnvProxyFingerprint(env: Record<string, string | undefined> = process.env): string {
-  return fingerprintSystemProxy({
+  return fingerprintSystemProxy(effectiveSystemProxy({
     httpProxy: env.HTTP_PROXY || env.http_proxy || env.ALL_PROXY || "",
-    httpsProxy: env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || "",
+    httpsProxy: env.HTTPS_PROXY || env.https_proxy || env.HTTP_PROXY || env.http_proxy || env.ALL_PROXY || "",
     socksProxy: "",
-  });
+  }));
 }

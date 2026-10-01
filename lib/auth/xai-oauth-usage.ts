@@ -97,6 +97,10 @@ export async function fetchXaiOauthPlanType({
   accessToken,
   fetchImpl = globalThis.fetch,
   timeoutMs = XAI_SETTINGS_TIMEOUT_MS,
+}: {
+  accessToken?: unknown;
+  fetchImpl?: typeof globalThis.fetch;
+  timeoutMs?: number;
 } = {}) {
   const token = String(accessToken || "").trim();
   if (!token || typeof fetchImpl !== "function") return null;
@@ -130,6 +134,10 @@ export async function fetchXaiOauthUsage({
   accessToken,
   fetchImpl = globalThis.fetch,
   timeoutMs = 15_000,
+}: {
+  accessToken?: unknown;
+  fetchImpl?: typeof globalThis.fetch;
+  timeoutMs?: number;
 } = {}) {
   const token = String(accessToken || "").trim();
   if (!token) {
@@ -166,6 +174,10 @@ export async function fetchXaiOauthUserinfo({
   accessToken,
   fetchImpl = globalThis.fetch,
   timeoutMs = 15_000,
+}: {
+  accessToken?: unknown;
+  fetchImpl?: typeof globalThis.fetch;
+  timeoutMs?: number;
 } = {}) {
   const token = String(accessToken || "").trim();
   if (!token) return { email: "", name: "" };
@@ -207,7 +219,11 @@ export function publicXaiOauthUsage(usage) {
   return publicOauthUsage(usage);
 }
 
-export async function refreshXaiOauthUsageCache(engine, { fetchImpl } = {}) {
+export async function refreshXaiOauthUsageCache(engine, {
+  fetchImpl,
+}: {
+  fetchImpl?: typeof globalThis.fetch;
+} = {}) {
   if (engine?.xaiOauthUsageInflight) return engine.xaiOauthUsageInflight;
   const work = (async () => {
     const cred = engine?.authStorage?.get?.("xai-oauth");
@@ -230,7 +246,11 @@ export async function refreshXaiOauthUsageCache(engine, { fetchImpl } = {}) {
   }
 }
 
-export async function readXaiOauthUsageCached(engine, { fetchImpl } = {}) {
+export async function readXaiOauthUsageCached(engine, {
+  fetchImpl,
+}: {
+  fetchImpl?: typeof globalThis.fetch;
+} = {}) {
   if (engine?.xaiOauthUsage) return engine.xaiOauthUsage;
   return refreshXaiOauthUsageCache(engine, { fetchImpl });
 }

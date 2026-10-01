@@ -2090,7 +2090,8 @@ export class BridgeManager {
    * 结果消费与入站 flush 保持同一套语义：底层错误只进日志，正文清洗后 finish，
    * 媒体逐条发送，失败时只发人话提示。
    */
-  async executeLoopTurn(sessionKey, promptText, { agentId } = {} as any) {
+  async executeLoopTurn(sessionKey, promptText, { agentId, shouldDeliver } = {} as any) {
+    if (typeof shouldDeliver === 'function' && !shouldDeliver()) return { mode: 'suppressed' };
     if (this._processing.has(sessionKey)) return { mode: "busy" };
     // 缓冲区形状与 _takePendingBatch 一致：群聊排队 batches，私聊聚合 lines。
     const pending = this._pending.get(sessionKey);
@@ -2127,7 +2128,9 @@ export class BridgeManager {
         role: "owner",
         meta: { source: "loop" },
         onDelta: delivery.onDelta,
+        shouldDeliver,
       });
+      if (result?.suppressed === true) return { mode: 'suppressed' };
 
       const reply = result?.text || null;
       const toolMedia = Array.isArray(result?.toolMedia) ? result.toolMedia : [];

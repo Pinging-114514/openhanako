@@ -108,13 +108,12 @@ describe('BridgeChatTranscript continuous bottom scroll', () => {
       MockResizeObserver.instances[0].trigger();
     });
 
-    expect(metrics.scrollTop).toBe(700);
+    expect(metrics.scrollTop).toBe(760);
 
     act(() => {
       flushRaf(16);
     });
 
-    expect(metrics.scrollTop).toBeGreaterThan(700);
-    expect(metrics.scrollTop).toBeLessThan(760);
+    expect(metrics.scrollTop).toBe(760);
   });
 });

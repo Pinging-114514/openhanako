@@ -1260,6 +1260,43 @@
       "exemption": null
     },
     {
+      "id": "oauth-account-vault",
+      "ownerModule": "lib/auth/oauth-account-vault.ts",
+      "pathPattern": "oauth-accounts.json",
+      "pathPatterns": [
+        "oauth-accounts.json"
+      ],
+      "pathExclusions": [],
+      "pathKind": "file",
+      "format": "json",
+      "schemaSource": {
+        "kind": "runtime-contract",
+        "module": "lib/auth/oauth-account-vault.ts",
+        "contract": "versioned multi-account OAuth vault normalization and owner-only serializer"
+      },
+      "schemaContract": {
+        "kind": "runtime-source",
+        "source": "lib/auth/oauth-account-vault.ts",
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs."
+      },
+      "openEntry": [
+        "readOauthAccountVault",
+        "writeOauthAccountVault"
+      ],
+      "migrationEntry": [],
+      "protocolModules": [],
+      "firstPossibleOpenPhase": "engine_construct",
+      "firstPossibleWritePhase": "engine_construct",
+      "epochPolicy": "epoch-managed",
+      "checkpointPolicy": "Checkpoint as permission-preserving secret material together with the matching provider auth.json active slots.",
+      "restorePolicy": "Restore atomically before OAuth account refresh; never merge credentials from another HANA_HOME.",
+      "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
+      "identityContract": "Provider key and provider-owned account ID identify each account; activeId selects an existing account in that provider vault.",
+      "exemption": null
+    },
+    {
       "id": "office-render-jobs",
       "ownerModule": "plugins/office/lib/html-to-pdf.ts",
       "pathPattern": "plugin-data/office/jobs",
@@ -5702,6 +5739,15 @@
       "ordinal": 0
     },
     {
+      "sourceFile": "lib/auth/oauth-account-vault.ts",
+      "kind": "secret-write",
+      "excerpt": "writeSecretFileSync(oauthAccountVaultPath(hanakoHome), `${JSON.stringify(normalizeVault(vault), null, 2)}\\n`)",
+      "reason": "Persists the normalized multi-account OAuth vault with owner-only permissions.",
+      "storeId": "oauth-account-vault",
+      "exemptionId": null,
+      "ordinal": 0
+    },
+    {
       "sourceFile": "lib/bridge/wechat-adapter.ts",
       "kind": "atomic-write",
       "excerpt": "atomicWriteSync(filePath, JSON.stringify({ get_updates_buf: buf }))",
@@ -9537,6 +9583,15 @@
     },
     {
       "sourceFile": "shared/secret-fs.ts",
+      "kind": "remove-path",
+      "excerpt": "fs.rmSync(tmp, { force: true })",
+      "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
+      "storeId": null,
+      "exemptionId": "generic-secret-fs-primitives",
+      "ordinal": 5
+    },
+    {
+      "sourceFile": "shared/secret-fs.ts",
       "kind": "rename",
       "excerpt": "fs.renameSync(tmp, filePath)",
       "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
@@ -9546,12 +9601,12 @@
     },
     {
       "sourceFile": "shared/secret-fs.ts",
-      "kind": "rename",
-      "excerpt": "fs.renameSync(tmp, filePath)",
+      "kind": "write-file",
+      "excerpt": "fs.writeFileSync(filePath, fs.readFileSync(tmp, \"utf-8\"), \"utf-8\")",
       "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
       "storeId": null,
       "exemptionId": "generic-secret-fs-primitives",
-      "ordinal": 1
+      "ordinal": 0
     },
     {
       "sourceFile": "shared/secret-fs.ts",

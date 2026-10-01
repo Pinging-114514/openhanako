@@ -228,11 +228,16 @@ export async function activateOauthAccount(
 ): Promise<PublicOauthAccount[]> {
   const authKey = requireAuthKey(engine, provider);
   syncOauthSlotIntoVault(engine, authKey);
-  const vault = readOauthAccountVault(engine.hanakoHome);
-  const profile = vault.providers[authKey]?.profiles.find(item => item.id === profileId);
+  const prepared = readOauthAccountVault(engine.hanakoHome);
+  const profile = prepared.providers[authKey]?.profiles.find(item => item.id === profileId);
   if (!profile) throw new Error(`OAuth account "${profileId}" was not found`);
-  await writeCredentialToSlot(engine, authKey, profile.credential);
-  writeOauthAccountVault(engine.hanakoHome, setActiveOauthAccount(vault, authKey, profileId));
+  const credential = cloneCredential(profile.credential);
+  await writeCredentialToSlot(engine, authKey, credential);
+  const fresh = readOauthAccountVault(engine.hanakoHome);
+  if (!fresh.providers[authKey]?.profiles.some(item => item.id === profileId)) {
+    throw new Error(`OAuth account "${profileId}" was not found`);
+  }
+  writeOauthAccountVault(engine.hanakoHome, setActiveOauthAccount(fresh, authKey, profileId));
   await afterSlotChanged(engine, authKey);
   return listOauthAccounts(engine, authKey);
 }
@@ -288,14 +293,74 @@ function credentialNeedsRefresh(cred: Record<string, any> | null | undefined): b
   return Number.isFinite(expires) && expires <= Date.now() + VAULT_CREDENTIAL_REFRESH_SKEW_MS;
 }
 
+function credentialEpoch(cred: Record<string, any> | null | undefined): string {
+  const access = typeof cred?.access === "string" ? cred.access : "";
+  const refresh = typeof cred?.refresh === "string" ? cred.refresh : "";
+  return `${access}\n${refresh}`;
+}
+
+function sameOauthAccount(authKey: MultiOauthAuthKey, left: unknown, right: unknown): boolean {
+  const a = inspectOauthCredential(left, authKey);
+  const b = inspectOauthCredential(right, authKey);
+  if (!a || !b) return false;
+  if (a.accountId && b.accountId) return a.accountId === b.accountId;
+  if (a.email && b.email) return a.email === b.email;
+  return a.matchKey === b.matchKey && a.matchKey.length > 0;
+}
+
+function liveCredentialSupersedes(stored: Record<string, any>, live: Record<string, any>): boolean {
+  if (credentialNeedsRefresh(live)) return false;
+  return credentialNeedsRefresh(stored) || stored.access !== live.access;
+}
+
+function adoptLiveCredential(
+  authKey: MultiOauthAuthKey,
+  stored: Record<string, any>,
+  live: unknown,
+): Record<string, any> | null {
+  if (!isOauthCredential(live) || !sameOauthAccount(authKey, stored, live)) return null;
+  if (!liveCredentialSupersedes(stored, live)) return null;
+  const cred = cloneCredential(live);
+  if (!cred.email && stored.email) cred.email = stored.email;
+  return cred;
+}
+
+function toXaiRefreshCredentials(cred: Record<string, any>): {
+  refresh: string;
+  access: string;
+  expires: number;
+  [key: string]: unknown;
+} | null {
+  if (typeof cred.refresh !== "string" || !cred.refresh) return null;
+  if (typeof cred.access !== "string" || !cred.access) return null;
+  const expires = Number(cred.expires);
+  if (!Number.isFinite(expires)) return null;
+  const credentials: {
+    refresh: string;
+    access: string;
+    expires: number;
+    [key: string]: unknown;
+  } = {
+    refresh: cred.refresh,
+    access: cred.access,
+    expires,
+  };
+  for (const [key, value] of Object.entries(cred)) {
+    if (key === "refresh" || key === "access" || key === "expires") continue;
+    credentials[key] = value;
+  }
+  return credentials;
+}
+
 async function refreshVaultCredential(
   authKey: MultiOauthAuthKey,
   cred: Record<string, any>,
 ): Promise<Record<string, any> | null> {
   if (authKey !== XAI_AUTH_KEY) return null;
-  if (typeof cred.refresh !== "string" || !cred.refresh) return null;
+  const credentials = toXaiRefreshCredentials(cred);
+  if (!credentials) return null;
   try {
-    const next = await xaiOAuthProvider.refreshToken(cred);
+    const next = await xaiOAuthProvider.refreshToken(credentials, new AbortController().signal);
     if (!next || typeof next.access !== "string" || !next.access) return null;
     return { ...cloneCredential(cred), ...next, type: "oauth" };
   } catch {
@@ -345,43 +410,75 @@ export async function refreshOauthAccountUsages(engine: any, authKey: MultiOauth
   }
 }
 
+type PreparedOauthUsage = {
+  id: string;
+  baseCredential: Record<string, any>;
+  nextCredential: Record<string, any>;
+  fetchedAccess: string | null;
+  usage: OauthAccountUsagePublic | null | undefined;
+  email: string;
+  displayName: string;
+  shortLabel: string;
+  accountId: string;
+};
+
 async function refreshOauthAccountUsagesOnce(engine: any, authKey: MultiOauthAuthKey): Promise<void> {
   const vault = readOauthAccountVault(engine.hanakoHome);
   const provider = vault.providers[authKey];
   if (!provider || provider.profiles.length === 0) return;
   const fetchedAt = new Date().toISOString();
-  const previousActive = provider.profiles.find(profile => profile.id === provider.activeId) || null;
-  const previousActiveEmail = previousActive?.email || "";
-  const nextProfiles = [];
+  const prepared: PreparedOauthUsage[] = [];
   for (const profile of provider.profiles) {
-    let cred = profile.credential;
+    const baseCredential = cloneCredential(profile.credential);
+    let cred = cloneCredential(profile.credential);
+    const adopted = adoptLiveCredential(authKey, cred, engine?.authStorage?.get?.(authKey));
+    if (adopted) cred = adopted;
     if (credentialNeedsRefresh(cred)) {
       const refreshed = await refreshVaultCredential(authKey, cred);
       if (refreshed) cred = refreshed;
     }
-    const usage = mergeOauthUsageSnapshot(
-      profile.usage,
-      await fetchUsageForCredential(authKey, cred),
-    );
+    const liveAfterRefresh = adoptLiveCredential(authKey, cred, engine?.authStorage?.get?.(authKey));
+    if (liveAfterRefresh) cred = liveAfterRefresh;
     const labeled = authKey === XAI_AUTH_KEY
       ? await withXaiEmail({ ...profile, credential: cred })
-      : { ...profile, credential: cred, ...resolveOauthAccountLabels(profile, authKey) };
-    nextProfiles.push({
-      ...labeled,
-      usage: usage ? { ...usage, fetchedAt } : profile.usage,
+      : {
+        ...profile,
+        credential: cred,
+        ...resolveOauthAccountLabels({
+          email: cred.email || profile.email,
+          displayName: profile.displayName,
+        }, authKey),
+      };
+    cred = labeled.credential;
+    let usage: OauthAccountUsagePublic | null | undefined;
+    if (credentialNeedsRefresh(cred)) {
+      // Expired access that we could not refresh is not proof the account was revoked.
+      usage = undefined;
+    } else {
+      usage = await fetchUsageForCredential(authKey, cred);
+    }
+    prepared.push({
+      id: profile.id,
+      baseCredential,
+      nextCredential: cloneCredential(cred),
+      fetchedAccess: usage === undefined ? null : String(cred.access || ""),
+      usage,
+      email: labeled.email,
+      displayName: labeled.displayName,
+      shortLabel: labeled.shortLabel,
+      accountId: labeled.accountId || profile.accountId,
     });
   }
-  provider.profiles = nextProfiles;
-  writeOauthAccountVault(engine.hanakoHome, vault);
-  await writeActiveEmailToSlot(engine, authKey, provider.activeId, nextProfiles, previousActiveEmail);
-  const active = nextProfiles.find(profile => profile.id === provider.activeId);
-  if (active && previousActive && active.credential?.access !== previousActive.credential?.access) {
+  commitPreparedOauthUsage(engine, authKey, prepared, fetchedAt);
+  for (const update of prepared) {
     try {
-      await writeCredentialToSlot(engine, authKey, active.credential);
+      await compareAndSwapSlotCredential(engine, authKey, update.baseCredential, update.nextCredential);
     } catch {
-      // Vault already has the rotated token; the live slot can catch up on the next switch.
+      // Vault already has a committed credential; the live slot can catch up on the next switch.
     }
   }
+  const committed = readOauthAccountVault(engine.hanakoHome).providers[authKey];
+  const active = committed?.profiles.find(profile => profile.id === committed.activeId);
   if (authKey === CODEX_AUTH_KEY) {
     engine.codexOauthUsage = active?.usage || null;
   }
@@ -389,6 +486,73 @@ async function refreshOauthAccountUsagesOnce(engine: any, authKey: MultiOauthAut
     engine.xaiOauthUsage = active?.usage || null;
   }
   emitOauthAccountsChanged(engine, authKey);
+}
+
+function commitPreparedOauthUsage(
+  engine: any,
+  authKey: MultiOauthAuthKey,
+  prepared: PreparedOauthUsage[],
+  fetchedAt: string,
+): void {
+  const vault = readOauthAccountVault(engine.hanakoHome);
+  const provider = vault.providers[authKey];
+  if (!provider) return;
+  let changed = false;
+  for (const update of prepared) {
+    const profile = provider.profiles.find(item => item.id === update.id);
+    if (!profile) continue;
+    const holdsBase = credentialEpoch(profile.credential) === credentialEpoch(update.baseCredential);
+    if (holdsBase) {
+      const nextEpoch = credentialEpoch(update.nextCredential);
+      const epochChanged = credentialEpoch(profile.credential) !== nextEpoch;
+      const emailChanged = (profile.credential.email || "") !== (update.nextCredential.email || "")
+        || profile.email !== update.email;
+      if (epochChanged || emailChanged) {
+        profile.credential = cloneCredential(update.nextCredential);
+        profile.email = update.email;
+        profile.displayName = update.displayName;
+        profile.shortLabel = update.shortLabel;
+        if (update.accountId) profile.accountId = update.accountId;
+        profile.updatedAt = fetchedAt;
+        changed = true;
+      }
+    }
+    const storedAccess = String(profile.credential?.access || "");
+    if (update.usage !== undefined && update.fetchedAccess && storedAccess === update.fetchedAccess) {
+      const merged = mergeOauthUsageSnapshot(profile.usage, update.usage);
+      const nextUsage = merged ? { ...merged, fetchedAt } : profile.usage;
+      if (JSON.stringify(nextUsage) !== JSON.stringify(profile.usage)) {
+        profile.usage = nextUsage;
+        changed = true;
+      }
+    }
+  }
+  if (changed) writeOauthAccountVault(engine.hanakoHome, vault);
+}
+
+async function compareAndSwapSlotCredential(
+  engine: any,
+  authKey: MultiOauthAuthKey,
+  base: Record<string, any>,
+  next: Record<string, any>,
+): Promise<void> {
+  const modify = engine?.authStorage?.credentials?.modify;
+  if (typeof modify !== "function") return;
+  const baseEpoch = credentialEpoch(base);
+  const nextEpoch = credentialEpoch(next);
+  const nextEmail = typeof next.email === "string" ? next.email : "";
+  const nextName = typeof next.name === "string" ? next.name : "";
+  if (baseEpoch === nextEpoch && nextEmail === (base.email || "") && nextName === (base.name || "")) return;
+  await modify.call(engine.authStorage.credentials, authKey, async (current: unknown) => {
+    if (!isOauthCredential(current)) return current;
+    const currentEpoch = credentialEpoch(current);
+    const holdsBase = currentEpoch === baseEpoch;
+    const holdsNext = currentEpoch === nextEpoch;
+    if (!holdsBase && !holdsNext) return current;
+    if (holdsNext && (current.email || "") === nextEmail && (current.name || "") === nextName) return current;
+    return cloneCredential(next);
+  });
+  engine.authStorage.reload?.();
 }
 
 export function importOauthSlotsIntoVault(engine: any): void {
@@ -435,24 +599,6 @@ async function withXaiEmail(profile: OauthAccountProfile): Promise<OauthAccountP
     credential,
     updatedAt: new Date().toISOString(),
   };
-}
-
-async function writeActiveEmailToSlot(
-  engine: any,
-  authKey: MultiOauthAuthKey,
-  activeId: string | null,
-  nextProfiles: OauthAccountProfile[],
-  previousEmail: string,
-): Promise<void> {
-  const active = nextProfiles.find(profile => profile.id === activeId);
-  if (!active?.email || active.email === previousEmail) return;
-  const slot = engine?.authStorage?.get?.(authKey);
-  if (!isOauthCredential(slot)) return;
-  try {
-    await writeCredentialToSlot(engine, authKey, active.credential);
-  } catch {
-    // Slot write is best-effort; the vault already has the email.
-  }
 }
 
 async function fetchUsageForCredential(

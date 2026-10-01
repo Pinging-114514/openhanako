@@ -5,6 +5,7 @@ import { t } from '../../helpers';
 import { useOauthAccounts } from '../../../hooks/use-oauth-accounts';
 import { DEFAULT_OAUTH_LOGIN_METHOD } from '../../../../../../shared/oauth-login.ts';
 import { isCodexOauthProvider } from '../../../../../../shared/codex-service-tier.ts';
+import { invalidateCodexServiceTier, useCodexServiceTier } from '../../../hooks/use-codex-service-tier';
 import {
   countSavedOauthAccounts,
   describeOauthUsage,
@@ -99,6 +100,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
       if (data.error) throw new Error(data.error);
       showToast(t('settings.oauth.success'), 'success');
       setShowCodeInput(false);
+      invalidateCodexServiceTier({ resetEligibility: true });
       await onRefresh();
       setAccountEpoch(value => value + 1);
     } catch (err: unknown) {
@@ -119,6 +121,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
           setDeviceCode(null);
           setPolling(false);
           pollingRef.current = false;
+          invalidateCodexServiceTier({ resetEligibility: true });
           await onRefresh();
           setAccountEpoch(value => value + 1);
           return;
@@ -139,6 +142,7 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
   };
 
   const logout = async () => {
+    invalidateCodexServiceTier({ resetEligibility: true });
     try {
       await hanaFetch('/api/auth/oauth/logout', {
         method: 'POST',
@@ -146,8 +150,10 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
         body: JSON.stringify({ provider: providerId }),
       });
       showToast(t('settings.oauth.loggedOut'), 'success');
+      invalidateCodexServiceTier({ resetEligibility: true });
       await onRefresh();
       setAccountEpoch(value => value + 1);
+      invalidateCodexServiceTier({ resetEligibility: true });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       showToast(t('settings.oauth.failed') + ': ' + msg, 'error');
@@ -190,6 +196,9 @@ export function OAuthCredentials({ providerId, summary, onRefresh }: {
       )}
       {isCodexOauthProvider(providerId) && summary.logged_in && !hideSharedWeeklyUsage && (
         <CodexOauthUsage providerId={providerId} summary={summary} accounts={accounts} />
+      )}
+      {isCodexOauthProvider(providerId) && summary.logged_in && (
+        <CodexOauthSpeedControl />
       )}
 
       {showCodeInput && (
@@ -250,6 +259,7 @@ function OauthAccountManager({ providerId, summary, accounts, loading, applyAcco
       const data = await res.json() as { accounts?: OauthAccount[]; error?: string };
       if (data.error) throw new Error(data.error);
       if (Array.isArray(data.accounts)) applyAccounts(data.accounts);
+      if (res.ok) invalidateCodexServiceTier({ resetEligibility: true });
       await onRefresh();
     } catch (err: unknown) {
       showToast(t('settings.oauth.failed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -267,6 +277,7 @@ function OauthAccountManager({ providerId, summary, accounts, loading, applyAcco
       const data = await res.json() as { accounts?: OauthAccount[]; error?: string };
       if (data.error) throw new Error(data.error);
       if (Array.isArray(data.accounts)) applyAccounts(data.accounts);
+      if (res.ok) invalidateCodexServiceTier({ resetEligibility: true });
       await onRefresh();
     } catch (err: unknown) {
       showToast(t('settings.oauth.failed') + ': ' + (err instanceof Error ? err.message : String(err)), 'error');
@@ -437,7 +448,9 @@ function CodexOauthUsage({
     }
     let cancelled = false;
     readCodexOauthUsage(providerId).then((next) => {
-      if (!cancelled && next) setUsage((prev) => mergeAccountUsage(prev, next) || next);
+      if (cancelled) return;
+      if (next) setUsage((prev) => mergeAccountUsage(prev, next) || next);
+      invalidateCodexServiceTier({ planType: next?.planType ?? null });
     });
     return () => {
       cancelled = true;
@@ -445,6 +458,40 @@ function CodexOauthUsage({
   }, [fromAccounts, providerId, summary.oauth_usage]);
 
   return <OauthWeeklyUsageLine usage={usage} />;
+}
+
+function CodexOauthSpeedControl() {
+  const speed = useCodexServiceTier((path, init) => {
+    const { throwOnHttpError: _ignored, ...rest } = init || {};
+    return hanaFetch(path, rest);
+  });
+  const label = t('settings.oauth.codexSpeed');
+  return (
+    <div className={styles['oauth-search-tools']} data-testid="codex-speed-settings">
+      <div className={styles['oauth-search-tools-row']}>
+        <span className={styles['oauth-search-tools-label']}>{label}</span>
+        <select
+          className={`${styles['settings-input']} ${styles['oauth-speed-select']}`}
+          aria-label={label}
+          value={speed.selectValue}
+          disabled={speed.loading || speed.saving || speed.downgradeUnconfirmed}
+          onChange={(event) => { void speed.selectTier(event.target.value); }}
+        >
+          {speed.downgradeUnconfirmed && (
+            <option value="">{t('settings.oauth.codexSpeedUnconfirmed')}</option>
+          )}
+          {speed.options.map((option) => (
+            <option key={option} value={option}>{t(`settings.api.codexSpeed.${option}`)}</option>
+          ))}
+        </select>
+      </div>
+      <div className={styles['oauth-search-tools-hint']}>
+        {speed.downgradeUnconfirmed
+          ? t('settings.oauth.codexSpeedUnconfirmed')
+          : t('settings.oauth.codexSpeedHint')}
+      </div>
+    </div>
+  );
 }
 
 function XaiOauthWeeklyUsage({

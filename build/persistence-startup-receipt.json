@@ -356,6 +356,16 @@
       "breakingMigrationRequiresAccessMove": false
     },
     {
+      "id": "oauth-account-vault",
+      "firstPossibleOpenPhase": "engine_construct",
+      "firstPossibleWritePhase": "engine_construct",
+      "opensBeforeFutureCoordinator": false,
+      "writesBeforeFutureCoordinator": false,
+      "bootstrapSafety": null,
+      "preCoordinatorReadProjection": null,
+      "breakingMigrationRequiresAccessMove": false
+    },
+    {
       "id": "office-render-jobs",
       "firstPossibleOpenPhase": "runtime_ready",
       "firstPossibleWritePhase": "runtime_ready",

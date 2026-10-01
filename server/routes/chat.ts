@@ -31,7 +31,11 @@ import {
   INSTANT_SIMPLE_COMPACTION_RUNTIME_MODE,
   normalizeCompactionLifecycleMode,
 } from "../../shared/compaction-mode.ts";
-import { submitDesktopSessionInterjection, submitDesktopSessionMessage } from "../../core/desktop-session-submit.ts";
+import {
+  abortPendingDesktopSessionSubmission,
+  submitDesktopSessionInterjection,
+  submitDesktopSessionMessage,
+} from "../../core/desktop-session-submit.ts";
 import {
   AgentReviewTurnCoordinator,
   buildSessionReferenceBlock,
@@ -1478,6 +1482,23 @@ export function createChatRoute(engine: any, hub: any, {
       broadcast({ type: "bridge_message", message: event.message });
     } else if (event.type === "bridge_status") {
       broadcast({ type: "bridge_status", platform: event.platform, status: event.status, error: event.error, agentId: event.agentId || null });
+    } else if (event.type === "session_cron_checking") {
+      broadcast({
+        type: "session_cron_checking",
+        sessionPath,
+        label: typeof event.label === "string" ? event.label : "",
+        jobId: typeof event.jobId === "string" ? event.jobId : "",
+        wakeId: typeof event.wakeId === "string" ? event.wakeId : "",
+        anchorEntryId: typeof event.anchorEntryId === "string" ? event.anchorEntryId : null,
+        holdStream: event.holdStream !== false,
+      });
+    } else if (event.type === "session_cron_rotated") {
+      broadcast({
+        type: "session_cron_rotated", sessionPath,
+        jobId: typeof event.jobId === "string" ? event.jobId : "",
+        wakeId: typeof event.wakeId === "string" ? event.wakeId : "",
+        preserveClientState: event.preserveClientState === true,
+      });
     } else if (event.type === "session_branch_reset") {
       if (!ss) return;
       discardQueuedBranchTaskEvents(ss, event.discardedTaskIds);
@@ -1827,10 +1848,15 @@ export function createChatRoute(engine: any, hub: any, {
                 ? msg.reason.trim()
                 : "user_abort";
               if (abortSs) abortSs.isAborted = true;
-              let abortAccepted = false;
+              // 先掐还在预处理里的提交，再停已开的流。两个都试，否则停止落在
+              // 「已收到、未开流」窗口时会漏掉，随后开流又把用户挡一轮。
+              let abortAccepted = abortPendingDesktopSessionSubmission(engine, {
+                sessionId: abortTarget.sessionId,
+                sessionPath: abortPath,
+              });
               try {
-                abortAccepted = !!(await agentReviewTurns.cancelByParent(abortTarget.sessionId, abortReason));
-                if (!abortAccepted) abortAccepted = !!(await hub.abort(abortPath, { reason: abortReason }));
+                if (await agentReviewTurns.cancelByParent(abortTarget.sessionId, abortReason)) abortAccepted = true;
+                if (await hub.abort(abortPath, { reason: abortReason })) abortAccepted = true;
               } catch {}
               if (!abortAccepted) {
                 const abortStreamId = abortSs?.streamId || null;
@@ -1851,6 +1877,39 @@ export function createChatRoute(engine: any, hub: any, {
                 sessionPath: abortPath,
                 streamId: activeStreamId,
               });
+              return;
+            }
+
+            if (msg.type === "multitask") {
+              const multitaskTarget = requireWsSessionContext(msg, ws); if (!multitaskTarget) return;
+              if (multitaskTarget.agentDeleted) {
+                rejectDeletedAgentSession(ws, multitaskTarget.sessionPath);
+                return;
+              }
+              try {
+                if (typeof engine.handoffStreamingTurnToSibling !== "function") {
+                  wsSend(ws, {
+                    type: "error",
+                    code: "multitask_failed",
+                    message: t("error.code.multitaskFailed"),
+                    sessionPath: multitaskTarget.sessionPath,
+                  });
+                  return;
+                }
+                const result = await engine.handoffStreamingTurnToSibling(multitaskTarget.sessionPath);
+                wsSend(ws, {
+                  type: "multitask_started",
+                  sessionPath: multitaskTarget.sessionPath,
+                  ...result,
+                });
+              } catch (err: any) {
+                wsSend(ws, {
+                  type: "error",
+                  code: err?.code || "multitask_failed",
+                  message: err?.message || t("error.code.multitaskFailed"),
+                  sessionPath: multitaskTarget.sessionPath,
+                });
+              }
               return;
             }
 

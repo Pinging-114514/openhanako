@@ -83,11 +83,20 @@ describe("known-models dictionary", () => {
 
   it("keeps GPT-5.6 provider contracts isolated from generic fallback metadata", () => {
     expect(defaultModels.openai.slice(0, 4)).toEqual([
-      "gpt-5.6",
-      "gpt-5.6-sol",
-      "gpt-5.6-terra",
-      "gpt-5.6-luna",
+      "gpt-6-astra",
+      "gpt-6.1-sol",
+      "gpt-6-sol",
+      "gpt-6-luna",
     ]);
+    expect(lookupKnownProvider("openai", "gpt-6-sol")).toMatchObject({
+      name: "GPT-6 Sol",
+      context: 1050000,
+      maxOutput: 128000,
+      image: true,
+      reasoning: true,
+      api: "openai-responses",
+      defaultThinkingLevel: "medium",
+    });
     expect(lookupKnownProvider("openai", "gpt-5.6-sol")).toMatchObject({
       context: 1050000,
       maxOutput: 128000,
@@ -116,6 +125,56 @@ describe("known-models dictionary", () => {
       },
     });
     expect(lookupKnownProvider("unknown-proxy", "gpt-5.6-sol")).toBeNull();
+    expect(lookupKnown("anyrouter", "gpt-6-astra")).toMatchObject({
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      defaultThinkingLevel: "medium",
+    });
+  });
+
+  it("keeps GPT-6.1 Sol API and Codex windows apart, and does not offer none or minimal", () => {
+    expect(lookupKnownProvider("openai", "gpt-6.1-sol")).toMatchObject({
+      name: "GPT-6.1 Sol",
+      context: 1050000,
+      maxOutput: 128000,
+      image: true,
+      reasoning: true,
+      api: "openai-responses",
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: null, minimal: null },
+      defaultThinkingLevel: "medium",
+      cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+    });
+    expect(lookupKnownProvider("openai", "gpt-6.1-sol").thinkingLevels).not.toEqual(
+      expect.arrayContaining(["off", "minimal", "none", "ultra"]),
+    );
+    expect(lookupKnownProvider("openai-codex-oauth", "gpt-6.1-sol")).toMatchObject({
+      context: 272000,
+      maxContext: 872000,
+      maxOutput: 128000,
+      image: true,
+      api: "openai-codex-responses",
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      thinkingLevelMap: { off: null, minimal: null },
+      defaultThinkingLevel: "low",
+    });
+    expect(lookupKnownProvider("openai-codex-oauth", "gpt-6.1-sol")).not.toHaveProperty("cost");
+    expect(lookupKnown("openai-codex-oauth", "gpt-6.1-sol")).not.toHaveProperty("cost");
+    expect(lookupKnownProvider("openai-codex-oauth", "gpt-6.1-sol").context).not.toBe(1050000);
+    expect(lookupKnownWithSource("unknown-proxy", "gpt-6.1-sol")).toMatchObject({
+      source: "fallback",
+      metadata: {
+        name: "GPT-6.1 Sol",
+        context: 1050000,
+        maxOutput: 128000,
+        image: true,
+        reasoning: true,
+        thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+        defaultThinkingLevel: "medium",
+        cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+      },
+    });
+    expect(lookupKnownWithSource("unknown-proxy", "gpt-6.1-sol").metadata).not.toHaveProperty("api");
+    expect(lookupKnownWithSource("unknown-proxy", "gpt-6.1-sol").metadata).not.toHaveProperty("thinkingLevelMap");
   });
 
   it("declares all six OpenRouter GPT-5.6 routes", () => {
@@ -183,6 +242,29 @@ describe("known-models dictionary", () => {
         thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
       });
     }
+    expect(lookupKnown("anthropic", "claude-opus-5-5")).toMatchObject({
+      name: "Claude Opus 5.5",
+      context: 1000000,
+      maxOutput: 128000,
+      image: true,
+      reasoning: true,
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      defaultThinkingLevel: "medium",
+      compat: {
+        thinkingFormat: "anthropic",
+        reasoningProfile: "anthropic-adaptive-only",
+      },
+    });
+    expect(lookupKnown("anthropic", "claude-fable-5-1")).toMatchObject({
+      name: "Claude Fable 5.1",
+      defaultThinkingLevel: "high",
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+    });
+    expect(defaultModels.anthropic.slice(0, 3)).toEqual([
+      "claude-opus-5-5",
+      "claude-fable-5-1",
+      "claude-mythos-5-1",
+    ]);
     expect(lookupKnown("anthropic", "claude-fable-5")).toMatchObject({
       name: "Claude Fable 5",
       context: 1000000,
@@ -282,7 +364,7 @@ describe("known-models dictionary", () => {
       image: true,
       reasoning: true,
     });
-    expect(defaultModels.xai[0]).toBe("grok-4.5");
+    expect(defaultModels.xai[0]).toBe("grok-4.7");
     expect(lookupKnown("xai", "grok-4.5")).toMatchObject({
       name: "Grok 4.5",
       context: 500000,
@@ -300,8 +382,25 @@ describe("known-models dictionary", () => {
     expect(listKnownProviderModels("missing-provider")).toEqual([]);
   });
 
-  it("lists GLM-5.2 first in the curated Zhipu defaults", () => {
-    expect(defaultModels.zhipu[0]).toBe("glm-5.2");
+  it("lists GLM-5.3 Flash first in the curated Zhipu defaults", () => {
+    expect(defaultModels.zhipu[0]).toBe("glm-5.3-flash");
+    expect(defaultModels["zhipu-coding"][0]).toBe("glm-5.3-flash");
+    expect(lookupKnown("zhipu", "glm-5.3-flash")).toMatchObject({
+      context: 1048576,
+      maxOutput: 131072,
+      image: true,
+      video: true,
+      reasoning: true,
+      defaultThinkingLevel: "max",
+    });
+    expect(defaultModels.deepseek[0]).toBe("deepseek-flash");
+    expect(lookupKnown("deepseek", "deepseek-flash")).toMatchObject({
+      name: "DeepSeek V4.1 Flash",
+      context: 1000000,
+      maxOutput: 384000,
+      image: true,
+      reasoning: true,
+    });
   });
 
   it("declares OpenCode Go GLM-5.2 with the GLM OpenAI-compatible thinking contract", () => {
@@ -327,6 +426,7 @@ describe("known-models dictionary", () => {
 
   it("declares GLM Coding Plan fixed models under the Zhipu coding provider", () => {
     expect(defaultModels["zhipu-coding"]).toEqual([
+      "glm-5.3-flash",
       "glm-5.2",
       "glm-5-turbo",
       "glm-4.7",
@@ -449,7 +549,32 @@ describe("known-models dictionary", () => {
     expect(k3).not.toHaveProperty("maxOutput");
     expect(k3_256k).not.toHaveProperty("video");
     expect(k3_256k).not.toHaveProperty("maxOutput");
-    expect(defaultModels["kimi-coding"]).toEqual(["kimi-for-coding"]);
+    expect(defaultModels["kimi-coding"].slice(0, 4)).toEqual([
+      "kimi-k3",
+      "kimi-k2.7-code",
+      "kimi-k2.7-code-highspeed",
+      "kimi-k2.6",
+    ]);
+    expect(defaultModels.moonshot[0]).toBe("kimi-k3");
+    expect(lookupKnown("moonshot", "kimi-k3")).toMatchObject({
+      context: 1048576,
+      maxOutput: 131072,
+      image: true,
+      video: true,
+      reasoning: true,
+      thinkingLevels: ["low", "high", "max"],
+      defaultThinkingLevel: "max",
+    });
+    expect(defaultModels.meta).toEqual(["muse-spark-1.3", "muse-spark-1.2"]);
+    expect(lookupKnown("meta", "muse-spark-1.3")).toMatchObject({
+      context: 1048576,
+      maxOutput: 131072,
+      image: true,
+      video: true,
+      reasoning: true,
+      thinkingLevels: ["low", "high", "xhigh", "max"],
+      defaultThinkingLevel: "high",
+    });
   });
 
   it("declares official Moonshot Kimi K2.6 video capability", () => {
@@ -459,6 +584,39 @@ describe("known-models dictionary", () => {
       video: true,
       reasoning: true,
     });
+  });
+
+  it("declares Xiaomi MiMo V2.6 as native full-modal models", () => {
+    for (const id of ["mimo-v2.6-pro", "mimo-v2.6-flash", "mimo-v2.6-pro-ultraspeed"]) {
+      expect(lookupKnown("mimo", id)).toMatchObject({
+        context: 1048576,
+        maxOutput: 131072,
+        image: true,
+        video: true,
+        audio: true,
+        reasoning: true,
+      });
+    }
+    expect(defaultModels.gemini.slice(0, 3)).toEqual([
+      "gemini-3.8-flash",
+      "gemini-3.7-flash",
+      "gemini-3.6-flash",
+    ]);
+    expect(lookupKnown("gemini", "gemini-3.8-flash")).toMatchObject({
+      context: 1048576,
+      maxOutput: 65536,
+      image: true,
+      video: true,
+      audio: true,
+      reasoning: true,
+      thinkingLevels: ["low", "medium", "high"],
+      defaultThinkingLevel: "high",
+    });
+    expect(defaultModels.mimo.slice(0, 3)).toEqual([
+      "mimo-v2.6-pro",
+      "mimo-v2.6-flash",
+      "mimo-v2.6-pro-ultraspeed",
+    ]);
   });
 
   it("declares Xiaomi MiMo V2.5 series with Pro text-only and Omni full-modal limits", () => {

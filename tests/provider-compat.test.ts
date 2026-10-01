@@ -92,7 +92,7 @@ describe("Anthropic Max effort normalization", () => {
     expect(payload.thinking).toEqual({ type: "enabled", budget_tokens: 8192, display: "omitted" });
   });
 
-  it.each(["claude-opus-5", "claude-sonnet-5"])(
+  it.each(["claude-opus-5-5", "claude-opus-5", "claude-sonnet-5", "claude-fable-5-1", "claude-mythos-5-1"])(
     "maps %s xhigh to native Anthropic adaptive xhigh effort",
     (modelId) => {
       const result = normalizeProviderPayload({

@@ -22,6 +22,13 @@
     position: relative;
 }
 
+.cronSlotLabel {
+    margin-bottom: 4px;
+    font-size: var(--fs-hint);
+    line-height: 1.4;
+    color: var(--text-muted);
+}
+
 .messageGroupAssistant {
     align-items: flex-start;
     padding-left: var(--space-8);
@@ -113,6 +120,27 @@
     max-width: 92%;
     padding: 0;
     overflow: hidden;
+}
+
+.messageGroupUser[data-send-status="pending"] {
+    opacity: 0.72;
+}
+
+.userEditAttachments {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 6px;
+    width: min(520px, 78vw);
+    max-width: 92%;
+}
+
+.messageSendFailed {
+    font-size: 12px;
+    color: var(--danger, #b45a5a);
+    text-align: right;
+    width: min(520px, 78vw);
+    max-width: 92%;
 }
 
 .userEditTextarea {
@@ -2101,6 +2129,9 @@
     position: absolute;
     inset: 0;
     overflow-y: auto;
+    /* 贴底跟随由 use-continuous-bottom-scroll 接管。Chrome 的滚动锚定会在流式内容
+       变高时把视口按在某个锚点上，再被跟随拉回底部，来回就是「上下抽」。关掉。 */
+    overflow-anchor: none;
     padding: 76px var(--space-24) 0;
 }
 
@@ -2139,6 +2170,25 @@
     gap: inherit;
 }
 
+.transcriptRow {
+    min-width: 0;
+    flex-shrink: 0;
+}
+
+/* Row wrappers must not make every message match the old first-child spacing rule.
+ * Use logical position, not the first mounted virtual row, to keep measured heights stable. */
+.transcriptRow > .messageGroup:first-child .avatarRow {
+    margin-top: var(--space-24);
+}
+
+.transcriptRow[data-transcript-first="true"] > .messageGroup:first-child .avatarRow {
+    margin-top: 0;
+}
+
+.loadMoreHint + .transcriptWindow .transcriptRow[data-transcript-first="true"] > .messageGroup:first-child .avatarRow {
+    margin-top: var(--space-24);
+}
+
 .sessionMessages .transcriptList {
     gap: var(--space-8);
 }
@@ -2148,7 +2198,9 @@
 }
 
 .transcriptPad {
-    flex-shrink: 0;
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: hidden;
     pointer-events: none;
 }
 

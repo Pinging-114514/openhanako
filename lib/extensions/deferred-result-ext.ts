@@ -47,16 +47,25 @@ function tryDeliver(pi, store, taskId, task) {
 export function createDeferredResultExtension(deferredStore) {
   return function (pi) {
     let sessionPath = null;
+    let startTimer: ReturnType<typeof setTimeout> | null = null;
 
     pi.on("session_start", (event, ctx) => {
       sessionPath = ctx.sessionManager.getSessionFile();
-
+      const targetPath = sessionPath;
+      if (startTimer) clearTimeout(startTimer);
       // ── 补发未送达的已完成任务 ──
-      setTimeout(() => {
-        const undelivered = deferredStore.listUndelivered(sessionPath);
+      startTimer = setTimeout(() => {
+        startTimer = null;
+        if (!targetPath || sessionPath !== targetPath) return;
+        const undelivered = deferredStore.listUndelivered(targetPath);
         for (const task of undelivered) {
           if (isUiOnlyDeferredResultTask(task) && !shouldNotifyAgentOnFailure(task)) continue;
           if (isExternallyDeliveredTask(task)) continue;
+          const managed = deferredStore.requestDelivery?.(task.taskId);
+          if (managed) {
+            void managed.catch((err) => log.warn(`managed delivery failed: ${err?.message || err}`));
+            continue;
+          }
           tryDeliver(pi, deferredStore, task.taskId, task);
         }
 
@@ -79,6 +88,8 @@ export function createDeferredResultExtension(deferredStore) {
 
     pi.on("session_shutdown", () => {
       sessionPath = null;
+      if (startTimer) clearTimeout(startTimer);
+      startTimer = null;
     });
   };
 }

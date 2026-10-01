@@ -163,12 +163,13 @@ export class LoopController {
 
   // ── 闹钟回调面 ────────────────────────────────────────────
 
-  async deliverWakeupTurn(key, reason) {
+  async deliverWakeupTurn(key, reason, deliveryOptions: any = {}) {
     const loop = this._store.get(key);
     if (!loop || loop.status !== "running") return { ok: false, mode: "suppressed" };
     try {
-      return await this._injectLoopTurn(key, loop.target, buildLoopWakeupMessage(loop, reason));
+      return await this._injectLoopTurn(key, loop.target, buildLoopWakeupMessage(loop, reason), deliveryOptions);
     } catch (err: any) {
+      if (deliveryOptions.requireIdle && (err?.code === 'session_busy' || err?.message === 'session_busy')) return { mode: 'busy' };
       if (err?.code === "loop_target_reset") {
         await this._stopForReset(key);
         return { mode: "stopped" };
@@ -178,6 +179,8 @@ export class LoopController {
   }
 
   pauseForDeliveryFailure(key, err) {
+    const loop = this._store.get(key);
+    if (!loop || loop.status !== "running") return;
     void this._pause(
       key,
       "wakeup_delivery_failed",
@@ -318,6 +321,8 @@ export class LoopController {
   }
 
   async _pause(key, reasonCode, noticeText) {
+    const current = this._store.get(key);
+    if (!current || current.status === "stopped" || current.status === "completed") return current;
     this._alarm?.cancel(key);
     this._clearRuntimeMarks(key);
     this._store.update(key, { status: "paused", pausedReason: reasonCode });
@@ -332,12 +337,19 @@ export class LoopController {
     return this._store.get(key);
   }
 
-  async _injectLoopTurn(key, target, message) {
+  async _injectLoopTurn(key, target, message, deliveryOptions: any = {}) {
+    const createdAt = this._store.get(key)?.createdAt;
+    const shouldDeliver = () => {
+      const current = this._store.get(key);
+      return current?.status === 'running' && current.createdAt === createdAt
+        && (typeof deliveryOptions.shouldDeliver !== 'function' || deliveryOptions.shouldDeliver() === true);
+    };
+    if (!shouldDeliver()) return { mode: 'suppressed' };
     // 在投递前标记 pending，避免 turn_start 事件抢在返回值处理之前到达
     this._pendingLoopTurn.add(key);
     let delivery;
     try {
-      delivery = await this._deliverLoopMessage(target, message);
+      delivery = await this._deliverLoopMessage(target, message, { ...deliveryOptions, shouldDeliver });
     } catch (err) {
       this._pendingLoopTurn.delete(key);
       throw err;

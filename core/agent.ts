@@ -23,6 +23,8 @@ import { createTodoTool } from "../lib/tools/todo.ts";
 import { createDeskManager } from "../lib/desk/desk-manager.ts";
 import { CronStore } from "../lib/desk/cron-store.ts";
 import { createAutomationTool } from "../lib/tools/automation-tool.ts";
+import { getToolSessionPath } from "../lib/tools/tool-session.ts";
+import { SESSION_PERMISSION_MODES } from "./session-permission-mode.ts";
 import { createWebFetchTool } from "../lib/tools/web-fetch.ts";
 import { createStageFilesTool } from "../lib/tools/output-file-tool.ts";
 import { createFileTool } from "../lib/tools/file-tool.ts";
@@ -528,7 +530,10 @@ export class Agent {
       path.join(this.deskDir, "cron-runs"),
     );
     this._automationTool = createAutomationTool(this._cronStore, {
-      getAutoApprove: () => false,
+      getAutoApprove: (ctx) => {
+        const sessionPath = getToolSessionPath(ctx) || this._cb?.getCurrentSessionPath?.() || null;
+        return this._cb?.getSessionPermissionMode?.(sessionPath) === SESSION_PERMISSION_MODES.OPERATE;
+      },
       confirmStore: this._cb?.getConfirmStore?.(),
       getConfirmStore: () => this._cb?.getConfirmStore?.(),
       getAutomationSuggestionStore: () => this._cb?.getAutomationSuggestionStore?.(),
@@ -600,6 +605,7 @@ export class Agent {
       getSessionFolderScope: (sessionPath) => this._cb?.getEngine?.()?.getSessionFolderScope?.(sessionPath) || null,
       getBridgeContext: (sessionPath) => this._cb?.getEngine?.()?.getBridgeContextForSessionPath?.(sessionPath, { agentId: this.id }) || null,
       listOpenSubagentThreads: (sessionPath) => this._cb?.getSubagentThreadStore?.()?.listOpenDirectBySession?.(sessionPath) || [],
+      getDeferredStore: () => this._cb?.getDeferredResults?.(),
     });
     // 10. 设置修改工具
     this._updateSettingsTool = createUpdateSettingsTool({

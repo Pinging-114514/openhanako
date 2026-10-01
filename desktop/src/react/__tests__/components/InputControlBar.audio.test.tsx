@@ -52,7 +52,7 @@ function renderBar(overrides: Partial<React.ComponentProps<typeof InputControlBa
     audioRecordingBusy={false}
     onAudioToggle={vi.fn()}
     onSend={vi.fn()}
-    onSteer={vi.fn()}
+    onQueue={vi.fn()}
     onStop={vi.fn()}
     {...overrides}
   />);

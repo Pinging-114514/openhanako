@@ -304,10 +304,25 @@
     color: var(--text);
 }
 
+.sectionTitle {
+    margin: 10px 8px 2px;
+    font-size: var(--fs-hint);
+    color: var(--text-muted);
+}
+
 .subline {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 4px 8px;
+}
+
+.promptRead {
+    margin: 0;
+    white-space: pre-wrap;
+    color: var(--text);
+    font-size: var(--fs-caption);
+    line-height: 1.45;
 }
 
 .badge {

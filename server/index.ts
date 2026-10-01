@@ -1013,8 +1013,8 @@ export async function startServer(root: CompositionRoot = {}): Promise<void> {
   engine.setLoopServices({
     store: loopStore,
     bridgeHooks: {
-      executeLoopTurn: (sessionKey: string, agentId: string, text: string) =>
-        requireBridgeManager().executeLoopTurn(sessionKey, text, { agentId }),
+      executeLoopTurn: (sessionKey: string, agentId: string, text: string, options: any = {}) =>
+        requireBridgeManager().executeLoopTurn(sessionKey, text, { agentId, shouldDeliver: options.shouldDeliver }),
       sendNotice: (sessionKey: string, agentId: string, text: string) =>
         requireBridgeManager().sendLoopNotice(sessionKey, agentId, text),
       resolveSessionId: (sessionKey: string, agentId: string) => {

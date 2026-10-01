@@ -44,18 +44,19 @@ export function normalizeStageFilesParams(params: any = {}): StageFilesParamsNor
   let rawFileIds: unknown[];
   let rawFilepaths: unknown[];
   try {
-    if (params.fileIds !== undefined && !Array.isArray(params.fileIds)) {
+    if (params.fileIds != null && !Array.isArray(params.fileIds)) {
       return { ok: false, error: "fileIds must be an array when present" };
     }
-    if (params.filepaths !== undefined && !Array.isArray(params.filepaths)) {
+    if (params.filepaths != null && !Array.isArray(params.filepaths)) {
       return { ok: false, error: "filepaths must be an array when present" };
     }
-    rawFileIds = Array.isArray(params.fileIds) && params.fileIds.length > 0
-      ? params.fileIds
-      : params.fileId === undefined ? [] : [params.fileId];
-    rawFilepaths = Array.isArray(params.filepaths) && params.filepaths.length > 0
-      ? params.filepaths
-      : params.filePath === undefined ? [] : [params.filePath];
+    // Structured tool callers may fill unused optional fields with blank strings
+    // or null. Ignore only blank placeholders, never malformed non-string items.
+    const withoutBlanks = (items: unknown[]) => items.filter(item => typeof item !== "string" || item.trim() !== "");
+    const ids = withoutBlanks(Array.isArray(params.fileIds) ? params.fileIds : []);
+    const paths = withoutBlanks(Array.isArray(params.filepaths) ? params.filepaths : []);
+    rawFileIds = ids.length > 0 ? ids : withoutBlanks(params.fileId == null ? [] : [params.fileId]);
+    rawFilepaths = paths.length > 0 ? paths : withoutBlanks(params.filePath == null ? [] : [params.filePath]);
   } catch {
     return { ok: false, error: "stage_files parameters could not be read safely" };
   }
@@ -80,6 +81,9 @@ export function normalizeStageFilesParams(params: any = {}): StageFilesParamsNor
     if (!filepaths.includes(normalizedPath)) filepaths.push(normalizedPath);
   }
 
+  if (fileIds.length === 0 && filepaths.length === 0) {
+    return { ok: false, error: "stage_files: provide at least one non-empty fileId or absolute file path; all file references are empty" };
+  }
   return { ok: true, value: { fileIds, filepaths } };
 }
 
@@ -115,13 +119,11 @@ export function createStageFilesTool({ registerSessionFile, resolveSessionFile, 
     sessionPermission: { resolveInvocation: resolveStageFilesInvocation },
     parameters: Type.Object({
       fileIds: Type.Optional(Type.Array(Type.String(), {
-        minItems: 1,
-        description: "SessionFile ids to deliver. Prefer this for files already shown by current_status or returned by another tool.",
+        description: "SessionFile ids to deliver. Prefer this for files already shown by current_status or returned by another tool. Omit when using filepaths; an empty array is allowed.",
       })),
       fileId: Type.Optional(Type.String({ description: "(Compat) Single SessionFile id to deliver. Prefer fileIds for new calls." })),
       filepaths: Type.Optional(Type.Array(Type.String(), {
-        minItems: 1,
-        description: "Local absolute file paths to deliver when no SessionFile id is available. StageFile will register them for desktop, Bridge, or future mobile consumers.",
+        description: "Local absolute file paths to deliver when no SessionFile id is available. Omit when using fileIds; an empty array is allowed. StageFile will register them for desktop, Bridge, or future mobile consumers.",
       })),
       // 向下兼容旧接口
       filePath: Type.Optional(Type.String({ description: "(Compat) Single local absolute file path. Prefer filepaths for new calls." })),
@@ -132,6 +134,7 @@ export function createStageFilesTool({ registerSessionFile, resolveSessionFile, 
       if (normalized.ok === false) {
         return {
           content: [{ type: "text", text: normalized.error }],
+          isError: true,
           details: { errorCode: "STAGE_FILES_INVALID_PARAMS" },
         };
       }
@@ -221,14 +224,19 @@ export function createStageFilesTool({ registerSessionFile, resolveSessionFile, 
       if (results.length === 0) {
         return {
           content: [{ type: "text", text: errors.join("\n") || t("error.outputFileNeedPaths") }],
-          details: {},
+          isError: true,
+          details: { errorCode: "STAGE_FILES_DELIVERY_FAILED", errors },
         };
       }
 
       const summary = results.map(r => r.label).join(", ");
       return {
-        content: [{ type: "text", text: t("error.outputFilePresented", { summary }) }],
+        content: [{ type: "text", text: [
+          t("error.outputFilePresented", { summary }),
+          ...(errors.length ? [`Some files could not be delivered:\n${errors.join("\n")}`] : []),
+        ].join("\n") }],
         details: {
+          ...(errors.length ? { partialFailure: true, errors } : {}),
           files: results,
           media: {
             ...(results.some(r => r.fileId) ? { items: results.map(toMediaItem).filter(Boolean) } : {}),

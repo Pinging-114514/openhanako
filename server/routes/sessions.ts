@@ -36,6 +36,8 @@ import {
 import { assignTurnUsageToAssistants } from "../../lib/llm/turn-usage.ts";
 import { isVisibleLoopStatus, publicLoopSnapshot } from "../../lib/loop/loop-store.ts";
 import { LOOP_NOTICE_MESSAGE_TYPE, LOOP_TURN_MESSAGE_TYPE } from "../../lib/loop/loop-messages.ts";
+import { SESSION_CRON_WAKE_TYPE } from "../../lib/desk/session-cron-wake.ts";
+import { placeSessionCronSlots, planSessionCronDisplay, retainLiveCronSlots } from "../../lib/desk/session-cron-slot.ts";
 import {
   extractTextContent,
   contentHasThinkingBlock,
@@ -330,10 +332,25 @@ function nextImmediateDisplayableAssistantIndex(sourceMessages, sourceIndex, dis
   return null;
 }
 
-function resolveHistoryPageBounds(sourceMessages, { beforeId, limit, forceAll }) {
+function enabledCronJobIds(engine) {
+  try {
+    const jobs = engine?.getStudioCronStore?.()?.listJobs?.();
+    if (!Array.isArray(jobs)) return null;
+    return new Set(
+      jobs
+        .filter((job) => job?.enabled !== false && typeof job?.id === "string" && job.id)
+        .map((job) => job.id),
+    );
+  } catch {
+    return null;
+  }
+}
+
+function resolveHistoryPageBounds(sourceMessages, { beforeId, limit, forceAll, hideIndexes }) {
   let total = 0;
-  for (const message of sourceMessages) {
-    if (isDisplayableHistoryMessage(message)) total += 1;
+  for (let index = 0; index < sourceMessages.length; index += 1) {
+    if (hideIndexes?.has(index)) continue;
+    if (isDisplayableHistoryMessage(sourceMessages[index])) total += 1;
   }
   if (forceAll) return { total, startIdx: 0, endIdx: total, hasMore: false };
   const endIdx = (beforeId != null && beforeId > 0)
@@ -1382,7 +1399,14 @@ export function createSessionsRoute(engine, hub = null) {
 
       // all=1 强制全量返回（流式恢复等特殊场景）
       const forceAll = c.req.query("all") === "1";
-      const pageBounds = resolveHistoryPageBounds(sourceMessages, { beforeId, limit, forceAll });
+      const cronPlan = planSessionCronDisplay(sourceMessages);
+      const cronSlots = retainLiveCronSlots(cronPlan.slots, enabledCronJobIds(engine));
+      const pageBounds = resolveHistoryPageBounds(sourceMessages, {
+        beforeId,
+        limit,
+        forceAll,
+        hideIndexes: cronPlan.hide,
+      });
 
       // 提取可显示的消息（user/assistant 文本 + 文件/artifact 工具结果）。
       // 长会话只完整 hydrate 当前页面窗口；窗口外只做轻量可见性扫描，
@@ -1534,7 +1558,8 @@ export function createSessionsRoute(engine, hub = null) {
 
       for (let sourceIndex = 0; sourceIndex < sourceMessages.length; sourceIndex += 1) {
         const m = sourceMessages[sourceIndex];
-        if (m.role === "custom" && (m.customType === LOOP_TURN_MESSAGE_TYPE || m.customType === LOOP_NOTICE_MESSAGE_TYPE)) {
+        if (cronPlan.hide.has(sourceIndex)) continue;
+        if (m.role === "custom" && (m.customType === LOOP_TURN_MESSAGE_TYPE || m.customType === LOOP_NOTICE_MESSAGE_TYPE || m.customType === SESSION_CRON_WAKE_TYPE)) {
           const displayText = typeof m.details?.displayText === "string" ? m.details.displayText.trim() : "";
           if (!displayText) continue;
           const currentIndex = displayIdx;
@@ -1655,6 +1680,14 @@ export function createSessionsRoute(engine, hub = null) {
           }
         }
       }
+
+      placeSessionCronSlots(
+        messages,
+        blocks,
+        cronSlots,
+        pageBounds.endIdx >= pageBounds.total,
+        pageBounds.startIdx,
+      );
 
       if (resolvedSessionPath && typeof deferredStore?.listBySession === "function") {
         for (const task of deferredStore.listBySession(resolvedSessionPath)) {
@@ -2372,7 +2405,13 @@ export function createSessionsRoute(engine, hub = null) {
       // master && session 的临时组合态；否则现有 session 的缓存前缀身份
       // 会被全局 gate 混淆。
       // agentId/agentName 已从 sessionPath 解析，不依赖焦点。
-      const activeModel = session?.model ?? engine.currentModel;
+      const sessionRuntimeModel = session?.model ?? engine.currentModel;
+      // Pi/restored snapshots can omit or retain old capability fields. The
+      // configured model wins, with exact provider identity to avoid mixing
+      // a proxy's restricted ladder with a same-named OAuth model.
+      const activeModel = (engine.availableModels || []).find(model =>
+        model.id === sessionRuntimeModel?.id && model.provider === sessionRuntimeModel?.provider
+      ) || sessionRuntimeModel;
       const modelAvailability = engine.getSessionModelAvailability?.(sessionPath) || null;
       const frozenSessionMemoryEnabled = typeof engine.getSessionMemoryEnabled === "function"
         ? engine.getSessionMemoryEnabled(sessionPath)

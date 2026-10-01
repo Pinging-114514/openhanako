@@ -1391,6 +1391,11 @@ export class BridgeSessionManager {
         const promptOpts = buildPromptMediaOptions(opts);
         const nativeMediaTurn = this._deps.beginCurrentTurnNativeMedia?.(activeSessionPath, opts);
         try {
+          // The loop may have been stopped while its bridge session/model was being prepared.
+          // This guard is evaluated at the input commit boundary, before starting a new turn.
+          if (typeof opts.shouldDeliver === 'function' && opts.shouldDeliver() !== true) {
+            return { text: null, toolMedia: [], error: null, truncated: false, suppressed: true };
+          }
           await session.prompt(promptText, promptOpts);
         } finally {
           this._deps.endCurrentTurnNativeMedia?.(nativeMediaTurn);

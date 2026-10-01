@@ -11,7 +11,7 @@ import type { Editor, JSONContent } from '@tiptap/core';
 import { useStore } from '../stores';
 import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
 import { selectPreviewItems, selectActiveTabId } from '../stores/preview-slice';
-import { sessionScopedListIncludes, sessionScopedValue } from '../stores/session-slice';
+import { sessionScopedKey, sessionScopedListIncludes, sessionScopedValue } from '../stores/session-slice';
 import { getSessionCompactionMode, getSessionLoop, isSessionCompacting } from '../stores/context-slice';
 import { selectSessionFiles } from '../stores/selectors/file-refs';
 import { isImageFile, isVideoFile } from '../utils/format';
@@ -34,6 +34,8 @@ import { MentionMenu, type MentionMenuItem } from './input/MentionMenu';
 import { InputStatusBars } from './input/InputStatusBars';
 import { InputContextRow } from './input/InputContextRow';
 import { InputControlBar } from './input/InputControlBar';
+import { FollowupQueueBar } from './input/FollowupQueueBar';
+import { findFollowupItem, followupSendClaimKey, followupSessionAliases, isFollowupFlushBlocked, resolveFollowupSessionRef, type FollowupItem } from '../stores/followup-queue-slice';
 import type { PermissionMode } from './input/PlanModeButton';
 import { SessionConfirmationPrompt } from './input/SessionConfirmationPrompt';
 import { serializeEditor } from '../utils/editor-serializer';
@@ -66,6 +68,11 @@ import { shouldAllowInputFocus } from '../utils/input-focus-policy';
 import { calculateInputCardBottomInset, parseCssPixels } from '../utils/input-card-layout';
 import { buildWaveformFromBlob, buildWaveformFromPcmChunks } from '../utils/audio-waveform';
 import { prepareChatImageUpload } from '../utils/chat-image-upload-compression';
+import {
+  listUnpersistedOptimisticUserMessages,
+  mergeUnpersistedOptimisticIntoSend,
+  watchOptimisticUserSend,
+} from '../utils/optimistic-user-send';
 import {
   XING_PROMPT, executeDiary, executeCompact, executeSlashViaWs, buildSlashCommands, getSlashMatches,
   resolveSlashSubmitSelection, applySlashCompletion,
@@ -257,6 +264,8 @@ interface SlashTriggerRange {
 interface InputKeyEvent {
   key: string;
   shiftKey: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
   defaultPrevented?: boolean;
   isComposing?: boolean;
   preventDefault: () => void;
@@ -416,6 +425,19 @@ function applyComposerDocument(
 
 export type { SlashItem };
 
+const EMPTY_FOLLOWUPS: FollowupItem[] = [];
+
+// InputArea is remounted on session switches. In-flight queue ownership must outlive that instance.
+const sharedFollowupClaims = new Set<string>();
+const sharedFlushingPaths = new Set<string>();
+const sharedFlushTimers = new Map<string, number>();
+export function resetFollowupSendRuntimeForTest(): void {
+  for (const timer of sharedFlushTimers.values()) window.clearTimeout(timer);
+  sharedFlushTimers.clear();
+  sharedFlushingPaths.clear();
+  sharedFollowupClaims.clear();
+}
+
 function formatLoopCountdown(wakeAt: number | null | undefined, now: number): string | null {
   if (typeof wakeAt !== 'number' || !Number.isFinite(wakeAt)) return null;
   const remainSec = Math.max(0, Math.floor((wakeAt - now) / 1000));
@@ -462,6 +484,13 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const screenshotProgress = useStore(s => s.screenshotProgress);
   const sessionFiles = useStore(s => (s.currentSessionPath ? selectSessionFiles(s, s.currentSessionPath) : EMPTY_FILE_REFS));
   const attachedFiles = useStore(s => s.attachedFiles);
+  const followupQueues = useStore(s => s.followupsBySession);
+  const followups = useStore(s => {
+    const path = s.currentSessionPath;
+    if (!path) return EMPTY_FOLLOWUPS;
+    const key = sessionScopedKey(s, path) || path;
+    return s.followupsBySession?.[key] || s.followupsBySession?.[path] || EMPTY_FOLLOWUPS;
+  });
   const docContextAttached = useStore(s => s.docContextAttached);
   const quotedSelections = useStore(s => s.quotedSelections);
   const deskFiles = useStore(s => s.deskFiles);
@@ -482,7 +511,14 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const sessionModelInfo = useMemo(() => {
     if (!sessionModel) return undefined;
     const full = models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider);
-    return full ? { ...full, ...sessionModel } : sessionModel;
+    // Capabilities come from the current provider configuration, not an old
+    // session snapshot. Keep only session-owned availability restrictions.
+    return full ? {
+      ...sessionModel,
+      ...full,
+      available: sessionModel.available,
+      unavailableReason: sessionModel.unavailableReason,
+    } : sessionModel;
   }, [models, sessionModel]);
   const modelSelectionRequired = !!(currentSessionPath && sessionModel?.available === false);
   const modelUnavailableMessage = modelSelectionRequired
@@ -579,6 +615,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const focusFrameRef = useRef<number | null>(null);
   const audioRecorderRef = useRef<AudioRecorderRuntime | null>(null);
   const audioRecordingSeqRef = useRef(0);
+  const followupClaimsRef = useRef(sharedFollowupClaims);
   const [inputText, setInputText] = useState('');
   const [fileMenuOpen, setFileMenuOpen] = useState(false);
   const [mentionTab, setMentionTab] = useState<MentionTab>('files');
@@ -651,6 +688,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   // Zustand actions
   const addAttachedFile = useStore(s => s.addAttachedFile);
   const removeAttachedFile = useStore(s => s.removeAttachedFile);
+  const setAttachedFiles = useStore(s => s.setAttachedFiles);
+  const composerResendRequest = useStore(s => s.composerResendRequest);
   const clearAttachedFiles = useStore(s => s.clearAttachedFiles);
   const clearAttachedFilesForSession = useStore(s => s.clearAttachedFilesForSession);
   const setDocContextAttached = useStore(s => s.setDocContextAttached);
@@ -684,6 +723,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   const getEditorPlaceholder = useCallback(() => placeholderRef.current, []);
   const placeholder = (() => {
     if (welcomeVisible && welcomeTip) return welcomeTip;
+    if (isStreaming) return t('input.followupPlaceholder');
     const yuanPh = t(`yuan.placeholder.${agentYuan}`);
     return (yuanPh && !yuanPh.startsWith('yuan.')) ? yuanPh : t('input.placeholder');
   })();
@@ -772,8 +812,8 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         upperChromeHeight,
       });
 
-      parent.style.setProperty('--input-card-h', `${cardHeight}px`);
-      parent.style.setProperty('--input-card-bottom-inset', `${bottomInset}px`);
+      parent.style.setProperty('--input-card-h', `${Math.round(cardHeight)}px`);
+      parent.style.setProperty('--input-card-bottom-inset', `${Math.round(bottomInset)}px`);
     };
 
     updateMetrics();
@@ -1757,46 +1797,82 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
   }, [addToast, editor, fileMentionRange, handleFileMentionSelect, inputLocked, t]);
 
   // ── Send / interject message ──
-  const submitEditorMessage = useCallback(async (type: 'prompt' | 'interject') => {
-    if (inputLocked) return;
-    if (!editor) return;
-    await waitForPendingAttachments();
-    if (pendingAttachmentJobsRef.current > 0) {
-      addToast(t('input.attachmentsStillUploading'), 'warning', 6000, {
-        dedupeKey: 'attachments-still-uploading',
-      });
-      return;
-    }
-    const editorJson = editor.getJSON();
-    const { text: rawText, skills, fileRefs, sessionRefs, agentMentions } = serializeEditor(editorJson);
-    const text = rawText.trim();
+  const submitEditorMessage = useCallback(async (type: 'prompt' | 'interject' | 'queue', source?: FollowupItem, queueOwner?: Readonly<SessionRef>): Promise<boolean> => {
+    // Queue ownership is captured before any await, independently of UI focus.
     const clickState = useStore.getState();
-    const clickedPendingDraftId = clickState.pendingNewSession ? clickState.pendingDraftId : null;
-    const clickedSessionPath = clickState.currentSessionPath;
+    if (source && !queueOwner) return false;
+    if (!source && inputLocked) return false;
+    if (!editor && !source) return false;
+    if (!source) {
+      await waitForPendingAttachments();
+      if (pendingAttachmentJobsRef.current > 0) {
+        addToast(t('input.attachmentsStillUploading'), 'warning', 6000, {
+          dedupeKey: 'attachments-still-uploading',
+        });
+        return false;
+      }
+      const afterUploads = useStore.getState();
+      if (afterUploads.currentSessionPath !== clickState.currentSessionPath
+        || afterUploads.currentSessionId !== clickState.currentSessionId
+        || afterUploads.pendingDraftId !== clickState.pendingDraftId) return false;
+    }
+    const editorJson = source?.editorJson || editor!.getJSON();
+    const serialized = source
+      ? {
+        text: source.text,
+        skills: source.skills,
+        fileRefs: [],
+        sessionRefs: source.sessionRefs,
+        agentMentions: source.agentMentions,
+      }
+      : serializeEditor(editorJson);
+    const { text: rawText, skills, fileRefs, sessionRefs, agentMentions } = serialized;
+    let text = rawText.trim();
+    const clickedPendingDraftId = !source && clickState.pendingNewSession ? clickState.pendingDraftId : null;
+    const clickedSessionPath = source ? queueOwner!.sessionPath : clickState.currentSessionPath;
     const clickedProjection = clickedSessionPath
       ? clickState.sessions.find(session => session.path === clickedSessionPath)
       : null;
-    const clickedSessionId = clickState.currentSessionId || clickedProjection?.sessionId || null;
-    const clickedAgentId = clickedProjection?.agentId || clickState.currentAgentId || null;
+    if (source && clickedProjection?.agentDeleted) return false;
+    const clickedSessionId = source ? queueOwner!.sessionId : clickState.currentSessionId || clickedProjection?.sessionId || null;
+    const clickedAgentId = source ? queueOwner!.agentId : clickedProjection?.agentId || clickState.currentAgentId || null;
     const clickedSessionRef: Readonly<SessionRef> | null = clickedSessionPath && clickedSessionId && clickedAgentId
       ? Object.freeze({ sessionId: clickedSessionId, sessionPath: clickedSessionPath, agentId: clickedAgentId })
       : null;
-    const clickedAttachedFiles = useStore.getState().attachedFiles.map(file => ({ ...file }));
-    const clickedQuotes = clickState.quotedSelections.map(quote => ({ ...quote }));
-    const clickedDocContextAttached = docContextAttached;
-    const clickedDoc = currentDoc ? { ...currentDoc } : null;
-    const clickedUiContext = collectUiContext(clickState);
+    const clickedAttachedFiles = (source?.attachedFiles || useStore.getState().attachedFiles).map(file => ({ ...file }));
+    const clickedQuotes = (source?.quotes || clickState.quotedSelections).map(quote => ({ ...quote }));
+    const clickedDocContextAttached = source ? source.docContextAttached : docContextAttached;
+    const clickedDoc = source ? (source.doc ? { ...source.doc } : null) : (currentDoc ? { ...currentDoc } : null);
+    const clickedUiContext = source ? null : collectUiContext(clickState);
+    const targetSnapshot = clickedSessionPath
+      ? sessionScopedValue(clickState, clickState.sessionModelsByPath, clickedSessionPath)
+      : undefined;
+    const targetFullModel = targetSnapshot
+      ? clickState.models.find(model => model.id === targetSnapshot.id && model.provider === targetSnapshot.provider)
+      : undefined;
+    const modelForSend = source
+      ? (targetFullModel ? { ...targetFullModel, ...targetSnapshot } : targetSnapshot || null)
+      : currentModelInfo;
+    const supportsVisionForSend = !Array.isArray(modelForSend?.input) || modelForSend.input.includes('image');
+    let sendType: 'prompt' | 'interject' = type === 'interject' ? 'interject' : 'prompt';
+    const liveState = useStore.getState();
+    const liveStreaming = sessionScopedListIncludes(
+      liveState,
+      liveState.streamingSessions,
+      clickedSessionPath,
+    );
+    if (sendType === 'interject' && !liveStreaming) sendType = 'prompt';
 
     if (agentMentions.length > 1) {
       addToast(t('input.mention.singleAgent'), 'warning', 5000);
-      return;
+      return false;
     }
-    if (type === 'interject' && agentMentions.length > 0) {
+    if ((type === 'interject' || sendType === 'interject') && agentMentions.length > 0) {
       addToast(t('agentReview.interjectionUnavailable'), 'warning', 5000);
-      return;
+      return false;
     }
 
-    if (type === 'prompt') {
+    if (type === 'prompt' && !source) {
       const slashSelection = resolveSlashSubmitSelection({
         text,
         skills,
@@ -1806,11 +1882,21 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       });
       if (slashSelection) {
         handleSlashSelect(slashSelection);
-        return;
+        return false;
       }
     }
 
-    const inputFiles = mergeEditorFileRefs(clickedAttachedFiles, fileRefs);
+    let inputFiles = mergeEditorFileRefs(clickedAttachedFiles, fileRefs);
+    let consumedOptimisticIds: string[] = [];
+    if (clickedSessionPath && !source && (type === 'queue' || sendType === 'prompt')) {
+      const leftover = listUnpersistedOptimisticUserMessages(clickedSessionPath);
+      if (leftover.length) {
+        const merged = mergeUnpersistedOptimisticIntoSend({ text, files: inputFiles, leftover });
+        text = merged.text;
+        inputFiles = merged.files;
+        consumedOptimisticIds = merged.consumedIds;
+      }
+    }
     const hasFiles = inputFiles.length > 0;
     // 空输入静默 return 是合理行为（不是错误），不加 toast；与按钮侧 hasContent 共用同一份谓词（#2101）。
     if (composerPayloadIsEmpty({
@@ -1820,15 +1906,15 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       hasMentions: sessionRefs.length > 0 || agentMentions.length > 0,
       hasDocContext: clickedDocContextAttached,
       hasQuotes: clickedQuotes.length > 0,
-    }) || !connected) return;
-    if (type === 'prompt' && isStreaming) return;
-    if (type === 'interject' && !isStreaming) return;
-    if (sending) return;
-    if (modelSwitching) return;
-    if (useStore.getState().pendingSessionSwitchPath) return;
+    }) || !connected) return false;
+    if (type !== 'queue' && sendType === 'prompt' && liveStreaming) return false;
+    if (type !== 'queue' && sendType === 'interject' && !liveStreaming) return false;
+    if (!source && sending) return false;
+    if (!source && modelSwitching) return false;
+    if (!source && useStore.getState().pendingSessionSwitchPath) return false;
     const guardState = useStore.getState();
-    const guardModel = guardState.currentSessionPath
-      ? sessionScopedValue(guardState, guardState.sessionModelsByPath, guardState.currentSessionPath)
+    const guardModel = clickedSessionPath
+      ? sessionScopedValue(guardState, guardState.sessionModelsByPath, clickedSessionPath)
       : undefined;
     if (guardModel?.available === false) {
       guardState.addToast(
@@ -1837,22 +1923,64 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         6000,
         { dedupeKey: 'session-model-unavailable' },
       );
-      return;
+      return false;
+    }
+    if (type === 'queue') {
+      const queuePath = clickedSessionPath;
+      if (!queuePath) {
+        useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
+          dedupeKey: 'send-missing-session',
+        });
+        return false;
+      }
+      useStore.getState().enqueueFollowup(queuePath, {
+        text,
+        editorJson,
+        skills,
+        sessionRefs,
+        agentMentions,
+        attachedFiles: inputFiles,
+        quotes: clickedQuotes,
+        docContextAttached: clickedDocContextAttached,
+        doc: clickedDoc,
+      });
+      clearDraft(queuePath);
+      clearAttachedFilesForSession(queuePath);
+      if (editor) editor.commands.clearContent();
+      if (clickedDocContextAttached) setDocContextAttached(false);
+      if (clickedQuotes.length > 0) useStore.getState().clearQuotedSelections();
+      if (consumedOptimisticIds.length) {
+        useStore.getState().removeOptimisticUserMessages(queuePath, consumedOptimisticIds);
+      }
+      return true;
     }
     if (type === 'prompt') {
       // 压缩 / 能力刷新（fresh compact）期间禁发 prompt：此窗口内 session 没有
       // 可用 runtime，发消息会冷建第二个 runtime 与压缩后的 reload 竞争（#1624 I2）。
       // Enter 发送不走 canSend，必须在提交路径同样拦截；按 keyed 状态现读现查。
       const guardState = useStore.getState();
-      const guardPath = guardState.currentSessionPath;
+      const guardPath = clickedSessionPath;
       if (guardPath && (
         sessionScopedListIncludes(guardState, guardState.capabilityRefreshingSessions, guardPath)
         || isSessionCompacting(guardState, guardPath)
-      )) return;
+      )) return false;
     }
-    setSending(true);
+    if (!source) setSending(true);
+    let claimedFollowupKey: string | null = null;
 
     try {
+      if (source && queueOwner) {
+        const claimKey = followupSendClaimKey(queueOwner, source.id);
+        const live = findFollowupItem(useStore.getState(), queueOwner.sessionPath, source.id);
+        if (
+          followupClaimsRef.current.has(claimKey)
+          || !live
+          || live.id !== source.id
+          || (live.revision ?? 0) !== (source.revision ?? 0)
+        ) return false;
+        followupClaimsRef.current.add(claimKey);
+        claimedFollowupKey = claimKey;
+      }
       let sessionRef = clickedSessionRef;
       if (clickedPendingDraftId) {
         sessionRef = await ensureSession(clickedPendingDraftId);
@@ -1861,7 +1989,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
             dedupeKey: 'send-missing-session',
           });
-          return;
+          return false;
         }
         loadSessions();
       }
@@ -1870,7 +1998,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         useStore.getState().addToast(t('error.noActiveSession'), 'error', 6000, {
           dedupeKey: 'send-missing-session',
         });
-        return;
+        return false;
       }
 
       // 分离原生媒体和普通附件；后端决定图片视觉桥、视频/音频原生能力或显式报错。
@@ -1880,7 +2008,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
 
       const imagePreflight = await evaluateChatImageSendPreflight({
         attachments: inputFiles,
-        model: currentModelInfo,
+        model: modelForSend,
         loadVisionAuxiliaryConfig,
       });
       // #1647：视觉能力不可用不再拦下整条消息。图片始终携带文件身份
@@ -1891,12 +2019,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         notifyTextModelImageFileOnly({
           t,
           addToast: useStore.getState().addToast,
-          openSettings: () => openProviderModelSettings(currentModelInfo?.provider),
+          openSettings: () => openProviderModelSettings(modelForSend?.provider),
         });
       }
       const videoPreflight = await evaluateChatVideoSendPreflight({
         attachments: inputFiles,
-        model: currentModelInfo,
+        model: modelForSend,
       });
       const sendVideosNatively = videoPreflight.ok && videoPreflight.reason === 'native-video';
       const videosAsFileOnly = !videoPreflight.ok;
@@ -1904,12 +2032,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
         notifyTextModelVideoFileOnly({
           t,
           addToast: useStore.getState().addToast,
-          openSettings: () => openProviderModelSettings(currentModelInfo?.provider),
+          openSettings: () => openProviderModelSettings(modelForSend?.provider),
         });
       }
       const audioPreflight = await evaluateChatAudioSendPreflight({
         attachments: inputFiles,
-        model: currentModelInfo,
+        model: modelForSend,
       });
       const sendAudiosNatively = audioPreflight.ok && audioPreflight.reason === 'native-audio';
       const otherFiles = hasFiles ? inputFiles.filter(f =>
@@ -1997,7 +2125,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           useStore.getState().addToast(t('input.audioReadFailed'), 'error', 6000, {
             dedupeKey: `audio-read-failed:${audio.path}`,
           });
-          return;
+          return false;
         }
       }
       for (const video of sendVideosNatively ? videoFiles : []) {
@@ -2020,7 +2148,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           useStore.getState().addToast(t('input.videoReadFailed'), 'error', 6000, {
             dedupeKey: `video-read-failed:${video.path}`,
           });
-          return;
+          return false;
         }
       }
 
@@ -2043,24 +2171,41 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
       const allFiles = [...(hasFiles ? inputFiles : [])];
       if (docForRender) allFiles.push({ path: docForRender.path, name: docForRender.name });
 
-      const beforeCleanup = useStore.getState();
-      const stillOwnsPendingComposer = !!clickedPendingDraftId
-        && beforeCleanup.pendingNewSession === true
-        && beforeCleanup.pendingDraftId === clickedPendingDraftId;
-      const stillOwnsComposer = stillOwnsPendingComposer || (
-        beforeCleanup.currentSessionId === sessionRef.sessionId
-        && beforeCleanup.currentSessionPath === sessionRef.sessionPath
-      );
-      clearDraft(sessionRef.sessionPath);
-      clearAttachedFilesForSession(sessionRef.sessionPath);
-      if (clickedPendingDraftId && beforeCleanup.pendingDraftId === clickedPendingDraftId) {
-        clearDraft(HOME_DRAFT_KEY);
+      if (!source) {
+        const beforeCleanup = useStore.getState();
+        const stillOwnsPendingComposer = !!clickedPendingDraftId
+          && beforeCleanup.pendingNewSession === true
+          && beforeCleanup.pendingDraftId === clickedPendingDraftId;
+        const stillOwnsComposer = stillOwnsPendingComposer || (
+          beforeCleanup.currentSessionId === sessionRef.sessionId
+          && beforeCleanup.currentSessionPath === sessionRef.sessionPath
+        );
+        clearDraft(sessionRef.sessionPath);
+        clearAttachedFilesForSession(sessionRef.sessionPath);
+        if (clickedPendingDraftId && beforeCleanup.pendingDraftId === clickedPendingDraftId) {
+          clearDraft(HOME_DRAFT_KEY);
+        }
+        if (stillOwnsComposer && editor) {
+          editor.commands.clearContent();
+          if (stillOwnsPendingComposer) clearAttachedFiles();
+          if (clickedDocContextAttached) setDocContextAttached(false);
+          if (clickedQuotes.length > 0) useStore.getState().clearQuotedSelections();
+        }
       }
-      if (stillOwnsComposer) {
-        editor.commands.clearContent();
-        if (stillOwnsPendingComposer) clearAttachedFiles();
-        if (clickedDocContextAttached) setDocContextAttached(false);
-        if (clickedQuotes.length > 0) useStore.getState().clearQuotedSelections();
+
+      if (source) {
+        const latest = useStore.getState();
+        const ownerNow = resolveFollowupSessionRef(latest, sessionRef.sessionId);
+        if (!ownerNow || ownerNow.sessionPath !== sessionRef.sessionPath || ownerNow.agentId !== sessionRef.agentId) return false;
+        if (sendType === 'prompt' && isFollowupFlushBlocked(latest, sessionRef.sessionPath)) return false;
+        const live = findFollowupItem(latest, sessionRef.sessionPath, source.id);
+        if (
+          !live
+          || live.id !== source.id
+          || (live.revision ?? 0) !== (source.revision ?? 0)
+          || !claimedFollowupKey
+          || !followupClaimsRef.current.has(claimedFollowupKey)
+        ) return false;
       }
 
       const clientMessageId = createClientUserMessageId();
@@ -2081,7 +2226,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             name: f.name,
             isDir: !!f.isDirectory,
             mimeType: f.mimeType || cached?.mimeType || cachedVideo?.mimeType || cachedAudio?.mimeType || undefined,
-            visionAuxiliary: imageFile && !supportsVision && !imagesAsFileOnly && !imageFileOnlyPaths.has(f.path),
+            visionAuxiliary: imageFile && !supportsVisionForSend && !imagesAsFileOnly && !imageFileOnlyPaths.has(f.path),
             ...(f.waveform ? { waveform: f.waveform } : {}),
           };
         }) : undefined,
@@ -2103,10 +2248,16 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           reviewerAgentName: agentMentions[0].label,
         } : undefined,
       });
+      if (consumedOptimisticIds.length) {
+        useStore.getState().removeOptimisticUserMessages(
+          sessionPathForSend,
+          consumedOptimisticIds.filter((id) => id !== clientMessageId),
+        );
+      }
 
       const ws = getWebSocket();
       const wsMsg: Record<string, unknown> = {
-        type,
+        type: sendType,
         clientMessageId,
         text: finalText,
         sessionId: sessionRef.sessionId,
@@ -2127,29 +2278,50 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
           clientMessageId,
           'websocket_unavailable',
         );
-        return;
+        return false;
       }
       try {
         ws.send(JSON.stringify(wsMsg));
+        // Commit queue removal while the shared claim is still held, before any await continuation.
+        if (source && queueOwner) useStore.getState().removeFollowup(queueOwner.sessionPath, source.id);
+        watchOptimisticUserSend(sessionPathForSend, clientMessageId);
         upsertOptimisticSessionFirstMessage(sessionPathForSend, text, new Date().toISOString());
+        return true;
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         useStore.getState().markOptimisticUserMessageFailed(sessionPathForSend, clientMessageId, message);
         throw err;
       }
     } finally {
-      setSending(false);
+      if (claimedFollowupKey) followupClaimsRef.current.delete(claimedFollowupKey);
+      if (!source) setSending(false);
     }
-  }, [addToast, editor, inputLocked, docContextAttached, connected, isStreaming, sending, currentDoc, clearAttachedFiles, clearAttachedFilesForSession, clearDraft, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, supportsVision, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t, waitForPendingAttachments]);
+  }, [addToast, editor, inputLocked, docContextAttached, connected, isStreaming, sending, currentDoc, clearAttachedFiles, clearAttachedFilesForSession, clearDraft, setDocContextAttached, slashCommands, slashSelected, handleSlashSelect, currentModelInfo, loadVisionAuxiliaryConfig, modelSwitching, t, waitForPendingAttachments]);
 
   const handleSend = useCallback(async () => {
     await submitEditorMessage('prompt');
   }, [submitEditorMessage]);
 
-  // ── Steer ──
+  const handleQueue = useCallback(async () => {
+    await submitEditorMessage('queue');
+  }, [submitEditorMessage]);
+
   const handleSteer = useCallback(async () => {
     await submitEditorMessage('interject');
   }, [submitEditorMessage]);
+
+  useEffect(() => {
+    if (!composerResendRequest || !editor) return;
+    if (composerResendRequest.sessionPath !== currentSessionPath) return;
+    applyComposerDocument(editor, plainTextToEditorDocument(composerResendRequest.text), setInputText);
+    setAttachedFiles(composerResendRequest.attachedFiles.map((file) => ({ ...file })));
+    const autoSend = composerResendRequest.autoSend;
+    useStore.getState().clearComposerResend();
+    useStore.getState().requestInputFocus('restore');
+    if (autoSend) {
+      void Promise.resolve().then(() => submitEditorMessage('prompt'));
+    }
+  }, [composerResendRequest, currentSessionPath, editor, setAttachedFiles, submitEditorMessage]);
 
   // ── Stop ──
   const handleStop = useCallback(() => {
@@ -2163,6 +2335,147 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     if (!request) return;
     ws.send(JSON.stringify(request));
   }, [isStreaming]);
+
+  const handleSteerFollowup = useCallback(async (item: FollowupItem) => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path) return;
+    if (item.agentMentions.length > 0) {
+      addToast(t('agentReview.interjectionUnavailable'), 'warning', 5000);
+      return;
+    }
+    const owner = resolveFollowupSessionRef(useStore.getState(), path);
+    if (!owner) return;
+    const ok = await submitEditorMessage('interject', item, owner);
+    if (ok) useStore.getState().removeFollowup(owner.sessionPath, item.id);
+  }, [addToast, submitEditorMessage, t]);
+
+  const handleSendFollowup = useCallback(async (item: FollowupItem) => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path) return;
+    const owner = resolveFollowupSessionRef(useStore.getState(), path);
+    if (!owner) return;
+    const ok = await submitEditorMessage('prompt', item, owner);
+    if (ok) useStore.getState().removeFollowup(owner.sessionPath, item.id);
+  }, [submitEditorMessage]);
+
+  const handleEditFollowup = useCallback((item: FollowupItem) => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path || !editor) return;
+    useStore.getState().removeFollowup(path, item.id);
+    applyComposerDocument(editor, item.editorJson, setInputText);
+    setAttachedFiles(item.attachedFiles.map((file) => ({ ...file })));
+    useStore.getState().setQuotedSelections(item.quotes.map((quote) => ({ ...quote })));
+    setDocContextAttached(item.docContextAttached);
+    editor.commands.focus();
+  }, [editor, setAttachedFiles, setDocContextAttached]);
+
+  const handleDeleteFollowup = useCallback((item: FollowupItem) => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path) return;
+    useStore.getState().removeFollowup(path, item.id);
+  }, []);
+
+  const handleReorderFollowup = useCallback((id: string, targetIndex: number) => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path) return;
+    useStore.getState().reorderFollowup(path, id, targetIndex);
+  }, []);
+
+  const handleClearFollowups = useCallback(() => {
+    const path = useStore.getState().currentSessionPath;
+    if (!path) return;
+    useStore.getState().clearFollowups(path);
+  }, []);
+
+  const [multitaskBusy, setMultitaskBusy] = useState(false);
+  const handleMultitask = useCallback(() => {
+    const ws = getWebSocket();
+    const path = useStore.getState().currentSessionPath;
+    if (!ws || !path || !isStreaming || multitaskBusy) return;
+    setMultitaskBusy(true);
+    try {
+      ws.send(JSON.stringify({ type: 'multitask', sessionPath: path }));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      addToast(message || t('error.code.multitaskFailed'), 'error', 6000);
+      setMultitaskBusy(false);
+    }
+  }, [addToast, isStreaming, multitaskBusy, t]);
+
+  const flushingPathsRef = useRef(sharedFlushingPaths);
+  const flushTimersRef = useRef(sharedFlushTimers);
+  const lockFollowupFlush = useCallback((token: string) => {
+    const aliases = followupSessionAliases(useStore.getState(), token);
+    for (const alias of aliases) flushingPathsRef.current.add(alias);
+    return aliases;
+  }, []);
+  const unlockFollowupFlush = useCallback((token: string) => {
+    const aliases = followupSessionAliases(useStore.getState(), token);
+    for (const alias of aliases) {
+      flushingPathsRef.current.delete(alias);
+      const timer = flushTimersRef.current.get(alias);
+      if (timer) {
+        window.clearTimeout(timer);
+        flushTimersRef.current.delete(alias);
+      }
+    }
+  }, []);
+  const flushFollowupForKey = useCallback((key: string) => {
+    if (!key || flushingPathsRef.current.has(key)) return;
+    const state = useStore.getState();
+    if (isFollowupFlushBlocked(state, key)) return;
+    const item = state.peekFollowup(key);
+    if (!item) return;
+    const owner = resolveFollowupSessionRef(state, key);
+    if (!owner) return;
+    const aliases = lockFollowupFlush(key);
+    void submitEditorMessage('prompt', item, owner).then((ok) => {
+      if (!ok) {
+        unlockFollowupFlush(key);
+        return;
+      }
+      useStore.getState().removeFollowup(owner.sessionPath, item.id);
+      // 发出去到 streamingSessions 标上之前还有空窗。这里不能立刻解锁，
+      // 否则 idle effect 会把下一条也打出去，服务端回 session_busy。
+      if (isFollowupFlushBlocked(useStore.getState(), key)) {
+        unlockFollowupFlush(key);
+        return;
+      }
+      const timer = window.setTimeout(() => unlockFollowupFlush(key), 15000);
+      for (const alias of aliases) flushTimersRef.current.set(alias, timer);
+    }).catch(() => {
+      unlockFollowupFlush(key);
+    });
+  }, [lockFollowupFlush, submitEditorMessage, unlockFollowupFlush]);
+  useEffect(() => {
+    if (isStreaming) setMultitaskBusy(false);
+  }, [isStreaming]);
+  // Shared locks/timers intentionally survive a keyed InputArea unmount. They are released
+  // by send failure, the owner's stream-start event, or the bounded acknowledgement timeout.
+  useEffect(() => {
+    return useStore.subscribe((state, prev) => {
+      for (const key of state.streamingSessions || []) {
+        if ((prev.streamingSessions || []).includes(key)) continue;
+        unlockFollowupFlush(key);
+      }
+      for (const key of prev.streamingSessions || []) {
+        if ((state.streamingSessions || []).includes(key)) continue;
+        flushFollowupForKey(key);
+      }
+      for (const key of Object.keys(state.followupsBySession || {})) {
+        const wasBlocked = isFollowupFlushBlocked(prev, key);
+        const blocked = isFollowupFlushBlocked(state, key);
+        if (wasBlocked && !blocked) flushFollowupForKey(key);
+      }
+    });
+  }, [flushFollowupForKey, unlockFollowupFlush]);
+  useEffect(() => {
+    if (!connected) return;
+    const state = useStore.getState();
+    for (const key of Object.keys(state.followupsBySession || {})) {
+      if (!isFollowupFlushBlocked(state, key)) flushFollowupForKey(key);
+    }
+  }, [connected, flushFollowupForKey, followupQueues]);
 
   // ── Key handler ──
   const handleEditorKeyDown = useCallback((e: InputKeyEvent): boolean => {
@@ -2220,7 +2533,12 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     }
     if (e.key === 'Enter' && !e.shiftKey && !isComposing.current && !e.isComposing) {
       e.preventDefault();
-      if (isStreaming && hasContent) handleSteer(); else handleSend();
+      if (isStreaming && hasContent) {
+        if (e.ctrlKey || e.metaKey) handleSteer();
+        else handleQueue();
+      } else {
+        handleSend();
+      }
       return true;
     }
     return false;
@@ -2234,6 +2552,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
     fileSelected,
     filteredCommands,
     handleMentionSelect,
+    handleQueue,
     handleSend,
     handleSteer,
     handleSlashSelect,
@@ -2342,6 +2661,18 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             exiting={sessionConfirmationExiting}
           />
         )}
+        <FollowupQueueBar
+          items={followups}
+          isStreaming={isStreaming}
+          onSteer={handleSteerFollowup}
+          onSend={handleSendFollowup}
+          onEdit={handleEditFollowup}
+          onDelete={handleDeleteFollowup}
+          onReorder={handleReorderFollowup}
+          onClear={handleClearFollowups}
+          onMultitask={handleMultitask}
+          multitaskBusy={multitaskBusy}
+        />
         <div className={styles['input-wrapper']} ref={inputCardRef}>
           <input
             ref={browserFileInputRef}
@@ -2383,7 +2714,7 @@ function InputAreaInner({ surface }: Required<InputAreaProps>) {
             audioRecordingBusy={audioRecordingState === 'starting' || audioRecordingState === 'stopping'}
             onAudioToggle={handleAudioRecordToggle}
             onSend={handleSend}
-            onSteer={handleSteer}
+            onQueue={handleQueue}
             onStop={handleStop}
           />
           {audioRecorderOpen && showAudioInput && (

@@ -141,6 +141,7 @@ describe("subagent-tool (executeIsolated 原子模式)", () => {
     expect((result.details as any).threadId).toBe(taskId);
     expect((result.details as any).threadKind).toBe("direct");
     expect(threadStore.beginRun).toHaveBeenCalledWith(taskId, expect.objectContaining({
+      taskId,
       kind: "direct",
       parentSessionPath: "/test/session.jsonl",
       agentId: "other-agent",
@@ -1147,6 +1148,7 @@ describe("subagent-tool direct instance lifecycle", () => {
         access: "read",
         summary: "ok",
         runCount: 1,
+        lastRunTaskId: (res.details as any).taskId,
       });
     });
   });
@@ -1228,6 +1230,7 @@ describe("subagent-tool direct instance lifecycle", () => {
     await vi.waitFor(() => {
       expect(threadStore.get("subagent-thread-1")).toMatchObject({
         runCount: 2,
+        lastRunTaskId: (res.details as any).taskId,
         summary: "continued",
         status: "open",
         lastRunStatus: "resolved",

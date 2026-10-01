@@ -10,6 +10,7 @@
  */
 import { readFileSync } from "fs";
 import { fromRoot } from "./hana-root.ts";
+import { lookupReferenceMetadata } from "./model-reference-lookup.ts";
 
 let _raw = null;
 let _fallbacks = null;
@@ -105,6 +106,15 @@ export function lookupKnownWithSource(provider, modelId) {
  */
 export function lookupKnown(provider, modelId) {
   return lookupKnownWithSource(provider, modelId)?.metadata || null;
+}
+
+/**
+ * 设置页模型卡用的查找。未保存的思考档、上下文和模态跟这张卡走。
+ * 不要把返回值里的 api / thinkingLevelMap / compat 抄进未知代理的请求。
+ */
+export function lookupDisplayModelMeta(provider, modelId) {
+  _ensureLoaded();
+  return lookupReferenceMetadata(_raw, _fallbacks, provider, modelId);
 }
 
 /**

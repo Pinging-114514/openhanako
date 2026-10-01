@@ -28,7 +28,7 @@ import { isLocalBaseUrl } from "../shared/net-utils.ts";
 import { normalizeProviderHeaders, stripCredentialHeaders } from "../shared/provider-auth.ts";
 import { syncModels } from "./model-sync.ts";
 import { enrichModelFromKnownMetadata } from "./model-known-enrichment.ts";
-import { lookupKnownProvider } from "../shared/known-models.ts";
+import { lookupDisplayModelMeta, lookupKnownProvider } from "../shared/known-models.ts";
 import { migrateLegacyApiKeyAuthToProviders } from "./provider-auth-migration.ts";
 import {
   deriveThinkingLevelMap,
@@ -77,7 +77,16 @@ function buildProviderModelMetadataMap(projectionPlans: unknown) {
       if (isRecord(modelEntry)) {
         if (modelEntry.defaultThinkingLevel !== undefined) meta.defaultThinkingLevel = modelEntry.defaultThinkingLevel;
         const thinkingLevels = normalizeThinkingLevelChoices(modelEntry.thinkingLevels);
-        if (thinkingLevels) meta.thinkingLevels = thinkingLevels;
+        if (thinkingLevels) {
+          meta.thinkingLevels = thinkingLevels;
+          meta.thinkingLevelsUserSaved = true;
+        }
+        if (modelEntry.context !== undefined || modelEntry.contextWindow !== undefined) meta.contextUserSaved = true;
+        if (modelEntry.maxOutput !== undefined || modelEntry.maxTokens !== undefined || modelEntry.maxOutputTokens !== undefined) {
+          meta.maxOutputUserSaved = true;
+        }
+        if (modelEntry.image !== undefined || modelEntry.vision !== undefined) meta.imageUserSaved = true;
+        if (modelEntry.reasoning !== undefined) meta.reasoningUserSaved = true;
         if (modelEntry.thinkingLevelMap !== undefined && isRecord(modelEntry.thinkingLevelMap)) {
           meta.thinkingLevelMap = structuredClone(modelEntry.thinkingLevelMap);
         }
@@ -108,10 +117,34 @@ function buildProviderModelMetadataMap(projectionPlans: unknown) {
   return map;
 }
 
+function overlayUnsavedDisplayCard(model) {
+  if (!model?.id) return model;
+  const card = lookupDisplayModelMeta(model.provider, model.id);
+  if (!card) return model;
+  const next = { ...model };
+  if (!next.contextUserSaved && typeof card.context === "number") {
+    next.contextWindow = card.context;
+  }
+  if (!next.maxOutputUserSaved && typeof card.maxOutput === "number") {
+    next.maxTokens = card.maxOutput;
+  }
+  if (!next.imageUserSaved && (card.image === true || card.vision === true)) {
+    const input = Array.isArray(next.input) ? next.input : ["text"];
+    if (!input.includes("image")) next.input = ["text", "image"];
+  }
+  if (!next.reasoningUserSaved && card.reasoning === true && next.reasoning !== true) next.reasoning = true;
+  return next;
+}
+
 function applyProviderModelMetadata(model, metadataByModel) {
   const meta = metadataByModel.get(modelMetadataKey(model?.provider, model?.id));
-  if (!meta) return model;
-  const merged = { ...model, ...meta };
+  const merged = overlayUnsavedDisplayCard(meta ? { ...model, ...meta } : { ...model });
+  if (!merged.thinkingLevelsUserSaved) {
+    const displayed = normalizeThinkingLevelChoices(
+      lookupDisplayModelMeta(merged.provider, merged.id)?.thinkingLevels,
+    );
+    if (displayed) merged.thinkingLevels = displayed;
+  }
   const thinkingLevels = normalizeThinkingLevelChoices(merged.thinkingLevels);
   if (thinkingLevels) {
     merged.thinkingLevels = thinkingLevels;
@@ -127,6 +160,10 @@ function applyProviderModelMetadata(model, metadataByModel) {
   if (typeof merged.defaultThinkingLevel === "string") {
     merged.defaultThinkingLevel = normalizeThinkingLevelForModel(merged.defaultThinkingLevel, merged);
   }
+  delete merged.contextUserSaved;
+  delete merged.maxOutputUserSaved;
+  delete merged.imageUserSaved;
+  delete merged.reasoningUserSaved;
   return merged;
 }
 

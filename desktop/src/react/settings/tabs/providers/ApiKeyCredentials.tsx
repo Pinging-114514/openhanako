@@ -40,9 +40,16 @@ async function saveProviderConfigPatch(providerId: string, patch: Record<string,
   invalidateConfigCache();
 }
 
-function shouldDiscoverModelsBeforeSave(providerId: string, api: string, payload: Record<string, unknown>) {
-  return payload.seed_default_models === true
-    && (providerId === 'gemini' || api === 'google-generative-ai');
+function shouldDiscoverModelsBeforeSave(_providerId: string, _api: string, payload: Record<string, unknown>) {
+  return payload.seed_default_models === true;
+}
+
+function catalogModels(data: { models?: unknown }): Array<string | Record<string, unknown>> | null {
+  if (!Array.isArray(data?.models) || data.models.length === 0) return null;
+  const models = data.models
+    .map(compactDiscoveredModel)
+    .filter((model): model is string | Record<string, unknown> => !!model);
+  return models.length > 0 ? models : null;
 }
 
 function compactDiscoveredModel(model: DiscoveredProviderModel): string | Record<string, unknown> | null {
@@ -59,10 +66,12 @@ async function resolveModelsForInitialSave(
   plan: ReturnType<typeof getApiKeySavePlan>,
   headers: Record<string, string>,
   includeHeaders: boolean,
-): Promise<Record<string, unknown>> {
+): Promise<{ payload: Record<string, unknown>; usedFallback: boolean }> {
   const payload = { ...plan.payload };
   if (includeHeaders) payload.headers = headers;
-  if (!shouldDiscoverModelsBeforeSave(providerId, plan.api, payload)) return payload;
+  if (!shouldDiscoverModelsBeforeSave(providerId, plan.api, payload)) {
+    return { payload, usedFallback: false };
+  }
 
   try {
     const res = await hanaFetch('/api/providers/fetch-models', {
@@ -77,18 +86,22 @@ async function resolveModelsForInitialSave(
       }),
     });
     const data = await res.json();
-    const models = Array.isArray(data.models)
-      ? data.models.map(compactDiscoveredModel).filter(Boolean)
-      : [];
-    if (!data.error && models.length > 0) {
+    const models = catalogModels(data);
+    if (data?.source === 'remote' && models) {
       payload.models = models;
       delete payload.seed_default_models;
+      return { payload, usedFallback: false };
+    }
+    if (models) {
+      payload.models = models;
+      delete payload.seed_default_models;
+      return { payload, usedFallback: true };
     }
   } catch {
-    // Keep seed_default_models as the explicit static fallback for initial setup.
+    // 在线目录没回来时保留 seed_default_models，由服务端写入本地列表。
   }
 
-  return payload;
+  return { payload, usedFallback: true };
 }
 
 export function ApiKeyCredentials({ providerId, summary, providerConfig: _providerConfig, isPresetSetup, presetInfo, onRefresh }: {
@@ -198,8 +211,17 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig: _provid
           return;
         }
       }
-      const payload = await resolveModelsForInitialSave(providerId, plan, headers, includeHeaders);
-      await saveProviderConfigPatch(providerId, payload);
+      const resolved = await resolveModelsForInitialSave(providerId, plan, headers, includeHeaders);
+      await saveProviderConfigPatch(providerId, resolved.payload);
+      if (resolved.usedFallback) {
+        const count = Array.isArray(resolved.payload.models) ? resolved.payload.models.length : 0;
+        showToast(
+          count > 0
+            ? t('settings.providers.fetchLocalCatalog', { n: count })
+            : t('settings.providers.fetchLocalCatalogSaved'),
+          'error',
+        );
+      }
       if (isPresetSetup) useSettingsStore.setState({ selectedProviderId: providerId });
       if (!await refreshAfterSave()) return;
       showToast(plan.shouldVerify ? t('settings.providers.verifySuccess') : t('settings.saved'), 'success');

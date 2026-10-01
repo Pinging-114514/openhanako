@@ -434,6 +434,16 @@ export function AboutTab() {
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<UpdateDigestHistoryResult>(EMPTY_HISTORY);
   const shellUpdate = useAutoUpdateState();
+  const [shellVersion, setShellVersion] = useState<string | null>(null);
+  useEffect(() => {
+    let alive = true;
+    if (shellUpdate?.status !== 'downloaded' || !hana?.getAppVersion) return;
+    // getAppVersion is explicitly the desktop shell version, never the OTA content version.
+    void hana.getAppVersion().then((version) => {
+      if (alive) setShellVersion(typeof version === 'string' && version.trim() ? version.trim() : null);
+    }).catch(() => { if (alive) setShellVersion(null); });
+    return () => { alive = false; };
+  }, [hana, shellUpdate?.status]);
   const {
     currentVersion,
     available,
@@ -514,7 +524,11 @@ export function AboutTab() {
         <img className={styles['about-icon']} src={appIconUrl} alt="HanaAgent" />
         <div className={styles['about-name']}>HanaAgent</div>
         <div className={styles['about-tagline']}>{t('settings.about.tagline')}</div>
-        {currentVersion && <div className={styles['about-version']}>v{currentVersion}</div>}
+        {currentVersion && (
+          <div className={styles['about-version']}>
+            <span>{t('settings.about.contentVersionLabel')}</span>{' '}<span>v{currentVersion}</span>
+          </div>
+        )}
         <TrainUpdateArea
           agentName={settingsConfig?.agent?.name || 'Hanako'}
           available={available}
@@ -580,7 +594,12 @@ export function AboutTab() {
         {showPlatformRow && (
           <SettingsRow
             label={platformRowLabel}
-            hint={shellUpdate?.version ? `v${shellUpdate.version}` : undefined}
+            hint={shellUpdate?.version ? (
+              <>
+                {shellVersion && <><span>{t('settings.about.shellVersionLabel')}</span>{' '}<span>v{shellVersion}</span>{' → '}</>}
+                <span>v{shellUpdate.version}</span>
+              </>
+            ) : undefined}
             hintVariant={minShellBlocked ? 'warn' : 'default'}
             control={
               <button type="button" className={styles['about-check-update-btn']} onClick={handleInstallShell}>

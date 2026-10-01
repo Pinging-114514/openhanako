@@ -1035,6 +1035,7 @@
 .agentActivityTranscriptScroll {
     max-height: 11.5rem;
     overflow-y: auto;
+    overflow-anchor: none;
     overscroll-behavior: contain;
     padding: 6px 7px 7px;
     font-size: var(--fs-caption);

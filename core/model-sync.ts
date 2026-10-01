@@ -309,6 +309,27 @@ function buildModelEntry(
     ? (modelEntry.maxOutput ?? modelEntry.maxTokens ?? modelEntry.maxOutputTokens)
     : undefined) ?? piProtocolBaseline?.maxTokens ?? known?.maxOutput;
   if (maxOutput) entry.maxTokens = maxOutput;
+  const userCost = isObj && modelEntry.cost && typeof modelEntry.cost === "object" && !Array.isArray(modelEntry.cost)
+    ? modelEntry.cost
+    : null;
+  // A provider card without cost is a deliberate omission. Codex OAuth is a
+  // subscription lane and must not inherit the public API list price from fallback.
+  const providerCost = providerKnown?.cost && typeof providerKnown.cost === "object" && !Array.isArray(providerKnown.cost)
+    ? providerKnown.cost
+    : null;
+  const fallbackCost = !providerKnown && known?.cost && typeof known.cost === "object" && !Array.isArray(known.cost)
+    ? known.cost
+    : null;
+  const cost = userCost || providerCost || fallbackCost;
+  if (cost && typeof cost.input === "number" && typeof cost.output === "number") {
+    entry.cost = {
+      input: cost.input,
+      output: cost.output,
+      cacheRead: typeof cost.cacheRead === "number" ? cost.cacheRead : 0,
+      cacheWrite: typeof cost.cacheWrite === "number" ? cost.cacheWrite : 0,
+      ...(Array.isArray(cost.tiers) ? { tiers: cost.tiers.map((tier) => ({ ...tier })) } : {}),
+    };
+  }
   const configuredDefaultThinkingLevel = getProviderModelDefaultThinkingLevel(modelDefaults, id);
   const defaultThinkingLevel = isObj
     ? (modelEntry.defaultThinkingLevel ?? configuredDefaultThinkingLevel ?? providerKnown?.defaultThinkingLevel)

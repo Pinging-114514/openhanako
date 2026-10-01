@@ -9,6 +9,7 @@ import {
 import { PlanModeButton, type PermissionMode } from '../components/input/PlanModeButton';
 import { SendButton } from '../components/input/SendButton';
 import { AttachedFilesBar } from '../components/input/AttachedFilesBar';
+import { MediaViewer } from '../components/shared/MediaViewer/MediaViewer';
 import { ChatTranscript } from '../components/chat/ChatTranscript';
 import { handleServerMessage } from '../services/ws-message-handler';
 import { useStore } from '../stores';
@@ -818,7 +819,7 @@ export function QuickChatApp() {
                 hasInput={!!draft.trim() || attachments.length > 0}
                 disabled={!canSend}
                 onSend={() => void send()}
-                onSteer={() => {}}
+                onQueue={() => {}}
                 onStop={() => {}}
               />
             </div>
@@ -840,6 +841,7 @@ export function QuickChatApp() {
 
         <div className={styles.dragStrip} />
       </section>
+      <MediaViewer />
     </div>
   );
 }

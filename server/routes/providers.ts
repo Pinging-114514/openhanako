@@ -19,7 +19,7 @@ import { enrichOllamaModelMetadata } from "../../shared/ollama-model-metadata.ts
 import { clearConfigCache } from "../../lib/memory/config-loader.ts";
 import { collectSecretPatchPaths, isMaskedSecretValue, maskSecretValue } from "../../shared/secret-custody.ts";
 import { denySecretMutationWithoutScope, denyWithoutScope } from "../http/capability-guard.ts";
-import { publicCodexOauthUsage } from "../../lib/auth/openai-codex-oauth-usage.ts";
+import { publicCodexOauthUsage, resolveCodexUsageAccountId } from "../../lib/auth/openai-codex-oauth-usage.ts";
 import { publicXaiOauthUsage } from "../../lib/auth/xai-oauth-usage.ts";
 import { listCachedOauthAccounts } from "../../lib/auth/oauth-account-vault.ts";
 import { isCodexOauthProvider } from "../../shared/codex-service-tier.ts";
@@ -269,12 +269,25 @@ export function createProvidersRoute(engine: any) {
   // ── Fetch / Test ──
 
   function normalizeRegistryModels(models: any[]) {
-    return models.map((model) => ({
-      id: model.id,
-      name: model.name || model.id,
-      context: model.contextWindow ?? model.context ?? null,
-      maxOutput: model.maxTokens ?? model.maxOutputTokens ?? model.maxOutput ?? null,
-    }));
+    return models.map((model) => {
+      const input = Array.isArray(model.input) ? model.input : [];
+      const entry: Record<string, any> = {
+        id: model.id,
+        name: model.name || model.id,
+        context: model.contextWindow ?? model.context ?? null,
+        maxOutput: model.maxTokens ?? model.maxOutputTokens ?? model.maxOutput ?? null,
+      };
+      const image = model.image ?? model.vision ?? (input.includes("image") ? true : undefined);
+      if (image === true || image === false) entry.image = image;
+      if (model.video === true || model.compat?.hanaVideoInput === true) entry.video = true;
+      if (model.audio === true || model.compat?.hanaAudioInput === true) entry.audio = true;
+      if (model.reasoning === true || model.reasoning === false) entry.reasoning = model.reasoning;
+      if (Array.isArray(model.thinkingLevels)) entry.thinkingLevels = model.thinkingLevels;
+      if (typeof model.defaultThinkingLevel === "string" && model.defaultThinkingLevel) {
+        entry.defaultThinkingLevel = model.defaultThinkingLevel;
+      }
+      return entry;
+    });
   }
 
   function normalizeRemoteModels(data: any, api: any) {
@@ -316,12 +329,21 @@ export function createProvidersRoute(engine: any) {
 
   function knownCatalogModel(provider: any, id: any) {
     const known = lookupKnown(provider, id);
-    return {
+    const entry: Record<string, any> = {
       id,
       name: known?.name || id,
       context: known?.context ?? null,
       maxOutput: known?.maxOutput ?? null,
     };
+    if (known?.image === true || known?.vision === true) entry.image = true;
+    if (known?.video === true) entry.video = true;
+    if (known?.audio === true) entry.audio = true;
+    if (known?.reasoning === true) entry.reasoning = true;
+    if (Array.isArray(known?.thinkingLevels)) entry.thinkingLevels = known.thinkingLevels;
+    if (typeof known?.defaultThinkingLevel === "string" && known.defaultThinkingLevel) {
+      entry.defaultThinkingLevel = known.defaultThinkingLevel;
+    }
+    return entry;
   }
 
   function supplementRemoteModels(name: any, remoteModels: any[]) {
@@ -345,6 +367,69 @@ export function createProvidersRoute(engine: any) {
     return models.map((model) => enrichOllamaModelMetadata(name, model));
   }
 
+  function decorateDiscoveredWithKnown(provider: any, models: any[]) {
+    if (!provider || !Array.isArray(models)) return models;
+    return models.map((model) => {
+      const known = lookupKnown(provider, model?.id);
+      if (!known) return model;
+      const next = { ...model };
+      if ((!next.name || next.name === next.id) && known.name) next.name = known.name;
+      if (next.context == null && known.context != null) next.context = known.context;
+      if (next.maxOutput == null && known.maxOutput != null) next.maxOutput = known.maxOutput;
+      if (known.image === true || known.vision === true) next.image = true;
+      if (known.video === true) next.video = true;
+      if (known.audio === true) next.audio = true;
+      if (known.reasoning === true) next.reasoning = true;
+      // 线上目录已经给出的思考档和默认档优先。词典只补缺，不盖掉账号目录，也不动用户后来保存的字段。
+      if (!Array.isArray(next.thinkingLevels) || next.thinkingLevels.length === 0) {
+        if (Array.isArray(known.thinkingLevels)) next.thinkingLevels = known.thinkingLevels;
+      }
+      if (!next.defaultThinkingLevel && typeof known.defaultThinkingLevel === "string" && known.defaultThinkingLevel) {
+        next.defaultThinkingLevel = known.defaultThinkingLevel;
+      }
+      return next;
+    });
+  }
+
+  function usesLiveAccountCatalog(name: any) {
+    return name === "xai-oauth" || name === "openai-codex-oauth" || name === "openai-codex";
+  }
+
+  const HANA_THINKING_LEVELS = new Set(["low", "medium", "high", "xhigh", "max"]);
+  // Codex 按 client_version 裁剪目录。0.0.0 会漏掉 gpt-6.1-sol（最低 0.153.0）。
+  // 0.159.2 是 2026-09-29 已核对能返回该模型的 Codex rust 发布版本。
+  const CODEX_MODELS_CLIENT_VERSION = "0.159.2";
+
+  function normalizeCodexCatalogModels(data: any) {
+    return (data?.models || [])
+      .filter((model) => model?.slug && model.visibility !== "hide" && model.supported_in_api !== false)
+      .map((model) => {
+        const efforts = (model.supported_reasoning_levels || [])
+          .map((level) => level?.effort)
+          .filter((effort) => HANA_THINKING_LEVELS.has(effort));
+        const defaultEffort = model.default_reasoning_level === "ultra"
+          ? "max"
+          : model.default_reasoning_level;
+        return {
+          id: model.slug,
+          name: model.display_name || model.slug,
+          context: model.max_context_window || model.context_window || null,
+          maxOutput: null,
+          ...(efforts.length ? { reasoning: true, thinkingLevels: efforts } : {}),
+          ...(HANA_THINKING_LEVELS.has(defaultEffort) ? { defaultThinkingLevel: defaultEffort } : {}),
+        };
+      });
+  }
+
+  function providerModelsUrl(name: any, base: string, api: string) {
+    if (name === "openai-codex-oauth" || name === "openai-codex") {
+      return `${base}/codex/models?client_version=${CODEX_MODELS_CLIENT_VERSION}`;
+    }
+    return api === "anthropic-messages"
+      ? appendProviderApiPath(base, "/v1/models?limit=1000")
+      : `${base}/models`;
+  }
+
   async function refreshProviderModels() {
     (clearConfigCache as any)();
     await engine.onProviderChanged();
@@ -362,7 +447,7 @@ export function createProvidersRoute(engine: any) {
 
     // 尝试 Pi SDK registry（含内置 OAuth 模型 + models.json 模型，不经过 availableModels 白名单）
     const registryModels = engine.getRegistryModelsForProvider(name);
-    if (registryModels.length > 0) {
+    if (Array.isArray(registryModels) && registryModels.length > 0) {
       const normalized = enrichDiscoveredModelMetadata(name, normalizeRegistryModels(registryModels));
       const payload = filterProviderModels(name, normalized);
       if (payload.models.length === 0 && payload.ignoredModels?.length > 0) {
@@ -425,6 +510,23 @@ export function createProvidersRoute(engine: any) {
     return { source: "hana-catalog", ...payload };
   }
 
+  function localCatalogFallback(name: any) {
+    const catalog = hanaCatalogFallback(name);
+    if (Array.isArray(catalog?.models) && catalog.models.length > 0 && !catalog.error) return catalog;
+    return registryOrDefaultsFallback(name);
+  }
+
+  function withOnlineFailure(fallback: any, onlineError: string) {
+    if (Array.isArray(fallback?.models) && fallback.models.length > 0) {
+      return { ...fallback, fallback: true, onlineError };
+    }
+    return {
+      source: fallback?.source,
+      error: onlineError,
+      models: [],
+    };
+  }
+
   /**
    * 从供应商拉取模型列表
    * 统一瀑布流：凭证解析 → 远程 list models → registry fallback → defaults fallback
@@ -450,9 +552,13 @@ export function createProvidersRoute(engine: any) {
     }
 
     const chatProvider = name ? engine.providerRegistry.resolveChatProvider?.(name) : null;
-    // Hana-owned models-json OAuth catalogs never probe ChatGPT /models. Legacy
-    // sdk-auth-alias providers intentionally keep Pi's runtime catalog behavior.
-    if (chatProvider?.projection === "models-json" && chatProvider.credentialSource === "auth-storage") {
+    // Grok and Codex both have account catalogs. A local stand-in can advertise
+    // ids the signed-in account cannot call.
+    if (
+      chatProvider?.projection === "models-json"
+      && chatProvider.credentialSource === "auth-storage"
+      && !usesLiveAccountCatalog(name)
+    ) {
       return c.json(hanaCatalogFallback(name));
     }
     if (chatProvider?.projection === "sdk-auth-alias") {
@@ -499,9 +605,7 @@ export function createProvidersRoute(engine: any) {
     if (effectiveBaseUrl) {
       try {
         const base = effectiveBaseUrl.replace(/\/+$/, "");
-        const url = effectiveApi === "anthropic-messages"
-          ? appendProviderApiPath(base, "/v1/models?limit=1000")
-          : `${base}/models`;
+        const url = providerModelsUrl(name, base, effectiveApi);
 
         if (effectiveKey && !effectiveApi) {
           return c.json({ error: "api is required when api_key is present", models: [] });
@@ -512,34 +616,53 @@ export function createProvidersRoute(engine: any) {
           headers: effectiveHeaders,
           allowMissingApiKey: true,
         });
+        if (name === "openai-codex-oauth" || name === "openai-codex") {
+          const accountId = resolveCodexUsageAccountId({
+            accessToken: effectiveKey,
+            accountId: saved.accountId,
+          });
+          if (accountId) {
+            headers["chatgpt-account-id"] = accountId;
+            headers["ChatGPT-Account-ID"] = accountId;
+          }
+          if (!headers["OpenAI-Beta"]) headers["OpenAI-Beta"] = "responses=experimental";
+        }
         const res = await fetch(url, {
           headers,
           signal: AbortSignal.timeout(15000),
         });
 
-        // 401/403：凭证问题，直接返回错误，不 fallback
+        // 401/403：在线目录拒绝。仍把错误带回，并改用本地模型列表。
         if (res.status === 401 || res.status === 403) {
-          return c.json({ error: `HTTP ${res.status}: ${res.statusText}`, models: [] });
+          return c.json(withOnlineFailure(
+            localCatalogFallback(name),
+            `HTTP ${res.status}: ${res.statusText}`,
+          ));
         }
 
         if (res.ok) {
           const data = await res.json();
-          const remoteModels = enrichDiscoveredModelMetadata(
+          const normalized = data?.models?.[0]?.slug
+            ? normalizeCodexCatalogModels(data)
+            : normalizeRemoteModels(data, effectiveApi);
+          const remoteModels = decorateDiscoveredWithKnown(
             name,
-            supplementRemoteModels(name, normalizeRemoteModels(data, effectiveApi)),
+            enrichDiscoveredModelMetadata(name, supplementRemoteModels(name, normalized)),
           );
           const { models, ignoredModels } = filterDiscoveredProviderModels(name, remoteModels, {
             baseUrl: effectiveBaseUrl,
           });
-          if (models.length === 0 && ignoredModels.length > 0) {
-            return c.json({
-              error: `Remote catalog only returned invalid model ids for provider "${name}": ${ignoredModels.join(", ")}`,
-              models: [],
-              ignoredModels,
-            });
+          if (models.length === 0) {
+            return c.json(withOnlineFailure(
+              localCatalogFallback(name),
+              ignoredModels.length > 0
+                ? `Remote catalog only returned invalid model ids for provider "${name}": ${ignoredModels.join(", ")}`
+                : "remote catalog was empty",
+            ));
           }
           saveToCache(name, models);
-          return c.json(ignoredModels.length > 0 ? { models, ignoredModels } : { models });
+          const payload = { source: "remote", models };
+          return c.json(ignoredModels.length > 0 ? { ...payload, ignoredModels } : payload);
         }
 
         // 404 / 其他 → 进入 step 3
@@ -548,8 +671,8 @@ export function createProvidersRoute(engine: any) {
       }
     }
 
-    // ── 3. Registry + defaults fallback ──
-    return c.json(registryOrDefaultsFallback(name));
+    // ── 3. 在线目录失败后，用本地模型列表兜底 ──
+    return c.json(withOnlineFailure(localCatalogFallback(name), "online model catalog unavailable"));
   });
 
   /**

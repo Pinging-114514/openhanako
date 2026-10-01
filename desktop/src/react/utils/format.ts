@@ -40,7 +40,7 @@ export function parseCSV(text: string): string[][] {
 // 扩展名识别统一走 file-kind 中心表；禁止维护私有 IMAGE_EXTS 表。
 // 保留此 helper 纯粹是 API 形式（传 name，返回 boolean），内部委托给中心表。
 import { inferKindByExt, isImageOrSvgExt, extOfName } from './file-kind';
-import { parseLeadingInternalMoodBlock } from '../../../../shared/internal-mood-block.ts';
+import { findInternalMoodBlock } from '../../../../shared/internal-mood-block.ts';
 
 export function isImageFile(name: string): boolean {
   return isImageOrSvgExt(extOfName(name));
@@ -111,12 +111,14 @@ export function cronToHuman(schedule: number | string): string {
  */
 export function parseMoodFromContent(content: string): { mood: string | null; text: string } {
   if (!content) return { mood: null, text: '' };
-  const block = parseLeadingInternalMoodBlock(content);
+  const block = findInternalMoodBlock(content);
   if (!block) return { mood: null, text: content };
   const raw = block.content.trim()
     .replace(/^```\w*\n?/, '').replace(/\n?```\s*$/, '')
     .replace(/^\n+/, '').replace(/\n+$/, '');
-  const text = block.rest.replace(/^\n+/, '').trim();
+  const before = block.prefix.replace(/\s+$/u, '');
+  const after = block.rest.replace(/^\s+/u, '');
+  const text = before && after ? `${before}\n\n${after}` : (before || after);
   return { mood: raw, text };
 }
 

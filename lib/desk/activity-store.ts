@@ -5,7 +5,8 @@
  * 每次执行存一条元数据（摘要、时间、状态），
  * session .jsonl 文件单独存放在 activity/ 目录。
  *
- * 自动清理：超过 MAX_ENTRIES 条时删除最老的，连同 session 文件。
+ * 已结束历史保留 7 天、最多 100 条；运行中/未知状态不参与淘汰。
+ * 启动、读取列表和写入时清理，先落盘索引，再删除专属活动 session 文件。
  */
 
 import fs from "fs";
@@ -13,6 +14,16 @@ import path from "path";
 import { atomicWriteSync } from "../../shared/safe-fs.ts";
 
 const MAX_ENTRIES = 100;
+export const ACTIVITY_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const TERMINAL_STATUSES = new Set(["done", "error", "success", "failed", "completed", "skipped", "cancelled", "canceled"]);
+
+function activityEndedAt(entry: any): number | null {
+  for (const value of [entry?.finishedAt, entry?.startedAt]) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  }
+  return null;
+}
+
 export const DEFAULT_ACTIVITY_EXECUTION_TIMEOUT_MS = 20 * 60 * 1000;
 
 function normalizeNow(value: any) {
@@ -75,6 +86,7 @@ export class ActivityStore {
     if (opts.finalizeOrphanedRunning !== false) {
       this.finalizeRunningAsInterrupted({ now: opts.now });
     }
+    this.prune({ now: opts.now });
   }
 
   /** @private */
@@ -102,13 +114,14 @@ export class ActivityStore {
    */
   add(entry: any) {
     this._entries.unshift(entry);
-    this._cleanup();
     this._save();
+    this.prune();
     return entry;
   }
 
   /** 列出所有活动（已按时间倒序） */
   list() {
+    this.prune();
     return this._entries;
   }
 
@@ -117,13 +130,14 @@ export class ActivityStore {
     return this._entries.find(e => e.id === id) || null;
   }
 
-  /** 按 ID 更新条目的部分字段（不触发 cleanup） */
+  /** 按 ID 更新条目的部分字段，并清理已结束历史。 */
   update(id: any, partial: any) {
     const entry = this._entries.find(e => e.id === id);
     if (!entry) return null;
     const { id: _, ...safePartial } = partial;
     Object.assign(entry, safePartial);
     this._save();
+    this.prune();
     return entry;
   }
 
@@ -136,6 +150,7 @@ export class ActivityStore {
       changed.push({ ...entry });
     }
     if (changed.length) this._save();
+    this.prune({ now: finishedAt });
     return changed;
   }
 
@@ -151,6 +166,7 @@ export class ActivityStore {
       changed.push({ ...entry });
     }
     if (changed.length) this._save();
+    this.prune({ now: finishedAt });
     return changed;
   }
 
@@ -163,15 +179,43 @@ export class ActivityStore {
     return true;
   }
 
-  /** 自动清理超出上限的老记录 */
-  _cleanup() {
-    while (this._entries.length > MAX_ENTRIES) {
-      const old = this._entries.pop();
-      // 删除对应的 session 文件
-      if (old?.sessionFile) {
-        const sessionPath = path.join(this._activityDir, old.sessionFile);
-        try { fs.unlinkSync(sessionPath); } catch {}
-      }
+  /** Cleanup is deliberately lazy: reading the list also expires history without a new run. */
+  prune({ now }: any = {}) {
+    const cutoff = normalizeNow(now) - ACTIVITY_RETENTION_MS;
+    const terminal = this._entries
+      .filter(entry => TERMINAL_STATUSES.has(entry?.status))
+      .filter(entry => {
+        const endedAt = activityEndedAt(entry);
+        return endedAt === null || endedAt > cutoff;
+      })
+      .sort((a, b) => (activityEndedAt(b) ?? -Infinity) - (activityEndedAt(a) ?? -Infinity));
+    const keep = new Set(terminal.slice(0, MAX_ENTRIES));
+    const removed = this._entries.filter(entry => TERMINAL_STATUSES.has(entry?.status) && !keep.has(entry));
+    if (removed.length === 0) return 0;
+
+    const previous = this._entries;
+    this._entries = previous.filter(entry => !TERMINAL_STATUSES.has(entry?.status) || keep.has(entry));
+    try {
+      this._save();
+    } catch (error) {
+      this._entries = previous;
+      throw error;
     }
+    const fileKey = (name: string) => process.platform === "win32" ? name.toLowerCase() : name;
+    const referenced = new Set(this._entries.map(entry => entry?.sessionFile)
+      .filter(name => typeof name === "string").map(fileKey));
+    for (const entry of removed) {
+      const name = entry?.sessionFile;
+      // Never remove promoted sessions, directories, links, or files still used by another activity.
+      if (typeof name !== "string" || referenced.has(fileKey(name))
+        || path.basename(name) !== name || path.isAbsolute(name)
+        || !name.endsWith(".jsonl")) continue;
+      const sessionPath = path.join(this._activityDir, name);
+      try {
+        const stat = fs.lstatSync(sessionPath);
+        if (stat.isFile() && !stat.isSymbolicLink()) fs.unlinkSync(sessionPath);
+      } catch { /* Missing or unavailable session files must not break list loading. */ }
+    }
+    return removed.length;
   }
 }

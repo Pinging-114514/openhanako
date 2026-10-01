@@ -40,11 +40,16 @@ const CARD_CONTENT_SECURITY_POLICY = [
 ].join("; ");
 
 export const CARD_IFRAME_TICKET_QUERY = "cardIframeTicket";
+export const CARD_VIEW_TICKET_LIMIT = 8;
 
-interface CardEntry {
+interface CardView {
   code: string;
   varsCss: string;
-  viewTicket: string;
+  viewTickets: string[];
+}
+
+interface CardEntry {
+  views: CardView[];
 }
 
 export function createCardsRoute(_engine: unknown) {
@@ -77,11 +82,26 @@ export function createCardsRoute(_engine: unknown) {
     let varsCss = typeof body?.varsCss === "string" ? body.varsCss : "";
     if (Buffer.byteLength(varsCss, "utf8") > MAX_VARS_BYTES) varsCss = "";
     const viewTicket = crypto.randomBytes(32).toString("base64url");
-    touch(cardId, { code, varsCss, viewTicket });
+    const existing = cache.get(cardId);
+    const sameCode = existing?.views.filter(view => view.code === code) ?? [];
+    const views = sameCode.map(view => ({ ...view, viewTickets: [...view.viewTickets] }));
+    const match = views.find(view => view.varsCss === varsCss);
+    if (match) {
+      match.viewTickets = [...match.viewTickets, viewTicket].slice(-CARD_VIEW_TICKET_LIMIT);
+      views.splice(views.indexOf(match), 1);
+      views.push(match);
+    } else {
+      views.push({ code, varsCss, viewTickets: [viewTicket] });
+    }
+    touch(cardId, { views: views.slice(-CARD_VIEW_TICKET_LIMIT) });
     return c.json({ ok: true, ticket: viewTicket });
   });
 
   // 提供卡片 HTML。iframe src 指向这里。
+  // 远程 iframe 不带 loopback token，中间件只因为 query 里有 cardIframeTicket 才放行。
+  // 同一份 code 可以并存多份 varsCss，每份最多 8 张票，票只渲染自己那一份快照。
+  // 另一套主题不会使这些票 403，也不会让旧票拿到另一套或更新后的 HTML。
+  // code 变了则旧快照全部作废。无票 GET 仍交给外层会话鉴权，这里只回最新一份。
   // 卡片保留内联脚本/样式能力，但 CSP 禁止联网、子框架、表单提交与导航。
   // 因此 show_card 的影响被限制在当前会话内的沙箱渲染。
   route.get("/cards/:cardId", (c) => {
@@ -90,17 +110,18 @@ export function createCardsRoute(_engine: unknown) {
       return c.text("invalid cardId", 400);
     }
     const entry = cache.get(cardId);
-    if (!entry) {
+    if (!entry || entry.views.length === 0) {
       return c.text("card not found", 404);
     }
     const ticket = c.req.query(CARD_IFRAME_TICKET_QUERY);
-    if (ticket && !ticketsMatch(ticket, entry.viewTicket)) {
+    const view = ticket ? findTicketView(entry, ticket) : entry.views[entry.views.length - 1];
+    if (!view) {
       return c.text("forbidden", 403);
     }
     // 命中刷新 LRU 时序
     cache.delete(cardId);
     cache.set(cardId, entry);
-    const html = buildCardDocument({ code: entry.code, varsCss: entry.varsCss });
+    const html = buildCardDocument({ code: view.code, varsCss: view.varsCss });
     c.header("Content-Type", "text/html; charset=utf-8");
     c.header("Cache-Control", "no-store");
     c.header("X-Content-Type-Options", "nosniff");
@@ -109,6 +130,16 @@ export function createCardsRoute(_engine: unknown) {
   });
 
   return route;
+}
+
+function findTicketView(entry: CardEntry, ticket: string): CardView | null {
+  let found: CardView | null = null;
+  for (const view of entry.views) {
+    for (const expected of view.viewTickets) {
+      if (ticketsMatch(ticket, expected)) found = view;
+    }
+  }
+  return found;
 }
 
 function ticketsMatch(provided: string, expected: string): boolean {

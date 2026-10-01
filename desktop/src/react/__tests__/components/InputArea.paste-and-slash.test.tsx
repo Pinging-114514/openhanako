@@ -7,6 +7,7 @@ import { Schema, type Node as ProseMirrorNode } from '@tiptap/pm/model';
 import { EditorState, TextSelection } from '@tiptap/pm/state';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { InputArea } from '../../components/InputArea';
+import { resetOptimisticUserSendWatchesForTest } from '../../utils/optimistic-user-send';
 import type { SlashItem } from '../../components/input/slash-commands';
 import { useStore } from '../../stores';
 
@@ -387,6 +388,7 @@ function installImageCompressionMocks() {
 
 describe('InputArea paste and slash menu behavior', () => {
   afterEach(() => {
+    resetOptimisticUserSendWatchesForTest();
     cleanup();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -993,6 +995,48 @@ describe('InputArea paste and slash menu behavior', () => {
       role: 'user',
       text: '马上显示这条消息',
       sendStatus: 'pending',
+    });
+  });
+
+  it('folds an unpersisted optimistic user turn into the next prompt', async () => {
+    useStore.getState().initSession('/session/input.jsonl', [], false);
+    useStore.getState().appendOptimisticUserMessage('/session/input.jsonl', {
+      id: 'client-user-stuck',
+      role: 'user',
+      text: '封面写成科研Agent进度汇报',
+      sendStatus: 'pending',
+      attachments: [{ path: '/tmp/cover.png', name: 'cover.png', isDir: false, mimeType: 'image/png' }],
+    });
+    mocks.editorText = '继续';
+    render(React.createElement(InputArea));
+
+    const preventDefault = vi.fn();
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    Object.defineProperty(event, 'preventDefault', { value: preventDefault });
+
+    const handled = tiptapKeyDownHandler()?.(null, event);
+
+    expect(handled).toBe(true);
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.text).toContain('封面写成科研Agent进度汇报');
+    expect(payload.text).toContain('继续');
+    expect(payload.displayMessage).toMatchObject({
+      text: '封面写成科研Agent进度汇报\n\n继续',
+      attachments: [expect.objectContaining({ path: '/tmp/cover.png', name: 'cover.png' })],
+    });
+
+    const items = useStore.getState().chatSessions.sess_input?.items || [];
+    expect(items.some((item) => item.type === 'message' && item.data.id === 'client-user-stuck')).toBe(false);
+    const sent = items.find((item) => item.type === 'message' && item.data.id === payload.clientMessageId);
+    expect(sent).toMatchObject({
+      type: 'message',
+      data: {
+        text: '封面写成科研Agent进度汇报\n\n继续',
+        sendStatus: 'pending',
+      },
     });
   });
 

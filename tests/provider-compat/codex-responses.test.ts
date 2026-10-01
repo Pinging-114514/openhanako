@@ -95,8 +95,25 @@ describe("provider-compat/codex-responses speed tier", () => {
   it("writes the Codex wire value for the chosen tier through normalizeProviderPayload", () => {
     const fast = normalizeProviderPayload(base, CODEX_MODEL, { mode: "chat", codexServiceTier: "fast" });
     expect(fast.service_tier).toBe("priority");
-    const ultrafast = normalizeProviderPayload(base, CODEX_MODEL, { mode: "chat", codexServiceTier: "ultrafast" });
+    const ultrafast = normalizeProviderPayload(base, { ...CODEX_MODEL, id: "gpt-6-astra" }, {
+      mode: "chat", codexServiceTier: "ultrafast", codexUltrafastEligible: true,
+    });
     expect(ultrafast.service_tier).toBe("ultrafast");
+  });
+
+  it.each(["chat", "utility"])("downgrades inherited and selected ultrafast without verified entitlement in %s", mode => {
+    const astra = { ...CODEX_MODEL, id: "gpt-6-astra" };
+    expect(normalizeProviderPayload(base, astra, { mode, codexServiceTier: "ultrafast" }).service_tier).toBe("priority");
+    expect(normalizeProviderPayload({ ...base, service_tier: "ultrafast" }, astra, { mode }).service_tier).toBe("priority");
+    expect(normalizeProviderPayload({ ...base, model: "gpt-6.1-sol" }, { ...CODEX_MODEL, id: "gpt-6.1-sol" }, {
+      mode, codexServiceTier: "ultrafast", codexUltrafastEligible: true,
+    }).service_tier).toBe("priority");
+  });
+
+  it("does not let stale Astra metadata enable ultrafast for a Sol wire model", () => {
+    expect(normalizeProviderPayload({ ...base, model: "gpt-6.1-sol" }, { ...CODEX_MODEL, id: "gpt-6-astra" }, {
+      mode: "chat", codexServiceTier: "ultrafast", codexUltrafastEligible: true,
+    }).service_tier).toBe("priority");
   });
 
   it("removes service_tier for the standard tier and when the tier is unknown", () => {

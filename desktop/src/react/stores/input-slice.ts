@@ -44,6 +44,13 @@ export interface QuotedSelection {
   updatedAt?: number;
 }
 
+export interface ComposerResendRequest {
+  sessionPath: string;
+  text: string;
+  attachedFiles: AttachedFile[];
+  autoSend: boolean;
+}
+
 export interface InputSlice {
   attachedFiles: AttachedFile[];
   /** 按 session path 存储的附件（权威源） */
@@ -86,6 +93,9 @@ export interface InputSlice {
   setQuotedSelection: (sel: QuotedSelection) => void;
   /** @deprecated Use clearQuotedSelections and clearQuoteCandidate. */
   clearQuotedSelection: () => void;
+  composerResendRequest: ComposerResendRequest | null;
+  requestComposerResend: (request: ComposerResendRequest) => void;
+  clearComposerResend: () => void;
 }
 
 function syncCurrentSessionAttachments(state: InputSlice & { currentSessionPath?: string | null }, files: AttachedFile[]) {
@@ -119,6 +129,7 @@ export const createInputSlice = (
   quoteCandidate: null,
   quotedSelections: [],
   quotedSelection: null,
+  composerResendRequest: null,
   addAttachedFile: (file) =>
     set((s) => syncCurrentSessionAttachments(s as InputSlice & { currentSessionPath?: string | null }, [...s.attachedFiles, file])),
   removeAttachedFile: (index) =>
@@ -210,4 +221,6 @@ export const createInputSlice = (
   setQuotedSelections: (sels) => set({ quotedSelections: sels, quotedSelection: sels[0] ?? null }),
   setQuotedSelection: (sel) => set({ quotedSelections: [sel], quotedSelection: sel }),
   clearQuotedSelection: () => set({ quoteCandidate: null, quotedSelections: [], quotedSelection: null }),
+  requestComposerResend: (request) => set({ composerResendRequest: request }),
+  clearComposerResend: () => set({ composerResendRequest: null }),
 });

@@ -103,6 +103,123 @@ describe("model sync OAuth aliases", () => {
     });
   });
 
+  it("projects GPT-6.1 Sol API prices without billing Codex OAuth or clobbering a saved price", () => {
+    const modelsJsonPath = path.join(tmpHome, "models.json");
+    syncModels({
+      "openai-codex-oauth": {
+        base_url: "https://chatgpt.com/backend-api",
+        api: "openai-codex-responses",
+        auth_type: "oauth",
+        models: ["gpt-6.1-sol"],
+      },
+      openai: {
+        base_url: "https://api.openai.com/v1",
+        api: "openai-responses",
+        auth_type: "api-key",
+        api_key: "sk-test",
+        models: ["gpt-6.1-sol"],
+      },
+    }, {
+      modelsJsonPath,
+      chatProjectionPlans: {
+        "openai-codex-oauth": {
+          sourceProviderId: "openai-codex-oauth",
+          runtimeProviderId: "openai-codex",
+          projection: "models-json",
+          credentialSource: "auth-storage",
+        },
+        openai: {
+          sourceProviderId: "openai",
+          runtimeProviderId: "openai",
+          projection: "models-json",
+          credentialSource: "provider-catalog",
+        },
+      },
+    });
+
+    const written = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(written.providers["openai-codex"].models[0]).toMatchObject({
+      id: "gpt-6.1-sol",
+      api: "openai-codex-responses",
+      contextWindow: 272000,
+      maxTokens: 128000,
+      defaultThinkingLevel: "low",
+      thinkingLevelMap: { off: null, minimal: null, xhigh: "xhigh", max: "max" },
+    });
+    expect(written.providers["openai-codex"].models[0]).not.toHaveProperty("cost");
+    expect(written.providers["openai-codex"].models[0].contextWindow).not.toBe(1050000);
+    expect(written.providers.openai.models[0]).toMatchObject({
+      id: "gpt-6.1-sol",
+      api: "openai-responses",
+      contextWindow: 1050000,
+      maxTokens: 128000,
+      defaultThinkingLevel: "medium",
+      cost: { input: 2, output: 10, cacheRead: 0.1, cacheWrite: 2.5 },
+    });
+    syncModels({
+      openai: {
+        base_url: "https://api.openai.com/v1",
+        api: "openai-responses",
+        auth_type: "api-key",
+        api_key: "sk-test",
+        models: [{
+          id: "gpt-6.1-sol",
+          context: 200000,
+          cost: { input: 9, output: 9, cacheRead: 1, cacheWrite: 1 },
+        }],
+      },
+    }, {
+      modelsJsonPath,
+      chatProjectionPlans: {
+        openai: {
+          sourceProviderId: "openai",
+          runtimeProviderId: "openai",
+          projection: "models-json",
+          credentialSource: "provider-catalog",
+        },
+      },
+    });
+    const custom = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(custom.providers.openai.models[0]).toMatchObject({
+      id: "gpt-6.1-sol",
+      contextWindow: 200000,
+      cost: { input: 9, output: 9, cacheRead: 1, cacheWrite: 1 },
+    });
+    syncModels({
+      "openai-codex-oauth": {
+        base_url: "https://chatgpt.com/backend-api",
+        api: "openai-codex-responses",
+        auth_type: "oauth",
+        models: [{
+          id: "gpt-6.1-sol",
+          cost: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0 },
+        }],
+      },
+    }, {
+      modelsJsonPath,
+      chatProjectionPlans: {
+        "openai-codex-oauth": {
+          sourceProviderId: "openai-codex-oauth",
+          runtimeProviderId: "openai-codex",
+          projection: "models-json",
+          credentialSource: "auth-storage",
+        },
+      },
+    });
+    const oauthCustom = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(oauthCustom.providers["openai-codex"].models[0]).toMatchObject({
+      id: "gpt-6.1-sol",
+      contextWindow: 272000,
+      cost: { input: 3, output: 4, cacheRead: 0, cacheWrite: 0 },
+    });
+    expect(oauthCustom.providers["openai-codex"].models[0].cost).not.toMatchObject({
+      input: 2,
+      output: 10,
+      cacheRead: 0.1,
+      cacheWrite: 2.5,
+    });
+  });
+
   it("rejects an unknown credential source before changing models.json", () => {
     const modelsJsonPath = path.join(tmpHome, "models.json");
     const original = JSON.stringify({ providers: { preserved: { apiKey: "keep-me" } } }, null, 2) + "\n";

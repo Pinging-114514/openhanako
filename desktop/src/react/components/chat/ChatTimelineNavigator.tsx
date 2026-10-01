@@ -14,6 +14,7 @@ interface Props {
   messageElementsRef: RefObject<Map<string, HTMLDivElement>>;
   active: boolean;
   railVisible: boolean;
+  onNavigate?: () => void;
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -48,6 +49,7 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
   messageElementsRef,
   active,
   railVisible,
+  onNavigate,
 }: Props) {
   const [layouts, setLayouts] = useState<Record<string, MarkerLayout>>({});
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -161,8 +163,9 @@ export const ChatTimelineNavigator = memo(function ChatTimelineNavigator({
     const panel = scrollRef.current;
     const layout = layouts[anchor.messageId];
     if (!panel || !layout) return;
+    onNavigate?.();
     panel.scrollTo({ top: layout.targetTop, behavior: 'smooth' });
-  }, [layouts, scrollRef]);
+  }, [layouts, onNavigate, scrollRef]);
 
   const renderedAnchors = useMemo(
     () => anchors.filter(anchor => layouts[anchor.messageId]),

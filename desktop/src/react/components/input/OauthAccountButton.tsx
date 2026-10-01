@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
+import { invalidateCodexServiceTier } from '../../hooks/use-codex-service-tier';
 import { useOauthAccounts } from '../../hooks/use-oauth-accounts';
 import { useI18n } from '../../hooks/use-i18n';
 import {
@@ -56,6 +57,7 @@ export function OauthAccountButton({
       });
       const data = await res.json() as { accounts?: OauthAccount[] };
       if (Array.isArray(data.accounts)) applyAccounts(data.accounts);
+      if (res.ok) invalidateCodexServiceTier({ resetEligibility: true });
     } catch (err) {
       console.error('[oauth-account] switch failed:', err);
     } finally {
@@ -84,6 +86,7 @@ export function OauthAccountButton({
       triggerClassName={`${styles['thinking-pill']} ${styles['oauth-account-pill']}${low ? ` ${styles.active}` : ''}`}
       onAttemptOpen={() => {
         void refresh(true);
+        invalidateCodexServiceTier();
         return true;
       }}
       renderTrigger={() => (

@@ -327,6 +327,8 @@ export interface ChatMessage {
   origin?: { kind: 'agent'; agentId: string | null; agentName: string | null };
   // Assistant
   blocks?: ContentBlock[];
+  /** 会话定时的最新结论，挂在设下定时的那一轮上。 */
+  cronSlotLabel?: string;
   turnUsage?: {
     calls: number;
     input: number;

@@ -98,6 +98,7 @@ describe("Scheduler studio cron", () => {
         createdByAgentId: "agent-b",
         notificationContext: null,
       };
+      const deliverCustomMessage = vi.fn(async () => ({ ok: true, mode: "triggerTurn" }));
       const engine = {
         agentsDir,
         agents: new Map(),
@@ -124,6 +125,7 @@ describe("Scheduler studio cron", () => {
           authorizedFolders: ["/workspace/live-authorized"],
         })),
         executeIsolated,
+        deliverCustomMessage,
         summarizeActivity: vi.fn(),
         getActivityStore: vi.fn(() => activityStore),
         emitDevLog: vi.fn(),
@@ -151,38 +153,22 @@ describe("Scheduler studio cron", () => {
         executionContext,
       });
 
-      expect(executeIsolated).toHaveBeenCalledWith(
-        expect.stringContaining("run in b"),
+      expect(executeIsolated).not.toHaveBeenCalled();
+      expect(deliverCustomMessage).toHaveBeenCalledWith(
+        sourceSessionPath,
         expect.objectContaining({
-          agentId: "agent-b",
-          cwd: "/workspace/live",
-          workspaceFolders: ["/workspace/live-ref"],
-          authorizedFolders: ["/workspace/live-authorized"],
-          parentSessionId: "sess-b",
-          parentSessionPath: sourceSessionPath,
-          model: { id: "gpt-test", provider: "openai" },
-          activityType: "cron",
-          permissionContext: {
-            surface: "automation",
-            automationJob: {
-              studioId: "studio-a",
-              id: "studio_job_1",
-              actorAgentId: "agent-b",
-              configRevision: 3,
-              executionScopeKey: expect.any(String),
-            },
-          },
+          customType: "session-cron-wake",
+          display: false,
+          details: expect.objectContaining({
+            jobId: "studio_job_1",
+            displayText: expect.stringContaining("Agent B workspace job"),
+          }),
         }),
+        expect.objectContaining({ triggerTurn: true }),
       );
-      expect(activityStore.add).toHaveBeenCalledWith(expect.objectContaining({
-        type: "cron",
-        agentId: "agent-b",
-        label: "Agent B workspace job",
-      }));
-      expect(eventBus.emit).toHaveBeenCalledWith(
-        expect.objectContaining({ type: "activity_update" }),
-        null,
-      );
+      const deliveryOptions = deliverCustomMessage.mock.calls[0][2];
+      expect(typeof deliveryOptions.beforeInputSideEffects).toBe("function");
+      expect(activityStore.add).not.toHaveBeenCalled();
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }

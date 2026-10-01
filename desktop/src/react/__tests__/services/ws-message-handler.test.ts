@@ -16,6 +16,7 @@ vi.mock('../../hooks/use-stream-buffer', () => ({
 
 vi.mock('../../stores/session-actions', () => ({
   loadSessions: vi.fn(),
+  loadMessages: vi.fn(async () => undefined),
 }));
 
 vi.mock('../../stores/channel-actions', () => ({
@@ -62,7 +63,8 @@ import { resetSessionRefreshSchedulerForTest } from '../../services/session-refr
 import { dispatchStreamKey } from '../../services/stream-key-dispatcher';
 import { handleAppEvent } from '../../services/app-event-actions';
 import { clearMessageLiveVersion, readMessageLiveVersion } from '../../stores/message-live-version';
-import { loadSessions } from '../../stores/session-actions';
+import { loadSessions, loadMessages } from '../../stores/session-actions';
+import { isSessionCronCheck, resetSessionCronCheck } from '../../stores/session-cron-check';
 import zh from '../../../locales/zh.json';
 
 /** Resolve a dotted i18n key against the real Chinese pack, the way window.t does. */
@@ -80,6 +82,47 @@ afterEach(() => {
   previewRefreshMocks.markDeskTreeDirtyForResourceChange.mockClear();
   vi.useRealTimers();
   vi.unstubAllGlobals();
+});
+
+describe('ws-message-handler cron lifecycle integration', () => {
+  const path = '/cron-lifecycle.jsonl';
+  beforeEach(() => {
+    vi.mocked(loadMessages).mockClear();
+    resetSessionCronCheck(path);
+    useStore.setState({ currentSessionPath: path, sessions: [], sessionLocatorsById: {}, streamingSessions: [path], activeSessionStreams: {} } as never);
+  });
+  afterEach(() => resetSessionCronCheck(path));
+
+  it('reloads only after the last overlapping wake, and ignores duplicate rotated events', () => {
+    handleServerMessage({ type: 'session_cron_checking', sessionPath: path, wakeId: 'A', label: 'A' });
+    handleServerMessage({ type: 'session_cron_checking', sessionPath: path, wakeId: 'B', label: 'B' });
+    handleServerMessage({ type: 'session_cron_rotated', sessionPath: path, wakeId: 'A' });
+    expect(isSessionCronCheck(path)).toBe(true);
+    expect(loadMessages).not.toHaveBeenCalled();
+    handleServerMessage({ type: 'session_cron_rotated', sessionPath: path, wakeId: 'B' });
+    expect(isSessionCronCheck(path)).toBe(false);
+    expect(loadMessages).toHaveBeenCalledTimes(1);
+    applyStreamingStatus(true, path);
+    handleServerMessage({ type: 'session_cron_rotated', sessionPath: path, wakeId: 'B' });
+    expect(useStore.getState().streamingSessions).toContain(path);
+    expect(loadMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('pairs old-backend checking with its identifier-free rotated event during renderer-only upgrades', () => {
+    handleServerMessage({ type: 'session_cron_checking', sessionPath: path, jobId: 'legacy-job', label: 'legacy' });
+    expect(isSessionCronCheck(path)).toBe(true);
+    handleServerMessage({ type: 'session_cron_rotated', sessionPath: path });
+    expect(isSessionCronCheck(path)).toBe(false);
+    expect(loadMessages).toHaveBeenCalledTimes(1);
+  });
+
+  it('dedupes replayed begin for one wake and preserves an existing stream on queued rotations', () => {
+    for (let i = 0; i < 2; i++) handleServerMessage({ type: 'session_cron_checking', sessionPath: path, wakeId: 'A', holdStream: false });
+    handleServerMessage({ type: 'session_cron_rotated', sessionPath: path, wakeId: 'A', preserveClientState: true });
+    expect(isSessionCronCheck(path)).toBe(false);
+    expect(useStore.getState().streamingSessions).toContain(path);
+    expect(loadMessages).not.toHaveBeenCalled();
+  });
 });
 
 describe('ws-message-handler applyStreamingStatus', () => {
@@ -1863,5 +1906,31 @@ describe('ws-message-handler error presentation', () => {
     expect(warn).not.toHaveBeenCalled();
 
     warn.mockRestore();
+  });
+
+  it('fails pending optimistic user messages when the session reports an error', () => {
+    useStore.getState().initSession('/session/a.jsonl', [{
+      type: 'message',
+      data: {
+        id: 'client-user-1',
+        role: 'user',
+        text: 'stuck',
+        sendStatus: 'pending',
+      },
+    }], false);
+
+    handleServerMessage({
+      type: 'error',
+      code: 'internal_contract',
+      message: 'persist failed',
+      sessionPath: '/session/a.jsonl',
+    });
+
+    const items = useStore.getState().chatSessions['/session/a.jsonl']?.items || [];
+    const first = items[0];
+    expect(first?.type).toBe('message');
+    if (!first || first.type !== 'message') throw new Error('expected message item');
+    expect(first.data.sendStatus).toBe('failed');
+    expect(first.data.sendError).toBe(translateZh('error.code.internalContract'));
   });
 });

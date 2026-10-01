@@ -36,6 +36,7 @@ export const openaiCodexOAuthPlugin = {
   // field uses this list; an explicit [] remains an intentional opt-out.
   models: [
     "gpt-6-astra",
+    "gpt-6.1-sol",
     "gpt-5.6-sol",
     "gpt-5.6-terra",
     "gpt-5.6-luna",

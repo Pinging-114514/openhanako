@@ -83,3 +83,109 @@ export function parseLeadingInternalMoodBlock(input: string): LeadingInternalMoo
     rest: inspection.remainder.slice(closeIndex + closeTag.length),
   };
 }
+
+function fenceIsOpen(input: string, index: number): boolean {
+  let count = 0;
+  let cursor = 0;
+  while (cursor < index) {
+    if (input.startsWith("```", cursor)) {
+      count += 1;
+      cursor += 3;
+    } else {
+      cursor += 1;
+    }
+  }
+  return count % 2 === 1;
+}
+
+function atLineStart(input: string, index: number): boolean {
+  let cursor = index - 1;
+  while (cursor >= 0 && (input[cursor] === " " || input[cursor] === "\t")) cursor -= 1;
+  return cursor < 0 || input[cursor] === "\n" || input[cursor] === "\r";
+}
+
+function openerIsLiteral(input: string, index: number): boolean {
+  return input[index - 1] === "`"
+    || fenceIsOpen(input, index)
+    || !atLineStart(input, index);
+}
+
+export interface InternalMoodBlockMatch extends LeadingInternalMoodBlock {
+  index: number;
+}
+
+export interface InternalMoodOpenerMatch {
+  index: number;
+  prefix: string;
+  tag: InternalMoodTag;
+  remainder: string;
+}
+
+/** First mood opener on its own line. A closer is not required, so streaming can enter the block. */
+export function findInternalMoodOpener(input: string): InternalMoodOpenerMatch | null {
+  let best: InternalMoodOpenerMatch | null = null;
+  for (const tag of INTERNAL_MOOD_TAGS) {
+    const openTag = `<${tag}>`;
+    let from = 0;
+    while (from < input.length) {
+      const index = input.indexOf(openTag, from);
+      if (index < 0) break;
+      from = index + openTag.length;
+      if (openerIsLiteral(input, index)) continue;
+      if (best && index >= best.index) continue;
+      best = {
+        index,
+        prefix: input.slice(0, index),
+        tag,
+        remainder: input.slice(index + openTag.length),
+      };
+      break;
+    }
+  }
+  return best;
+}
+
+/** Trailing `<mo`-style fragment that is still on its own line and must not be emitted as text yet. */
+export function internalMoodOpenerHoldLength(input: string): number {
+  let best = 0;
+  for (const tag of INTERNAL_MOOD_TAGS) {
+    const openTag = `<${tag}>`;
+    const maxCheck = Math.min(input.length, openTag.length - 1);
+    for (let len = maxCheck; len >= 1; len--) {
+      if (!input.endsWith(openTag.slice(0, len))) continue;
+      const start = input.length - len;
+      if (input[start - 1] === "`" || fenceIsOpen(input, start) || !atLineStart(input, start)) break;
+      if (len > best) best = len;
+      break;
+    }
+  }
+  return best;
+}
+
+/** First complete mood block on its own line, including one that follows the answer. */
+export function findInternalMoodBlock(input: string): InternalMoodBlockMatch | null {
+  let best: InternalMoodBlockMatch | null = null;
+  for (const tag of INTERNAL_MOOD_TAGS) {
+    const openTag = `<${tag}>`;
+    const closeTag = `</${tag}>`;
+    let from = 0;
+    while (from < input.length) {
+      const index = input.indexOf(openTag, from);
+      if (index < 0) break;
+      from = index + openTag.length;
+      if (openerIsLiteral(input, index)) continue;
+      const closeIndex = input.indexOf(closeTag, index + openTag.length);
+      if (closeIndex < 0) continue;
+      if (best && index >= best.index) continue;
+      best = {
+        index,
+        prefix: input.slice(0, index),
+        tag,
+        content: input.slice(index + openTag.length, closeIndex),
+        rest: input.slice(closeIndex + closeTag.length),
+      };
+      break;
+    }
+  }
+  return best;
+}

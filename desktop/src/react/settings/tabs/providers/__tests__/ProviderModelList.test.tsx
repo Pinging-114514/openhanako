@@ -199,6 +199,43 @@ describe('ProviderModelList', () => {
     expect(onRefresh).toHaveBeenCalled();
   });
 
+  it('removes an already added model when its dropdown row is clicked again', async () => {
+    const onRefresh = vi.fn(async () => {});
+    mocks.hanaFetch
+      .mockResolvedValueOnce(jsonResponse({ models: [] }))
+      .mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    render(
+      <ProviderModelList
+        providerId="mimo"
+        summary={{
+          type: 'api-key',
+          auth_type: 'api-key',
+          display_name: 'Xiaomi (MiMo)',
+          base_url: 'https://api.xiaomimimo.com/v1',
+          api: 'openai-completions',
+          api_key: '',
+          models: ['mimo-v2.6-pro', 'mimo-v2.6-flash'],
+          custom_models: [],
+          has_credentials: true,
+          supports_oauth: false,
+          is_coding_plan: false,
+          can_delete: true,
+        }}
+        onRefresh={onRefresh}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'settings.api.addModel' }));
+    fireEvent.click(screen.getByRole('button', { name: /mimo-v2\.6-pro/ }));
+
+    await waitFor(() => expect(mocks.hanaFetch).toHaveBeenCalledWith('/api/config', expect.objectContaining({
+      method: 'PUT',
+      body: JSON.stringify({ providers: { mimo: { models: ['mimo-v2.6-flash'] } } }),
+    })));
+    expect(onRefresh).toHaveBeenCalled();
+  });
+
   it('writes OAuth custom models through Provider Catalog instead of the legacy preferences route', async () => {
     const onRefresh = vi.fn(async () => {});
     mocks.hanaFetch

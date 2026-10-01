@@ -22,7 +22,7 @@
  *     forwards a session-level service tier.
  */
 
-import { codexServiceTierWireValue, isCodexOauthProvider } from "../../shared/codex-service-tier.ts";
+import { codexServiceTierWireValue, isCodexOauthProvider, resolveCodexServiceTier, supportsCodexUltrafastModel } from "../../shared/codex-service-tier.ts";
 
 const CODEX_RESPONSES_API = "openai-codex-responses";
 const UNSUPPORTED_FIELDS = [
@@ -60,14 +60,16 @@ function stripUnsupportedFields(payload) {
   return next;
 }
 
-/**
- * Apply the Codex speed tier. Only acts when the caller states a tier: a
- * request that did not go through Hana's session options (utility calls,
- * tests) keeps whatever `service_tier` it already carries.
- */
-function applyServiceTier(payload, options) {
-  if (!options || !Object.prototype.hasOwnProperty.call(options, "codexServiceTier")) return payload;
-  const wire = codexServiceTierWireValue(options.codexServiceTier);
+/** Apply the current account gate again at serialization, including inherited utility payloads. */
+function applyServiceTier(payload, model, options) {
+  const explicit = !!options && Object.prototype.hasOwnProperty.call(options, "codexServiceTier");
+  if (!explicit && payload.service_tier !== "ultrafast") return payload;
+  const tier = resolveCodexServiceTier(
+    explicit ? options.codexServiceTier : payload.service_tier,
+    options?.codexUltrafastEligible === true && (!model?.id || supportsCodexUltrafastModel(model.id)),
+    payload.model || model?.id || "",
+  );
+  const wire = codexServiceTierWireValue(tier);
   const has = Object.prototype.hasOwnProperty.call(payload, "service_tier");
   if (wire === null) {
     if (!has) return payload;
@@ -78,7 +80,7 @@ function applyServiceTier(payload, options) {
   return { ...payload, service_tier: wire };
 }
 
-export function apply(payload, _model?, options?) {
+export function apply(payload, model?, options?) {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) return payload;
-  return applyServiceTier(stripUnsupportedFields(payload), options);
+  return applyServiceTier(stripUnsupportedFields(payload), model, options);
 }

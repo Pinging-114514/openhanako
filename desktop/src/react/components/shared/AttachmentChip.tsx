@@ -10,6 +10,8 @@ import styles from './AttachmentChip.module.css';
 interface AttachmentChipProps {
   icon: ReactNode;
   name: string;
+  onOpen?: () => void;
+  openLabel?: string;
   onRemove?: () => void;
   className?: string;
   variant?: 'normal' | 'expired';
@@ -18,16 +20,27 @@ interface AttachmentChipProps {
 export const AttachmentChip = memo(function AttachmentChip({
   icon,
   name,
+  onOpen,
+  openLabel,
   onRemove,
   className,
   variant = 'normal',
 }: AttachmentChipProps) {
+  const body = (
+    <>
+      <span className={styles.icon}>{icon}</span>
+      <span className={styles.label}>{name}</span>
+    </>
+  );
   return (
     <span className={`${styles.chip}${variant === 'expired' ? ` ${styles.expired}` : ''}${className ? ` ${className}` : ''}`}>
-      <span className={styles.name}>
-        <span className={styles.icon}>{icon}</span>
-        {name}
-      </span>
+      {onOpen ? (
+        <button type="button" className={styles.open} onClick={onOpen} aria-label={openLabel || name}>
+          {body}
+        </button>
+      ) : (
+        <span className={styles.name}>{body}</span>
+      )}
       {onRemove && (
         <button className={styles.remove} onClick={onRemove}>
           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

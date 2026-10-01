@@ -13,6 +13,32 @@ export const CODEX_SERVICE_TIERS = ["standard", "fast", "ultrafast"] as const;
 export type CodexServiceTier = typeof CODEX_SERVICE_TIERS[number];
 
 export const DEFAULT_CODEX_SERVICE_TIER: CodexServiceTier = "standard";
+export const BASE_CODEX_SERVICE_TIERS = ["standard", "fast"] as const;
+
+/** Pro (Max), the $500 self-serve SKU. Generic `pro` and credit balances are not proof. */
+export function isCodexProMaxPlan(planType: unknown): boolean {
+  return typeof planType === "string" && planType.trim().toLowerCase() === "promax";
+}
+
+/** As of 2026-09-30, Sol (including 6.1) supports Standard/Fast only. */
+export function supportsCodexUltrafastModel(modelId: unknown): boolean {
+  if (typeof modelId !== "string") return false;
+  const id = modelId.trim().toLowerCase().split("/").pop() || "";
+  return /^gpt-6-astra(?:-\d{4}-\d{2}-\d{2})?$/.test(id);
+}
+
+export function availableCodexServiceTiers(eligible: boolean, modelId?: unknown): readonly CodexServiceTier[] {
+  return eligible === true && (modelId === undefined || supportsCodexUltrafastModel(modelId))
+    ? CODEX_SERVICE_TIERS
+    : BASE_CODEX_SERVICE_TIERS;
+}
+
+export function resolveCodexServiceTier(tier: unknown, eligible: boolean, modelId?: unknown): CodexServiceTier {
+  const normalized = normalizeCodexServiceTier(tier);
+  return normalized === "ultrafast" && !availableCodexServiceTiers(eligible, modelId).includes(normalized)
+    ? "fast"
+    : normalized;
+}
 
 const CODEX_OAUTH_PROVIDERS = new Set(["openai-codex", "openai-codex-oauth"]);
 

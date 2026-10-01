@@ -201,8 +201,9 @@ export class Hub {
       uiContext,
       displayMessage,
       sessionFileRefs,
+      shouldDeliver,
     } = opts;
-    const o = { sessionKey, role, ephemeral, meta, isGroup, cwd, model, persist, permissionMode, from, to, onDelta, images, imageAttachmentPaths, videos, videoAttachmentPaths, audios, audioAttachmentPaths, inboundFiles, clientMessageId, sessionId, sessionPath, agentId, uiContext, displayMessage, sessionFileRefs };
+    const o = { sessionKey, role, ephemeral, meta, isGroup, cwd, model, persist, permissionMode, from, to, onDelta, images, imageAttachmentPaths, videos, videoAttachmentPaths, audios, audioAttachmentPaths, inboundFiles, clientMessageId, sessionId, sessionPath, agentId, uiContext, displayMessage, sessionFileRefs, shouldDeliver };
 
     // ── 图片预处理：持久化到磁盘 + 插入 [attached_image] 标记 ──
     // 在路由之前统一处理，所有消息路径（WS / Bridge DM / Bridge Group）共享
@@ -290,7 +291,7 @@ export class Hub {
       },
       { // Bridge owner
         match: o => o.sessionKey && !o.ephemeral,
-        handle: () => this._engine.executeExternalMessage(text, o.sessionKey, o.meta, { guest: false, agentId: o.agentId, onDelta: o.onDelta, images: o.images, imageAttachmentPaths: o.imageAttachmentPaths, videos: o.videos, videoAttachmentPaths: o.videoAttachmentPaths, audios: o.audios, audioAttachmentPaths: o.audioAttachmentPaths, inboundFiles: o.inboundFiles, displayMessage: o.displayMessage }),
+        handle: () => this._engine.executeExternalMessage(text, o.sessionKey, o.meta, { guest: false, agentId: o.agentId, onDelta: o.onDelta, images: o.images, imageAttachmentPaths: o.imageAttachmentPaths, videos: o.videos, videoAttachmentPaths: o.videoAttachmentPaths, audios: o.audios, audioAttachmentPaths: o.audioAttachmentPaths, inboundFiles: o.inboundFiles, displayMessage: o.displayMessage, shouldDeliver: o.shouldDeliver }),
       },
       { // 隔离执行（cron/heartbeat/channel）
         match: o => o.ephemeral,

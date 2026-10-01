@@ -310,6 +310,30 @@ vi.mock("../shared/known-models.js", () => ({
     }
     return null;
   },
+  lookupDisplayModelMeta(provider, modelId) {
+    const lookup = (dict, id) => {
+      if (!dict || typeof id !== "string") return null;
+      if (dict[id]) return dict[id];
+      const lowerId = id.toLowerCase();
+      return Object.entries(dict).find(([key]) => key.toLowerCase() === lowerId)?.[1] || null;
+    };
+    const aliases = {
+      "openai-codex": ["openai-codex-oauth"],
+      "openai-codex-oauth": ["openai-codex"],
+    };
+    const providers = [provider, ...(aliases[provider] || [])];
+    for (const name of providers) {
+      const exact = lookup(KNOWN_MODELS[name], modelId);
+      if (exact) return exact;
+      const bare = typeof modelId === "string" && modelId.includes("/") ? modelId.split("/").pop() : null;
+      if (bare) {
+        const exactBare = lookup(KNOWN_MODELS[name], bare);
+        if (exactBare) return exactBare;
+      }
+    }
+    const bare = typeof modelId === "string" && modelId.includes("/") ? modelId.split("/").pop() : null;
+    return lookup(GENERIC_MODEL_FALLBACKS, modelId) || (bare ? lookup(GENERIC_MODEL_FALLBACKS, bare) : null);
+  },
 }));
 
 const tmpDir = path.join(os.tmpdir(), "hana-test-model-sync-" + Date.now());
@@ -1863,7 +1887,12 @@ describe("syncModels", () => {
     expect(result.providers.deepseek.models[0].id).toBe("deepseek-chat");
     expect(result.providers["dashscope-coding"]).toBeUndefined();
     expect(result.providers["string-provider"]).toBeUndefined();
-    expect(mm.availableModels).toEqual([{ id: "deepseek-chat", provider: "deepseek" }]);
+    expect(mm.availableModels).toEqual([{
+      id: "deepseek-chat",
+      provider: "deepseek",
+      contextWindow: 128000,
+      maxTokens: 8192,
+    }]);
   });
 
   it("keeps SDK-auth alias providers available without a provider model allow list", async () => {

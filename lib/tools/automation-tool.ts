@@ -11,6 +11,7 @@ import { getToolSessionCwd, getToolSessionPath, resolveToolSessionRef } from "./
 import { createAgentSessionAutomationExecutor } from "../desk/agent-run-automation.ts";
 import { applyConfirmedAutomationDraft } from "./automation-draft.ts";
 import { parseSessionKey } from "../bridge/session-key.ts";
+import { anchorEntryIdFromBranch } from "../desk/session-cron-slot.ts";
 
 function normalizeSchedule(params, existing: any = null) {
   const type = params.scheduleType || params.type || existing?.type;
@@ -76,6 +77,9 @@ function contextForTool(ctx, {
   const notificationContext = bridgeDeliveryTarget
     ? { bridgeDeliveryTarget }
     : null;
+  const anchorEntryId = usesDifferentAgent
+    ? null
+    : anchorEntryIdFromBranch(ctx?.sessionManager?.getBranch?.() || []);
   return {
     sessionId,
     sessionPath,
@@ -91,6 +95,7 @@ function contextForTool(ctx, {
       sourceBridgeSessionKey: usesDifferentAgent ? null : bridgeContext?.sessionKey || null,
       sourceSessionPath: usesDifferentAgent ? null : sessionPath,
       createdByAgentId: actorAgentId,
+      ...(anchorEntryId ? { anchorEntryId } : {}),
       ...(notificationContext ? { notificationContext } : {}),
     },
   };
@@ -169,6 +174,15 @@ function pendingSuggestionText(bridgeContext = null, suggestion = null) {
   return "我准备了一项自动任务建议，等你确认后再创建。";
 }
 
+function assertOwnsSessionJob(existingJob, sessionId) {
+  const owner = existingJob?.executionContext?.sourceSessionId
+    || existingJob?.createdBy?.sourceSessionId
+    || null;
+  if (owner && owner !== sessionId) {
+    throw new Error("只能关闭或修改当前会话创建的定时任务");
+  }
+}
+
 function labelFor(params, prompt = "", existing: any = null) {
   if (typeof params.label === "string" && params.label.trim()) return params.label;
   if (typeof existing?.label === "string" && existing.label.trim()) return existing.label;
@@ -186,6 +200,11 @@ function automationDraftSideEffect() {
     ruleId: "automation-draft-no-write",
     summary: "Automation create/update generates a pending suggestion; cron store writes only after the suggestion is applied.",
   };
+}
+
+function directlyCommitsAutomation(getAutoApprove, autoApprove, ctx) {
+  if (typeof getAutoApprove === "function") return getAutoApprove(ctx) === true;
+  return autoApprove === true;
 }
 
 function automationDirectCommitSideEffect(operation) {
@@ -323,19 +342,19 @@ export function createAutomationTool(cronStore, {
   return {
     name: "automation",
     label: "Automation",
-    description: "Create and update scheduled automation suggestions. The suggestion is presented to the user for confirmation — an interactive card on desktop, or a reply-with-/apply text instruction on text-only bridge platforms — and the task is written only after the user applies it. Automations run as background Agent sessions.",
+    description: "Create, update, or turn off a scheduled task for this session. In a full-permission session the change is written immediately. Otherwise it stays a pending suggestion until the user applies it. When a scheduled wake arrives in this session, update that job id with enabled false to stop it. Do not edit another session's job. Automations run by waking this session.",
     sessionPermission: {
       resolveInvocation: (params: any = {}) => {
         if (params.action === "list") {
           return { action: "list", kind: "read", capability: "automation.list" };
         }
         if (isDraftMutationAction(params)) {
-          const directlyCommits = getAutoApprove ? getAutoApprove() === true : autoApprove === true;
+          const commitsNow = directlyCommitsAutomation(getAutoApprove, autoApprove);
           return {
             action: params.action,
-            kind: directlyCommits ? "review" : "routine",
+            kind: commitsNow ? "review" : "routine",
             capability: `automation.${params.action}`,
-            sideEffect: directlyCommits
+            sideEffect: commitsNow
               ? automationDirectCommitSideEffect(params.action)
               : automationDraftSideEffect(),
           };
@@ -344,13 +363,13 @@ export function createAutomationTool(cronStore, {
       },
       describeSideEffect: (params) => {
         if (!isDraftMutationAction(params)) return null;
-        const directlyCommits = getAutoApprove ? getAutoApprove() === true : autoApprove === true;
-        return directlyCommits ? null : automationDraftSideEffect();
+        const commitsNow = directlyCommitsAutomation(getAutoApprove, autoApprove);
+        return commitsNow ? null : automationDraftSideEffect();
       },
     },
     parameters: Type.Object({
       action: StringEnum(["list", "create", "update"], {
-        description: "Action to perform. create and update produce a pending suggestion instead of directly saving.",
+        description: "Action to perform. create and update write immediately in a full-permission session; otherwise they produce a pending suggestion. Use update with enabled false to turn off this session's job.",
       }),
       id: Type.Optional(Type.String({ description: "Automation job id for update." })),
       agentId: Type.Optional(Type.String({ description: "Target Agent id. Defaults to the current Agent." })),
@@ -363,6 +382,9 @@ export function createAutomationTool(cronStore, {
       label: Type.Optional(Type.String({ description: "Short display label." })),
       prompt: Type.Optional(Type.String({ description: "What the target Agent should do when this automation runs." })),
       model: Type.Optional(Type.Any({ description: "Optional execution model for the background Agent run." })),
+      enabled: Type.Optional(Type.Boolean({
+        description: "Set false on update to turn off this session's scheduled task. Omit to leave the current enabled state.",
+      })),
     }),
     execute: async (_toolCallId, params, _signal, _onUpdate, ctx) => {
       const activeCronStore = typeof cronStore?.captureCurrent === "function"
@@ -395,6 +417,7 @@ export function createAutomationTool(cronStore, {
           getHomeCwd,
           targetAgentId,
         });
+        if (operation === "update") assertOwnsSessionJob(existingJob, context.sessionId);
         const { type, schedule } = normalizeSchedule(params, existingJob);
         const run = genericAgentRun(params, context, existingJob);
         const jobData = {
@@ -405,6 +428,7 @@ export function createAutomationTool(cronStore, {
           prompt: run.prompt,
           label: labelFor(params, run.prompt, existingJob),
           model: params.model ?? existingJob?.model ?? "",
+          enabled: typeof params.enabled === "boolean" ? params.enabled : existingJob?.enabled !== false,
           actorAgentId: context.actorAgentId,
           executionContext: run.executor.executionContext,
           executor: run.executor,
@@ -419,7 +443,7 @@ export function createAutomationTool(cronStore, {
         delete jobData.authorization;
         delete jobData.requestedGrants;
 
-        if (getAutoApprove ? getAutoApprove() : autoApprove) {
+        if (directlyCommitsAutomation(getAutoApprove, autoApprove, ctx)) {
           const job = commitAutomationDraft({ cronStore: activeCronStore, operation, jobData, getHomeCwd });
           return {
             content: [{ type: "text", text: `Automation ${operation === "update" ? "updated" : "created"}: ${job.label} (${job.id})` }],

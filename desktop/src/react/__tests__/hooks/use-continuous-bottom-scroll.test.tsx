@@ -56,6 +56,10 @@ function setScrollMetrics(
   });
 }
 
+function stickyNow(controller: ContinuousBottomScrollController | null): boolean {
+  return (controller as ContinuousBottomScrollController).isStickyRef.current;
+}
+
 function Harness({ onController }: { onController: (controller: ContinuousBottomScrollController) => void }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -98,7 +102,7 @@ describe('useContinuousBottomScroll', () => {
     vi.restoreAllMocks();
   });
 
-  it('follows new bottom continuously instead of jumping on content growth', () => {
+  it('pins to the new bottom immediately when content grows while sticky', () => {
     const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
     render(<Harness onController={() => {}} />);
     const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
@@ -109,17 +113,14 @@ describe('useContinuousBottomScroll', () => {
       MockResizeObserver.instances[0].trigger();
     });
 
-    expect(metrics.scrollTop).toBe(700);
-
+    expect(metrics.scrollTop).toBe(760);
     act(() => {
       flushRaf(16);
     });
-
-    expect(metrics.scrollTop).toBeGreaterThan(700);
-    expect(metrics.scrollTop).toBeLessThan(760);
+    expect(metrics.scrollTop).toBe(760);
   });
 
-  it('does not force an upward snap when content shrinks during active follow', () => {
+  it('pins to the new bottom when content shrinks while sticky', () => {
     const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
     render(<Harness onController={() => {}} />);
     const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
@@ -128,18 +129,15 @@ describe('useContinuousBottomScroll', () => {
     act(() => {
       metrics.scrollHeight = 1060;
       MockResizeObserver.instances[0].trigger();
-      flushRaf(16);
     });
-    expect(metrics.scrollTop).toBeGreaterThan(700);
-    const scrollTopDuringFollow = metrics.scrollTop;
+    expect(metrics.scrollTop).toBe(760);
 
     act(() => {
       metrics.scrollHeight = 920;
       MockResizeObserver.instances[0].trigger();
-      flushRaf(32);
     });
 
-    expect(metrics.scrollTop).toBe(scrollTopDuringFollow);
+    expect(metrics.scrollTop).toBe(620);
   });
 
   it('does not follow content growth after the user scrolls away from bottom', () => {
@@ -168,9 +166,8 @@ describe('useContinuousBottomScroll', () => {
     act(() => {
       metrics.scrollHeight = 1060;
       MockResizeObserver.instances[0].trigger();
-      flushRaf(16);
     });
-    expect(metrics.scrollTop).toBeGreaterThan(700);
+    expect(metrics.scrollTop).toBe(760);
 
     act(() => {
       metrics.scrollTop = 520;
@@ -203,7 +200,7 @@ describe('useContinuousBottomScroll', () => {
       flushRaf(16);
     });
 
-    expect(metrics.scrollTop).toBeGreaterThan(700);
+    expect(metrics.scrollTop).toBe(740);
   });
 
   it('jumps to the top and clears sticky so later growth does not yank the view back down', () => {
@@ -219,7 +216,7 @@ describe('useContinuousBottomScroll', () => {
     });
 
     expect(metrics.scrollTop).toBe(0);
-    expect(controller?.isStickyRef.current).toBe(false);
+    expect(stickyNow(controller)).toBe(false);
 
     act(() => {
       metrics.scrollHeight = 1200;
@@ -247,7 +244,7 @@ describe('useContinuousBottomScroll', () => {
 
     expect(scrollTo).toHaveBeenCalledWith({ top: 700, behavior: 'smooth' });
     expect(metrics.scrollTop).toBe(700);
-    expect(controller?.isStickyRef.current).toBe(true);
+    expect(stickyNow(controller)).toBe(true);
   });
 
   it('snaps instantly (no animation) on the first content growth after arming an instant landing', () => {
@@ -274,14 +271,13 @@ describe('useContinuousBottomScroll', () => {
     expect(metrics.scrollTop).toBe(1100);
   });
 
-  it('resumes animated follow on growth after the armed instant landing was consumed', () => {
+  it('pins on subsequent growth after the armed instant landing was consumed', () => {
     let controller: ContinuousBottomScrollController | null = null;
     const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
     render(<Harness onController={(next) => { controller = next; }} />);
     const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
     setScrollMetrics(scrollEl, metrics);
 
-    // First growth after arm = instant landing (consumes the arm).
     act(() => {
       controller?.armInstantLanding();
       metrics.scrollHeight = 1100;
@@ -289,18 +285,15 @@ describe('useContinuousBottomScroll', () => {
     });
     expect(metrics.scrollTop).toBe(800);
 
-    // Subsequent growth (streaming append, delta under largeJumpPx) must animate again.
     act(() => {
       metrics.scrollHeight = 1160;
       MockResizeObserver.instances[0].trigger();
     });
-    expect(metrics.scrollTop).toBe(800); // not yet moved before a frame runs
-
+    expect(metrics.scrollTop).toBe(860);
     act(() => {
       flushRaf(16);
     });
-    expect(metrics.scrollTop).toBeGreaterThan(800);
-    expect(metrics.scrollTop).toBeLessThan(860);
+    expect(metrics.scrollTop).toBe(860);
   });
 
   it('does not write non-finite scroll positions when DOM metrics are invalid', () => {
@@ -377,10 +370,6 @@ describe('useContinuousBottomScroll', () => {
     act(() => {
       metrics.scrollHeight = 920; // grows again after the shrink
       MockResizeObserver.instances[0].trigger();
-      // The follow animates exponentially toward the target; flush enough frames with
-      // monotonically increasing timestamps (like real requestAnimationFrame ticks) for it to
-      // converge within SCROLL_EPSILON_PX (matches the decay driven by FOLLOW_TIME_CONSTANT_MS).
-      for (let frameTime = 16; frameTime <= 16 * 30; frameTime += 16) flushRaf(frameTime);
     });
 
     expect(metrics.scrollTop).toBe(620); // new maxScrollTop = 920 - 300
@@ -396,9 +385,8 @@ describe('useContinuousBottomScroll', () => {
     act(() => {
       metrics.scrollHeight = 1060;
       MockResizeObserver.instances[0].trigger();
-      flushRaf(16);
     });
-    expect(metrics.scrollTop).toBeGreaterThan(700);
+    expect(metrics.scrollTop).toBe(760);
 
     // Simulate a browser-generated scroll event (clamp/anchoring) accompanying a content-height
     // change, without going through the ResizeObserver path: scrollHeight changes in the same
@@ -425,9 +413,8 @@ describe('useContinuousBottomScroll', () => {
     act(() => {
       metrics.scrollHeight = 1060;
       MockResizeObserver.instances[0].trigger();
-      flushRaf(16);
     });
-    expect(metrics.scrollTop).toBeGreaterThan(700);
+    expect(metrics.scrollTop).toBe(760);
 
     // scrollHeight matches lastObserved (no content-size change): this is a genuine
     // user-driven scroll (e.g. scrollbar drag), and must still cancel follow.
@@ -437,5 +424,209 @@ describe('useContinuousBottomScroll', () => {
     });
 
     expect((controller as unknown as ContinuousBottomScrollController).isStickyRef.current).toBe(false);
+  });
+
+  it.each([30, 100])('keeps an upward wheel of %s px disengaged through the sticky threshold and later growth', (distance) => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(700);
+
+    act(() => {
+      fireEvent.wheel(scrollEl, { deltaY: -distance });
+      metrics.scrollTop -= distance;
+      fireEvent.scroll(scrollEl);
+    });
+    expect(stickyNow(controller)).toBe(false);
+
+    act(() => {
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(700 - distance);
+    expect(stickyNow(controller)).toBe(false);
+  });
+
+  it('does not re-arm follow when content shrinks after an upward wheel', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      fireEvent.wheel(scrollEl, { deltaY: -200 });
+      metrics.scrollTop = 500;
+      fireEvent.scroll(scrollEl);
+    });
+    expect(stickyNow(controller)).toBe(false);
+
+    act(() => {
+      metrics.scrollHeight = 830;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(500);
+    expect(stickyNow(controller)).toBe(false);
+
+    act(() => {
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(500);
+  });
+
+  it.each([false, true])('treats a scrollbar drag upward as user intent even when height growth=%s', (growth) => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(760);
+
+    act(() => {
+      if (growth) metrics.scrollHeight = 1080;
+      metrics.scrollTop = 500;
+      fireEvent.scroll(scrollEl);
+    });
+    expect(stickyNow(controller)).toBe(false);
+
+    act(() => {
+      metrics.scrollHeight = 1120;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(500);
+  });
+
+  it('keeps a real scrollbar gesture disengaged even if content shrinks at the same time', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    scrollEl.getBoundingClientRect = () => ({ left: 0, right: 400, width: 400, top: 0, bottom: 300, height: 300, x: 0, y: 0, toJSON() {} });
+    act(() => {
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+      scrollEl.dispatchEvent(new MouseEvent('pointerdown', { clientX: 395, bubbles: true }));
+      metrics.scrollHeight = 830;
+      metrics.scrollTop = 500;
+      fireEvent.scroll(scrollEl);
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(stickyNow(controller)).toBe(false);
+    act(() => { metrics.scrollHeight = 1120; MockResizeObserver.instances[0].trigger(); });
+    expect(metrics.scrollTop).toBe(500);
+  });
+
+  it('keeps a small upward touch gesture disengaged when still within the bottom threshold', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      fireEvent.touchStart(scrollEl, { touches: [{ clientY: 100 }] });
+      fireEvent.touchMove(scrollEl, { touches: [{ clientY: 120 }] });
+      metrics.scrollTop = 680;
+      fireEvent.scroll(scrollEl);
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(stickyNow(controller)).toBe(false);
+    expect(metrics.scrollTop).toBe(680);
+  });
+
+  it.each(['touch', 'scrollbar'])('keeps following after a stationary %s tap', (kind) => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    scrollEl.getBoundingClientRect = () => ({ left: 0, right: 400, width: 400, top: 0, bottom: 300, height: 300, x: 0, y: 0, toJSON() {} });
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      if (kind === 'touch') {
+        fireEvent.touchStart(scrollEl, { touches: [{ clientY: 100 }] });
+        fireEvent.touchEnd(scrollEl, { touches: [] });
+      } else {
+        scrollEl.dispatchEvent(new MouseEvent('pointerdown', { clientX: 395, clientY: 250, bubbles: true }));
+        window.dispatchEvent(new MouseEvent('pointerup', { clientX: 395, clientY: 250 }));
+      }
+      metrics.scrollHeight = 1060;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(stickyNow(controller)).toBe(true);
+    expect(metrics.scrollTop).toBe(760);
+  });
+
+  it('restores a reading anchor without mistaking the correction for a return to sticky bottom', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      fireEvent.wheel(scrollEl, { deltaY: -120 });
+      metrics.scrollTop = 500;
+      fireEvent.scroll(scrollEl);
+      (controller as unknown as ContinuousBottomScrollController).restoreReadingPosition(690);
+      fireEvent.scroll(scrollEl);
+    });
+    expect(metrics.scrollTop).toBe(690);
+    expect(stickyNow(controller)).toBe(false);
+    act(() => { metrics.scrollHeight = 1200; MockResizeObserver.instances[0].trigger(); });
+    expect(metrics.scrollTop).toBe(690);
+  });
+
+  it('does not let anchor restoration override active bottom following', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      (controller as unknown as ContinuousBottomScrollController).restoreReadingPosition(200);
+    });
+    expect(metrics.scrollTop).toBe(700);
+    expect(stickyNow(controller)).toBe(true);
+  });
+
+  it('follows again after the user scrolls back down to the bottom', () => {
+    let controller: ContinuousBottomScrollController | null = null;
+    const metrics = { scrollHeight: 1000, clientHeight: 300, scrollTop: 700 };
+    render(<Harness onController={(next) => { controller = next; }} />);
+    const scrollEl = document.querySelector('[data-testid="scroll"]') as HTMLElement;
+    setScrollMetrics(scrollEl, metrics);
+    act(() => {
+      MockResizeObserver.instances[0].trigger();
+      fireEvent.wheel(scrollEl, { deltaY: -120 });
+      metrics.scrollTop = 500;
+      fireEvent.scroll(scrollEl);
+    });
+    expect(stickyNow(controller)).toBe(false);
+
+    act(() => {
+      metrics.scrollTop = 700;
+      fireEvent.scroll(scrollEl);
+    });
+    expect(stickyNow(controller)).toBe(true);
+
+    act(() => {
+      metrics.scrollHeight = 1100;
+      MockResizeObserver.instances[0].trigger();
+    });
+    expect(metrics.scrollTop).toBe(800);
   });
 });

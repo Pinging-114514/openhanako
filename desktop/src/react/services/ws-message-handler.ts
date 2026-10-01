@@ -7,6 +7,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- WS 消息分发，msg 结构由服务端动态决定 */
 
 import { streamBufferManager } from '../hooks/use-stream-buffer';
+import { loadMessages } from '../stores/session-actions';
+import {
+  beginSessionCronCheck,
+  settleSessionCronRotation,
+  isSessionCronCheck,
+} from '../stores/session-cron-check';
 import { dispatchStreamKey } from './stream-key-dispatcher';
 import { useStore } from '../stores';
 import { updateKeyed } from '../stores/create-keyed-slice';
@@ -38,6 +44,7 @@ import {
 } from './stream-resume';
 import { TODO_TOOL_NAMES, type TodoToolName } from '../utils/todo-constants';
 import { applyTodoLifecycle, migrateLegacyTodos } from '../utils/todo-compat';
+import { clearOptimisticUserSendWatch, failPendingOptimisticSends } from '../utils/optimistic-user-send';
 import { renderMarkdown } from '../utils/markdown';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
 import { playChatCompletionSound } from './chat-completion-sound';
@@ -618,6 +625,30 @@ export function handleServerMessage(msg: any): void {
       );
       break;
     }
+    case 'session_cron_checking': {
+      const cronPath = typeof msg.sessionPath === 'string' ? msg.sessionPath : '';
+      if (!cronPath) break;
+      const label = typeof msg.label === 'string' && msg.label.trim() ? msg.label.trim() : '';
+      // Older backends send jobId on begin but no identifier on end. Use the anonymous
+      // counter unless wakeId is present so a renderer-only reload cannot leave checks stuck.
+      const wakeKey = typeof msg.wakeId === 'string' && msg.wakeId.trim() ? msg.wakeId.trim() : undefined;
+      beginSessionCronCheck(cronPath, label, wakeKey);
+      if (msg.holdStream === false) break;
+      applyStreamingStatus(false, cronPath, {}, { force: true, playSound: false });
+      break;
+    }
+    case 'session_cron_rotated': {
+      const cronPath = typeof msg.sessionPath === 'string' ? msg.sessionPath : '';
+      if (!cronPath) break;
+      const wakeKey = typeof msg.wakeId === 'string' && msg.wakeId.trim() ? msg.wakeId.trim() : undefined;
+      const effect = settleSessionCronRotation(cronPath, wakeKey, {
+        preserveClientState: msg.preserveClientState === true,
+      });
+      if (!effect.shouldSettle) break;
+      applyStreamingStatus(false, cronPath, {}, { force: true, playSound: false });
+      void loadMessages(cronPath);
+      break;
+    }
     case 'session_branch_reset': {
       const sp = msg.sessionPath;
       const targetIds = [...new Set([msg.clientMessageId, msg.messageId, msg.projectionMessageId]
@@ -855,6 +886,7 @@ export function handleServerMessage(msg: any): void {
         origin: msg.message.origin ?? undefined,
       };
       if (clientMessageId && useStore.getState().confirmOptimisticUserMessage(sp, clientMessageId, data)) {
+        clearOptimisticUserSendWatch(sp, clientMessageId);
         bumpMessageLiveVersion(sp);
         if (sp === useStore.getState().currentSessionPath) {
           useStore.setState({ welcomeVisible: false });
@@ -1061,6 +1093,7 @@ export function handleServerMessage(msg: any): void {
         break;
       }
       useStore.getState().setInlineError(sp, presented);
+      failPendingOptimisticSends(sp, presented.text || String(msg.message ?? 'send_failed'));
       break;
     }
 
@@ -1145,6 +1178,7 @@ export function handleServerMessage(msg: any): void {
 
     case 'status': {
       const sp = msg.sessionPath || null;
+      if (sp && isSessionCronCheck(sp) && msg.isStreaming) break;
       const sid = typeof msg.sessionId === 'string' && msg.sessionId.trim() ? msg.sessionId.trim() : null;
       // streamingSessions 维护 + 焦点 UI 占位一并由 applyStreamingStatus 处理
       const applied = applyStreamingStatus(msg.isStreaming, sp, {

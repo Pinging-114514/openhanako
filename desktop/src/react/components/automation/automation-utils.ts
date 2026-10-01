@@ -66,6 +66,11 @@ export function automationExecutorLabel(job: CronJob): string {
   return t('automation.executor.agentSession');
 }
 
+export function isSessionTimerJob(job: CronJob): boolean {
+  const sessionId = job.executionContext?.sourceSessionId;
+  return typeof sessionId === 'string' && sessionId.trim().length > 0;
+}
+
 export function jobAgentId(job: CronJob, fallbackAgentId: string | null): string | null {
   if (typeof job.actorAgentId === 'string' && job.actorAgentId.trim()) return job.actorAgentId;
   if (typeof job.executor?.agentId === 'string' && job.executor.agentId.trim()) return job.executor.agentId;

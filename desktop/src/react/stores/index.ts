@@ -26,6 +26,7 @@ import { createComputerOverlaySlice, type ComputerOverlaySlice } from './compute
 import { createScreenshotSlice, type ScreenshotSlice } from './screenshot-slice';
 import { createSidebarUiSlice, type SidebarUiSlice } from './sidebar-ui-slice';
 import { createFileHistorySlice, type FileHistorySlice } from './file-history-slice';
+import { createFollowupQueueSlice, writePersistedFollowups, type FollowupQueueSlice } from './followup-queue-slice';
 import { configureMessageLiveVersionSessionKeyResolver } from './message-live-version';
 
 export type StoreState = ConnectionSlice &
@@ -54,7 +55,8 @@ export type StoreState = ConnectionSlice &
   ComputerOverlaySlice &
   ScreenshotSlice &
   SidebarUiSlice &
-  FileHistorySlice;
+  FileHistorySlice &
+  FollowupQueueSlice;
 
 export const useStore = create<StoreState>()((set, _get, _api) => ({
   ...createConnectionSlice(set, _get),
@@ -84,11 +86,17 @@ export const useStore = create<StoreState>()((set, _get, _api) => ({
   ...createScreenshotSlice(set),
   ...createSidebarUiSlice(set, _get),
   ...createFileHistorySlice(set, _get),
+  ...createFollowupQueueSlice(set, _get),
 }));
 
 configureMessageLiveVersionSessionKeyResolver((sessionPath) => (
   sessionScopedKey(useStore.getState(), sessionPath)
 ));
+
+useStore.subscribe((state, prev) => {
+  if (state.followupsBySession === prev.followupsBySession) return;
+  writePersistedFollowups(state.followupsBySession);
+});
 
 // Re-export slice types
 export type {
@@ -119,4 +127,5 @@ export type {
   ScreenshotSlice,
   SidebarUiSlice,
   FileHistorySlice,
+  FollowupQueueSlice,
 };

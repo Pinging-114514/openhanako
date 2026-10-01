@@ -6,9 +6,10 @@ import { AgentAvatar, resolveAgentDisplayInfo } from '../utils/agent-display';
 import fp from './FloatingPanels.module.css';
 import styles from './automation/AutomationPanel.module.css';
 import { AutomationCard } from './automation/AutomationCard';
+import { SessionTimerCard } from './automation/SessionTimerCard';
 import { AgentTabScroller, type AgentTabScrollerItem } from './automation/AgentTabScroller';
 import type { CronJob, ModelOption } from './automation/automation-types';
-import { jobAgentId } from './automation/automation-utils';
+import { isSessionTimerJob, jobAgentId } from './automation/automation-utils';
 import type { Agent } from '../types';
 import { sessionScopedValue } from '../stores/session-slice';
 import { normalizeSessionRouteError } from '../../../../shared/error-user-messages.ts';
@@ -43,13 +44,73 @@ function agentTabIds(agents: Agent[], groups: Map<string, CronJob[]>) {
   return ids;
 }
 
+function JobSections({
+  jobs,
+  availableModels,
+  openJobs,
+  onToggleOpen,
+  onToggleEnabled,
+  onRemove,
+  onUpdate,
+  onClose,
+}: {
+  jobs: CronJob[];
+  availableModels: ModelOption[];
+  openJobs: Record<string, boolean>;
+  onToggleOpen: (jobId: string) => void;
+  onToggleEnabled: (id: string) => void;
+  onRemove: (id: string) => void;
+  onUpdate: (id: string, fields: Record<string, unknown>) => Promise<void> | void;
+  onClose: () => void;
+}) {
+  const t = window.t ?? ((p: string) => p);
+  const sessionTimers = jobs.filter(isSessionTimerJob);
+  const patrols = jobs.filter(job => !isSessionTimerJob(job));
+  return (
+    <>
+      {sessionTimers.length > 0 && (
+        <>
+          <div className={styles.sectionTitle}>{t('automation.sessionTimers')}</div>
+          {sessionTimers.map(job => (
+            <SessionTimerCard
+              key={job.id}
+              job={job}
+              open={openJobs[job.id] === true}
+              onToggleOpen={() => onToggleOpen(job.id)}
+              onToggleEnabled={onToggleEnabled}
+              onRemove={onRemove}
+              onClose={onClose}
+            />
+          ))}
+        </>
+      )}
+      {patrols.length > 0 && (
+        <>
+          <div className={styles.sectionTitle}>{t('automation.patrols')}</div>
+          {patrols.map(job => (
+            <AutomationCard
+              key={job.id}
+              job={job}
+              availableModels={availableModels}
+              open={openJobs[job.id] === true}
+              onToggleOpen={() => onToggleOpen(job.id)}
+              onToggleEnabled={onToggleEnabled}
+              onRemove={onRemove}
+              onUpdate={onUpdate}
+            />
+          ))}
+        </>
+      )}
+    </>
+  );
+}
+
 export function AutomationPanel() {
   const agentAvatarUrl = useStore(s => s.agentAvatarUrl);
   const agentName = useStore(s => s.agentName);
   const agentYuan = useStore(s => s.agentYuan);
   const currentAgentId = useStore(s => s.currentAgentId);
   const currentSessionId = useStore(s => s.currentSessionId);
-  const currentSessionPath = useStore(s => s.currentSessionPath);
   const currentSessionProjection = useStore(s => s.currentSessionPath
     ? s.sessions.find(session => session.path === s.currentSessionPath)
     : null);
@@ -170,9 +231,9 @@ export function AutomationPanel() {
             cwd,
             workspaceFolders,
             authorizedFolders: keepsSourceSession ? currentAuthorizedFolders : [],
-            sourceSessionId: keepsSourceSession ? currentSessionId : null,
+            sourceSessionId: null,
             sourceBridgeSessionKey: null,
-            sourceSessionPath: keepsSourceSession ? currentSessionPath : null,
+            sourceSessionPath: null,
             createdByAgentId: actorAgentId,
           },
           createdBy: { kind: 'user' },
@@ -194,7 +255,7 @@ export function AutomationPanel() {
     } finally {
       setAddingManualJob(false);
     }
-  }, [addToast, addingManualJob, agents, currentAgentId, currentAuthorizedFolders, currentSessionId, currentSessionPath, currentSessionProjection?.cwd, currentWorkspaceFolders, deskBasePath, deskWorkspaceMountId, homeFolder, loadData, selectedAgentId]);
+  }, [addToast, addingManualJob, agents, currentAgentId, currentAuthorizedFolders, currentSessionId, currentSessionProjection?.cwd, currentWorkspaceFolders, deskBasePath, deskWorkspaceMountId, homeFolder, loadData, selectedAgentId]);
 
   const groups = useMemo(() => groupJobs(jobs, currentAgentId), [currentAgentId, jobs]);
   const tabs = useMemo(() => agentTabIds(agents, groups), [agents, groups]);
@@ -265,18 +326,18 @@ export function AutomationPanel() {
                 <div className={styles.groupList}>
                   {activeJobs.length === 0 ? (!loadError && (
                     <div className={fp.automationEmpty}>{t('automation.emptyForAgent')}</div>
-                  )) : activeJobs.map(job => (
-                    <AutomationCard
-                      key={job.id}
-                      job={job}
+                  )) : (
+                    <JobSections
+                      jobs={activeJobs}
                       availableModels={availableModels}
-                      open={openJobs[job.id] === true}
-                      onToggleOpen={() => setOpenJobs(prev => ({ ...prev, [job.id]: prev[job.id] !== true }))}
+                      openJobs={openJobs}
+                      onToggleOpen={(jobId) => setOpenJobs(prev => ({ ...prev, [jobId]: prev[jobId] !== true }))}
                       onToggleEnabled={toggleJob}
                       onRemove={removeJob}
                       onUpdate={updateJob}
+                      onClose={close}
                     />
-                  ))}
+                  )}
                 </div>
               </>
             )}

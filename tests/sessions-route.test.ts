@@ -172,6 +172,44 @@ describe("sessions route", () => {
     expect(data.currentModelAudioTransportSupported).toBe(true);
   });
 
+  it.each(["stale", "missing"])("returns current BPS capabilities when the SDK snapshot is %s", async (snapshotKind) => {
+    const { createSessionsRoute } = await import("../server/routes/sessions.ts");
+    const levels = ["low", "medium", "high", "xhigh"];
+    const targetPath = "/tmp/agents/a/sessions/bps.jsonl";
+    const configuredModel = {
+      id: "gpt-6-astra", provider: "tokyo-bps", name: "Tokyo BPS",
+      thinkingLevels: levels, contextWindow: 921000, maxTokens: 128000,
+      input: ["text", "image"], reasoning: true, defaultThinkingLevel: "medium",
+    };
+    const sdkSnapshot = {
+      ...configuredModel, name: "Old model snapshot", contextWindow: 1050000,
+      thinkingLevels: snapshotKind === "stale" ? [...levels, "max"] : undefined,
+    };
+    const engine = {
+      agentsDir: "/tmp/agents", currentSessionPath: targetPath,
+      currentModel: configuredModel,
+      availableModels: [{ ...configuredModel, provider: "openai-codex", thinkingLevels: [...levels, "max"] }, configuredModel],
+      memoryEnabled: true, planMode: false, cwd: "/tmp/workspace", currentAgentId: "a",
+      resolveSessionOwnership: vi.fn(() => ({ agentId: "a", source: "path", agentDeleted: false })),
+      isSessionStreaming: vi.fn(() => false), switchSession: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => ({ model: sdkSnapshot, messages: [] })),
+      getAgent: vi.fn(() => ({ agentName: "Hana" })),
+      getSessionMemoryEnabled: vi.fn(() => true),
+    };
+    const app = new Hono();
+    app.route("/api", createSessionsRoute(engine));
+    const response = await app.request("/api/sessions/switch", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ path: targetPath }),
+    });
+    expect(response.status).toBe(200);
+    const data = await response.json();
+    expect(data.currentModelProvider).toBe("tokyo-bps");
+    expect(data.currentModelThinkingLevels).toEqual(levels);
+    expect(data.currentModelContextWindow).toBe(921000);
+    expect(data.currentModelName).toBe("Tokyo BPS");
+  });
+
   it("returns historical model availability without failing the session switch", async () => {
     const { createSessionsRoute } = await import("../server/routes/sessions.ts");
     const app = new Hono();

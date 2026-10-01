@@ -18,6 +18,34 @@ import { showError } from './ui-helpers';
 
 export { PREVIEWABLE_EXTS, BINARY_PREVIEW_TYPES, readFileForPreview };
 
+function extensionOf(name: string, filePath: string): string {
+  const source = /\.[^./\\]+$/.test(name) ? name : (filePath || name);
+  const base = source.split(/[/\\]/).pop() || source;
+  const dot = base.lastIndexOf('.');
+  if (dot <= 0) return '';
+  return base.slice(dot + 1).toLowerCase();
+}
+
+/** 能在应用里预览的文档走预览面板，其余文件用系统默认程序打开。 */
+export async function openAttachmentFile(
+  filePath: string,
+  label: string,
+  context?: Parameters<typeof openFilePreview>[3],
+): Promise<void> {
+  if (!filePath) return;
+  const ext = extensionOf(label, filePath);
+  const kind = inferKindByExt(ext);
+  if (ext && (ext in PREVIEWABLE_EXTS || isMediaKind(kind))) {
+    await openFilePreview(filePath, label || filePath, ext, context);
+    return;
+  }
+  if (window.platform?.openFile) {
+    window.platform.openFile(filePath);
+    return;
+  }
+  await openFilePreview(filePath, label || filePath, ext, context);
+}
+
 function getErrorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }

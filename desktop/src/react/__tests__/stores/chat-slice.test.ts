@@ -541,4 +541,53 @@ describe('chat-slice', () => {
       })).toBe(false);
     });
   });
+
+  describe('optimistic user messages', () => {
+    it('fails pending optimistic messages and can remove unpersisted ones', () => {
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-1',
+        role: 'user',
+        text: 'stuck',
+        sendStatus: 'pending',
+      });
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-2',
+        role: 'user',
+        text: 'already failed',
+        sendStatus: 'failed',
+      });
+
+      expect(slice.failPendingOptimisticUserMessages('/a', 'send_timeout')).toEqual(['client-1']);
+      const items = slice.chatSessions['/a']?.items || [];
+      expect(items[0]).toMatchObject({
+        type: 'message',
+        data: { id: 'client-1', sendStatus: 'failed', sendError: 'send_timeout' },
+      });
+
+      expect(slice.removeOptimisticUserMessages('/a', ['client-1', 'client-2'])).toBe(true);
+      expect(slice.chatSessions['/a']?.items).toEqual([]);
+    });
+
+    it('preserves unpersisted optimistic bubbles across initSession hydrate', () => {
+      slice.initSession('/a', [], false);
+      slice.appendOptimisticUserMessage('/a', {
+        id: 'client-stuck',
+        role: 'user',
+        text: '封面',
+        sendStatus: 'pending',
+        attachments: [{ path: '/tmp/cover.png', name: 'cover.png', isDir: false }],
+      });
+
+      slice.initSession('/a', [{
+        type: 'message',
+        data: { id: 'u1', role: 'user', text: 'already persisted' },
+      }], false);
+
+      expect(slice.chatSessions['/a']?.items.map((item) => item.type === 'message' ? item.data.id : item.id)).toEqual([
+        'u1',
+        'client-stuck',
+      ]);
+    });
+  });
 });

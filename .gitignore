@@ -62,6 +62,7 @@ node_modules
 CLAUDE.md
 
 # 临时文件
+.scratch/
 tmp/
 test-results/
 __pycache__/

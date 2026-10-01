@@ -213,7 +213,7 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
   const showFetchHint = (msg: string, ok: boolean) => {
     if (fetchHintTimer.current) clearTimeout(fetchHintTimer.current);
     setFetchHint({ msg, ok });
-    fetchHintTimer.current = setTimeout(() => setFetchHint(null), 2500);
+    fetchHintTimer.current = setTimeout(() => setFetchHint(null), ok ? 2500 : 6000);
   };
 
   const fetchModels = async (btn: HTMLButtonElement | null) => {
@@ -225,9 +225,16 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
         body: JSON.stringify({ name: providerId, base_url: summary.base_url, api: summary.api }),
       });
       const data = await res.json();
-      if (data.error) { showFetchHint(t('settings.providers.fetchFailed'), false); return; }
       const models = (data.models || []) as DiscoveredModel[];
       if (models.length === 0) { showFetchHint(t('settings.providers.fetchFailed'), false); return; }
+      const usedFallback = data.fallback === true || (data.source && data.source !== 'remote');
+      if (usedFallback) {
+        showFetchHint(t('settings.providers.fetchLocalCatalog', { n: models.length }), false);
+        setDiscoveredModels(models);
+        setSearch('');
+        setDropdownOpen(true);
+        return;
+      }
       // Backend already cached the results; just refresh the dropdown
       setDiscoveredModels(models);
       setSearch('');
@@ -377,7 +384,11 @@ export function ProviderModelList({ providerId, summary, onRefresh }: {
                   <button
                     key={mid}
                     className={`${styles['pv-model-dropdown-option']}${isAdded  ? ' ' + styles['added'] : ''}`}
-                    onClick={() => { if (!isAdded) { addModelToProvider(mid); } }}
+                    aria-pressed={isAdded}
+                    onClick={() => {
+                      if (isAdded) removeModelFromProvider(mid);
+                      else addModelToProvider(mid);
+                    }}
                   >
                     <span className={styles['pv-model-dropdown-option-name']}>{mid}</span>
                     {isAdded && <span className={styles['pv-model-dropdown-option-check']}>{'\u2713'}</span>}

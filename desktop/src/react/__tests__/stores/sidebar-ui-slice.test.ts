@@ -149,6 +149,38 @@ describe('sidebar-ui-slice', () => {
     expect(useStore.getState().sidebarUiPrefsLoaded).toBe(true);
   });
 
+  it('does not unfold a workspace when an older preferences GET finishes after a local collapse', async () => {
+    let respond!: (value: unknown) => void;
+    hanaFetchMock.mockImplementation((_url: string, options?: RequestInit) => options?.method === 'PUT'
+      ? Promise.resolve({ json: async () => ({}) })
+      : new Promise(resolve => { respond = resolve; }));
+    useStore.getState().applySidebarUiPrefs({ sidebarUi: { projectView: { collapsedProjectIds: [] } } });
+    const loading = loadSidebarUiPrefs();
+    await vi.waitFor(() => expect(respond).toBeTypeOf('function'));
+    useStore.getState().setSidebarProjectViewPrefs({ collapsedProjectIds: ['project-a'] });
+    respond({ json: async () => ({ sidebarUi: { projectView: { collapsedProjectIds: [] }, sessionList: { rowMode: 'single-line' } } }) });
+    await loading;
+    expect(useStore.getState().sidebarUiPrefs.projectView.collapsedProjectIds).toEqual(['project-a']);
+    expect(useStore.getState().sidebarUiPrefs.sessionList.rowMode).toBe('single-line');
+    expect(useStore.getState().sidebarUiPrefsLoaded).toBe(true);
+  });
+
+  it('serializes quick collapse writes and ignores stale project snapshots while saving', async () => {
+    const finishes: Array<() => void> = [];
+    hanaFetchMock.mockImplementation(() => new Promise(resolve => finishes.push(() => resolve({ json: async () => ({}) }))));
+    const store = createSidebarUiStore();
+    store.getState().setSidebarProjectViewPrefs({ collapsedProjectIds: ['a'] });
+    store.getState().setSidebarProjectViewPrefs({ collapsedProjectIds: ['a', 'b'] });
+    expect(hanaFetchMock).toHaveBeenCalledTimes(1);
+    store.getState().applySidebarUiPrefs({ sidebarUi: { projectView: { collapsedProjectIds: ['a'] }, sessionList: { rowMode: 'single-line' } } });
+    expect(store.getState().sidebarUiPrefs.projectView.collapsedProjectIds).toEqual(['a', 'b']);
+    expect(store.getState().sidebarUiPrefs.sessionList.rowMode).toBe('single-line');
+    finishes[0]();
+    await vi.waitFor(() => expect(hanaFetchMock).toHaveBeenCalledTimes(2));
+    expect(JSON.parse(hanaFetchMock.mock.calls[1][1].body).projectView.collapsedProjectIds).toEqual(['a', 'b']);
+    finishes[1]();
+  });
+
   it('loadSidebarUiPrefs de-dupes concurrent calls into a single request', async () => {
     hanaFetchMock.mockImplementation(async () => ({ json: async () => singleLinePrefsPayload() }));
 

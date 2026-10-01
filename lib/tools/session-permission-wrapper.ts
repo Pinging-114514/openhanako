@@ -9,6 +9,7 @@ import {
 } from "../../core/session-permission-mode.ts";
 import { getToolSessionPath, normalizeToolRuntimeContext } from "./tool-session.ts";
 import { toolError } from "./tool-result.ts";
+import { normalizeStageFilesParams } from "./output-file-tool.ts";
 import { t } from "../i18n.ts";
 import {
   evaluateToolSafetyPolicy,
@@ -550,6 +551,20 @@ export function wrapWithSessionPermission(tools: any[] = [], deps: any = {}) {
             risk: rawSafety.risk,
             ruleIds: rawSafety.ruleIds,
           });
+        }
+        // Keep stage_files validation aligned with its resolver and execution.
+        // Invalid optional placeholders should be diagnosed here, not disguised
+        // as a generic permission-resolver failure. Valid inputs still pass
+        // through all normal authorization and execution-boundary checks.
+        if (tool.name === "stage_files") {
+          const normalized = normalizeStageFilesParams(params);
+          if (normalized.ok === false) {
+            return toolError(normalized.error, {
+              errorCode: "STAGE_FILES_INVALID_PARAMS",
+              permissionMode: mode,
+              toolName: tool.name,
+            });
+          }
         }
         const invocationResolution = resolveToolInvocationPermission(tool, params);
         if (invocationResolution.ok === false) {

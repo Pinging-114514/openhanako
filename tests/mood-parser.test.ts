@@ -85,4 +85,21 @@ describe("MoodParser", () => {
       { type: "mood_end" },
     ]);
   });
+
+  it("lifts a line-start mood block that follows the answer", () => {
+    expect(collect(["改好了。\n\n<mo", "od>\nVibe\n</mood>\n后文"])).toEqual([
+      { type: "text", data: "改好了。\n\n" },
+      { type: "mood_start" },
+      { type: "mood_text", data: "\nVibe\n" },
+      { type: "mood_end" },
+      { type: "text", data: "后文" },
+    ]);
+  });
+
+  it("keeps a mid-line mood mention visible", () => {
+    const input = "正文里提到 <mood>literal</mood> 不会收";
+    const events = collect([input]);
+    expect(events.every((event) => event.type === "text")).toBe(true);
+    expect(visibleText(events)).toBe(input);
+  });
 });

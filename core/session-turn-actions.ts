@@ -1,9 +1,13 @@
 import fsp from "fs/promises";
-import { detectMime } from "../lib/file-metadata.ts";
 import {
   AGENT_REVIEW_RECORD_TYPE,
   MESSAGE_ORIGIN_RECORD_TYPE,
   MESSAGE_PRESENTATION_RECORD_TYPE,
+  addAttachedAudioMarkers,
+  addAttachedImageMarkers,
+  addAttachedVideoMarkers,
+  mergeOrderedPathMediaPayloads,
+  registerDisplayAttachments,
   submitDesktopSessionMessage,
 } from "./desktop-session-submit.ts";
 import { extractLatestTodos } from "../lib/tools/todo-compat.ts";
@@ -191,7 +195,9 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
   if (!engine || typeof engine.ensureSessionLoaded !== "function") {
     throw new Error("session retry requires engine.ensureSessionLoaded");
   }
-  if (replacementText != null && !String(replacementText).trim()) {
+  const hasDisplayAttachments = Array.isArray(displayMessage?.attachments)
+    && displayMessage.attachments.length > 0;
+  if (replacementText != null && !String(replacementText).trim() && !hasDisplayAttachments) {
     throw new Error("replacement text is required");
   }
 
@@ -234,35 +240,75 @@ async function retrySessionTurnInternal(engine, opts, deps, compatibility) {
     const originalVisibleText = resolved.userEntry
       ? (originalEnvelopeDisplay.text ?? visibleUserText(original.text))
       : "";
-    const promptText = replacementText == null
+    let promptText = replacementText == null
       ? original.text
       : replaceVisiblePromptText(original.text, originalVisibleText, String(replacementText));
 
-    const imageAttachmentPaths = customTurnInput ? [] : attachedMediaPathsFromText(promptText, "image");
-    const videoAttachmentPaths = customTurnInput ? [] : attachedMediaPathsFromText(promptText, "video");
-    const audioAttachmentPaths = customTurnInput ? [] : attachedMediaPathsFromText(promptText, "audio");
+    const explicitAttachmentSnapshot = Array.isArray(displayMessage?.attachments);
+    let imageAttachmentPaths = customTurnInput || explicitAttachmentSnapshot
+      ? []
+      : attachedMediaPathsFromText(promptText, "image");
+    let videoAttachmentPaths = customTurnInput || explicitAttachmentSnapshot
+      ? []
+      : attachedMediaPathsFromText(promptText, "video");
+    let audioAttachmentPaths = customTurnInput || explicitAttachmentSnapshot
+      ? []
+      : attachedMediaPathsFromText(promptText, "audio");
     const mediaDeps = { ...deps, engine, sessionPath };
-    const images = customTurnInput
+    let images = customTurnInput
       ? []
-      : await completeMediaPayloads(original.images, imageAttachmentPaths, "image", mediaDeps);
-    const videos = customTurnInput
+      : explicitAttachmentSnapshot
+        ? (original.images || [])
+        : await completeMediaPayloads(original.images, imageAttachmentPaths, "image", mediaDeps);
+    let videos = customTurnInput
       ? []
-      : await completeMediaPayloads(original.videos, videoAttachmentPaths, "video", mediaDeps);
-    const audios = customTurnInput
+      : explicitAttachmentSnapshot
+        ? (original.videos || [])
+        : await completeMediaPayloads(original.videos, videoAttachmentPaths, "video", mediaDeps);
+    let audios = customTurnInput
       ? []
-      : await completeMediaPayloads(original.audios, audioAttachmentPaths, "audio", mediaDeps);
-    const nextDisplayMessage = customTurnInput
+      : explicitAttachmentSnapshot
+        ? (original.audios || [])
+        : await completeMediaPayloads(original.audios, audioAttachmentPaths, "audio", mediaDeps);
+    let nextDisplayMessage = customTurnInput
       ? {}
-      : canonicalizeRetryDisplayMessage(engine, sessionPath, restoreRetryDisplayAttachments({
+      : {
           ...originalEnvelopeDisplay,
           ...(displayMessage || {}),
           text: displayMessage?.text
             ?? (replacementText == null ? originalVisibleText : String(replacementText)),
-        }, {
-          imageAttachmentPaths,
-          videoAttachmentPaths,
-          audioAttachmentPaths,
-        }));
+        };
+    if (!customTurnInput && !explicitAttachmentSnapshot) {
+      nextDisplayMessage = restoreRetryDisplayAttachments(nextDisplayMessage, {
+        imageAttachmentPaths,
+        videoAttachmentPaths,
+        audioAttachmentPaths,
+      });
+    }
+    if (!customTurnInput) {
+      const applied = await applyRetryDisplayAttachments({
+        engine,
+        sessionPath,
+        promptText,
+        displayMessage: nextDisplayMessage,
+        explicitAttachmentSnapshot,
+        imageAttachmentPaths,
+        videoAttachmentPaths,
+        audioAttachmentPaths,
+        images,
+        videos,
+        audios,
+        mediaDeps,
+      });
+      promptText = applied.promptText;
+      nextDisplayMessage = canonicalizeRetryDisplayMessage(engine, sessionPath, applied.displayMessage);
+      imageAttachmentPaths = applied.imageAttachmentPaths;
+      videoAttachmentPaths = applied.videoAttachmentPaths;
+      audioAttachmentPaths = applied.audioAttachmentPaths;
+      images = applied.images;
+      videos = applied.videos;
+      audios = applied.audios;
+    }
 
     const retainedEntries = retainedEntriesBeforeRetry(branch, resolved.retryBranchParentId);
     const discardedEntries = branch.slice(retainedEntries.length);
@@ -734,25 +780,51 @@ function attachedMediaPathsFromText(text, kind) {
   return paths;
 }
 
+function mediaReadDeps(deps) {
+  return {
+    readFile: deps.readFile || fsp.readFile,
+    resolveBytesPath: (markerPath) => {
+      const activeFile = deps.engine?.resolveActiveSessionFile?.({
+        filePath: markerPath,
+        sessionPath: deps.sessionPath || null,
+      }) || null;
+      return activeFile?.realPath || activeFile?.filePath || markerPath;
+    },
+  };
+}
+
 async function completeMediaPayloads(existing, paths, kind, deps) {
-  const payloads = [...(existing || [])];
-  const missingPaths = paths.slice(payloads.length);
-  const readFile = deps.readFile || fsp.readFile;
-  const fallbackMime = kind === "video" ? "video/mp4" : kind === "audio" ? "audio/wav" : "image/png";
-  for (const markerPath of missingPaths) {
-    const activeFile = deps.engine?.resolveActiveSessionFile?.({
-      filePath: markerPath,
-      sessionPath: deps.sessionPath || null,
-    }) || null;
-    const bytesPath = activeFile?.realPath || activeFile?.filePath || markerPath;
-    const bytes = Buffer.from(await readFile(bytesPath));
-    payloads.push({
-      type: kind,
-      data: bytes.toString("base64"),
-      mimeType: detectMime(bytes, fallbackMime, markerPath),
-    });
-  }
-  return payloads;
+  const reader = mediaReadDeps(deps);
+  const merged = await mergeOrderedPathMediaPayloads({
+    existing,
+    paths,
+    kind,
+    mode: "complete",
+    readFile: reader.readFile,
+    resolveBytesPath: reader.resolveBytesPath,
+  });
+  return merged || [];
+}
+
+async function replaceMediaPayloads(existing, paths, kind, deps) {
+  const reader = mediaReadDeps(deps);
+  const merged = await mergeOrderedPathMediaPayloads({
+    existing,
+    paths,
+    kind,
+    mode: "replace",
+    readFile: reader.readFile,
+    resolveBytesPath: reader.resolveBytesPath,
+  });
+  return merged || [];
+}
+
+function retainAttachedMediaMarkers(text, kind, allowedPaths) {
+  const allowed = new Set(allowedPaths || []);
+  const pattern = new RegExp(`\\[attached_${kind}:\\s*([^\\]]+)\\](\\r?\\n)?`, "g");
+  return String(text || "").replace(pattern, (full, filePath) => (
+    allowed.has(String(filePath || "").trim()) ? full : ""
+  ));
 }
 
 function mediaPathBasename(filePath) {
@@ -767,6 +839,76 @@ function attachmentsFromMediaPaths(paths) {
     name: mediaPathBasename(filePath),
     isDir: false,
   }));
+}
+
+async function applyRetryDisplayAttachments({
+  engine,
+  sessionPath,
+  promptText,
+  displayMessage,
+  explicitAttachmentSnapshot = false,
+  imageAttachmentPaths,
+  videoAttachmentPaths,
+  audioAttachmentPaths,
+  images,
+  videos,
+  audios,
+  mediaDeps,
+}) {
+  const snapshot = Array.isArray(displayMessage?.attachments) ? displayMessage.attachments : [];
+  if (!explicitAttachmentSnapshot && !snapshot.length) {
+    return {
+      promptText,
+      displayMessage,
+      imageAttachmentPaths,
+      videoAttachmentPaths,
+      audioAttachmentPaths,
+      images,
+      videos,
+      audios,
+    };
+  }
+  const registered = registerDisplayAttachments({
+    hanakoHome: engine.hanakoHome,
+    sessionPath,
+    attachments: snapshot,
+    registerSessionFile: engine.registerSessionFile?.bind(engine),
+  });
+  const nextImagePaths = explicitAttachmentSnapshot
+    ? registered.imageAttachmentPaths
+    : uniqueStrings([...imageAttachmentPaths, ...registered.imageAttachmentPaths]);
+  const nextVideoPaths = explicitAttachmentSnapshot
+    ? registered.videoAttachmentPaths
+    : uniqueStrings([...videoAttachmentPaths, ...registered.videoAttachmentPaths]);
+  const nextAudioPaths = explicitAttachmentSnapshot
+    ? registered.audioAttachmentPaths
+    : uniqueStrings([...audioAttachmentPaths, ...registered.audioAttachmentPaths]);
+  let nextText = promptText;
+  if (explicitAttachmentSnapshot) {
+    nextText = retainAttachedMediaMarkers(nextText, "image", nextImagePaths);
+    nextText = retainAttachedMediaMarkers(nextText, "video", nextVideoPaths);
+    nextText = retainAttachedMediaMarkers(nextText, "audio", nextAudioPaths);
+  }
+  const align = explicitAttachmentSnapshot ? replaceMediaPayloads : completeMediaPayloads;
+  return {
+    promptText: addAttachedAudioMarkers(
+      addAttachedVideoMarkers(
+        addAttachedImageMarkers(nextText, nextImagePaths),
+        nextVideoPaths,
+      ),
+      nextAudioPaths,
+    ),
+    displayMessage: {
+      ...displayMessage,
+      attachments: registered.attachments,
+    },
+    imageAttachmentPaths: nextImagePaths,
+    videoAttachmentPaths: nextVideoPaths,
+    audioAttachmentPaths: nextAudioPaths,
+    images: await align(images, nextImagePaths, "image", mediaDeps),
+    videos: await align(videos, nextVideoPaths, "video", mediaDeps),
+    audios: await align(audios, nextAudioPaths, "audio", mediaDeps),
+  };
 }
 
 function restoreRetryDisplayAttachments(displayMessage, mediaPaths) {
@@ -789,12 +931,15 @@ function canonicalizeRetryDisplayMessage(engine, sessionPath, displayMessage) {
   if (!Array.isArray(displayMessage?.attachments)) return displayMessage;
   if (typeof engine?.resolveActiveSessionFile !== "function") return displayMessage;
   const attachments = displayMessage.attachments.flatMap((attachment) => {
+    // 刚贴上的图已经登记，但还没写进当前分支。只按分支可达过滤会把它丢掉，
+    // 确认发送后气泡里就看不到这张图。把附件自己也算进引用；仍然解析不到时保留原件。
     const file = engine.resolveActiveSessionFile({
       fileId: attachment?.fileId || null,
       filePath: attachment?.fileId ? null : (attachment?.path || null),
       sessionPath,
+      additionalReferences: [attachment],
     });
-    if (!file) return [];
+    if (!file) return attachment ? [attachment] : [];
     const fileId = file.id || file.fileId || null;
     const filePath = file.filePath || file.realPath || null;
     if (!fileId || !filePath) return [];

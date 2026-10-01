@@ -5,12 +5,22 @@ import '@testing-library/jest-dom/vitest';
 import React from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AttachedFilesBar } from '../../components/input/AttachedFilesBar';
+import { useStore } from '../../stores';
+import { installWindowTestT } from '../helpers/i18n-test-strings';
+
+const openAttachmentFile = vi.hoisted(() => vi.fn());
+vi.mock('../../utils/file-preview', () => ({
+  openAttachmentFile: (...args: unknown[]) => openAttachmentFile(...args),
+}));
 
 describe('AttachedFilesBar media chips', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
     delete (window as unknown as { platform?: unknown }).platform;
+    useStore.getState().closeMediaViewer();
+    delete (window as unknown as { t?: unknown }).t;
+    openAttachmentFile.mockReset();
   });
 
   it('renders image attachments with rounded thumbnail previews', () => {
@@ -31,6 +41,41 @@ describe('AttachedFilesBar media chips', () => {
 
     fireEvent.click(screen.getByLabelText('Remove pasted.png'));
     expect(onRemove).toHaveBeenCalledWith(0);
+  });
+
+  it('opens the media viewer when an image chip is clicked', () => {
+    installWindowTestT();
+    const onRemove = vi.fn();
+    window.platform = {
+      getFileUrl: vi.fn((path: string) => `file://${path}`),
+    } as unknown as typeof window.platform;
+
+    render(<AttachedFilesBar
+      files={[
+        { path: '/tmp/a.png', name: 'a.png', mimeType: 'image/png' },
+        { path: '/tmp/b.png', name: 'b.png', mimeType: 'image/png' },
+      ]}
+      onRemove={onRemove}
+    />);
+
+    fireEvent.click(screen.getByLabelText('预览 b.png'));
+
+    const mv = useStore.getState().mediaViewer;
+    expect(mv).toBeTruthy();
+    expect(mv!.files.map(f => f.name)).toEqual(['a.png', 'b.png']);
+    expect(mv!.currentId).toBe('input-att:1:/tmp/b.png');
+    expect(onRemove).not.toHaveBeenCalled();
+  });
+
+  it('opens a document chip in the preview or the system viewer', () => {
+    installWindowTestT();
+    render(<AttachedFilesBar
+      files={[{ path: '/tmp/cluster.docx', name: '课题组GPU集群-普通.docx' }]}
+      onRemove={vi.fn()}
+    />);
+
+    fireEvent.click(screen.getByRole('button', { name: '预览 课题组GPU集群-普通.docx' }));
+    expect(openAttachmentFile).toHaveBeenCalledWith('/tmp/cluster.docx', '课题组GPU集群-普通.docx');
   });
 
   it('renders audio attachments with a play control, fake waveform, and remove action', () => {

@@ -125,7 +125,9 @@ export function ensureVisibleProviderError(message) {
     block?.type === "text" && String(block.text || "").trim().length > 0
   ));
   if (hasVisibleText) return content === message.content ? message : { ...message, content };
-  appendTextBlock(content, formatUserFacingProviderError(message.errorMessage, getLocale()));
+  appendTextBlock(content, formatUserFacingProviderError(message.errorMessage, getLocale(), {
+    retryAttempted: message?.retryAttempted === true,
+  }));
   return { ...message, content };
 }
 

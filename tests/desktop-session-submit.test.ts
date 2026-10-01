@@ -4,6 +4,7 @@ import {
   AGENT_REVIEW_RECORD_TYPE,
   MESSAGE_ORIGIN_RECORD_TYPE,
   MESSAGE_PRESENTATION_RECORD_TYPE,
+  abortPendingDesktopSessionSubmission,
   submitDesktopSessionInterjection,
   submitDesktopSessionMessage,
   submitDesktopSessionMessageWithReceipt,
@@ -108,6 +109,45 @@ describe("submitDesktopSessionMessage", () => {
       expect.objectContaining({ type: "session_status", isStreaming: true }),
       "/tmp/desk.jsonl",
     );
+  });
+
+  it("lets a stop cancel a submission still loading and accepts the next message right away", async () => {
+    const session = makeFakeSession();
+    const ready = (Promise as any).withResolvers();
+    let loads = 0;
+    const engine = {
+      ensureSessionLoaded: vi.fn(() => {
+        loads += 1;
+        return loads === 1 ? ready.promise : Promise.resolve(session);
+      }),
+      promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+      emitEvent: vi.fn(),
+      setUiContext: vi.fn(),
+      isSessionStreaming: vi.fn(() => false),
+    };
+
+    const first = submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "first",
+      displayMessage: { text: "first" },
+    });
+    await Promise.resolve();
+
+    expect(abortPendingDesktopSessionSubmission(engine, { sessionPath: "/tmp/desk.jsonl" })).toBe(true);
+    expect(abortPendingDesktopSessionSubmission(engine, { sessionPath: "/tmp/desk.jsonl" })).toBe(false);
+
+    // 旧提交还卡在 ensureSessionLoaded 里，新消息不能再被它挡成 session_busy。
+    const second = submitDesktopSessionMessage(engine, {
+      sessionPath: "/tmp/desk.jsonl",
+      text: "second",
+      displayMessage: { text: "second" },
+    });
+
+    ready.resolve(session);
+    await expect(first).rejects.toMatchObject({ name: "AbortError" });
+    await expect(second).resolves.toMatchObject({ text: "desktop reply" });
+    expect(session.prompt).toHaveBeenCalledTimes(1);
+    expect(session.prompt.mock.calls[0][0]).toContain("second");
   });
 
   it("rejects concurrent submissions for moved paths with the same session id", async () => {
@@ -652,6 +692,38 @@ describe("submitDesktopSessionMessage", () => {
         imageAttachmentPaths: ["/tmp/upload.png"],
       },
     );
+  });
+
+  it.each([
+    ["image", "images", "imageAttachmentPaths", "png", "image/png"],
+    ["video", "videos", "videoAttachmentPaths", "mp4", "video/mp4"],
+    ["audio", "audios", "audioAttachmentPaths", "wav", "audio/wav"],
+  ] as const)("does not duplicate a later %s when the client omitted the first payload", async (kind, field, pathField, ext, mime) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "hana-partial-media-"));
+    try {
+      const first = path.join(dir, `a.${ext}`);
+      const second = path.join(dir, `b.${ext}`);
+      fs.writeFileSync(first, "A");
+      fs.writeFileSync(second, "B");
+      const session = makeFakeSession();
+      const engine = {
+        ensureSessionLoaded: vi.fn(async () => session),
+        promptSession: vi.fn(async (sessionPath, text, opts) => session.prompt(text, opts)),
+        emitEvent: vi.fn(),
+        setUiContext: vi.fn(),
+      };
+      await submitDesktopSessionMessage(engine, {
+        sessionPath: "/tmp/desk.jsonl",
+        text: "see",
+        [field]: [{ type: kind, data: Buffer.from("B").toString("base64"), mimeType: mime }],
+        [pathField]: [first, second],
+        displayMessage: { text: "see" },
+      });
+      const opts = engine.promptSession.mock.calls[0][2];
+      expect(opts[field].map((item: { data: string }) => Buffer.from(item.data, "base64").toString())).toEqual(["A", "B"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("forwards videos to promptSession and records attached video markers", async () => {

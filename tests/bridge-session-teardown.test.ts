@@ -243,6 +243,28 @@ describe("BridgeSessionManager teardown", () => {
     expect(manager.activeSessions.has("bridge-k1")).toBe(false);
   });
 
+  it('suppresses a loop stopped during bridge session preparation before any prompt is committed', async () => {
+    const agent = makeAgent(rootDir);
+    const mgrPath = path.join(agent.sessionDir, 'bridge', 'owner', 'stopped-loop.jsonl');
+    const manager = new BridgeSessionManager(makeDeps(agent));
+    sessionManagerCreateMock.mockReturnValue({ getSessionFile: () => mgrPath });
+    let allowed = true;
+    const session = {
+      model: { input: ['text'] }, prompt: vi.fn(async () => {}),
+      subscribe: vi.fn(() => () => {}), dispose: vi.fn(),
+      sessionManager: { getSessionFile: () => mgrPath },
+      extensionRunner: { hasHandlers: vi.fn(() => true), emit: vi.fn(async () => {}) },
+    };
+    createAgentSessionMock.mockImplementation(async () => { allowed = false; return { session }; });
+    const result = await manager.executeExternalMessage('loop wake', 'bridge-stopped-loop', null, {
+      agentId: 'agent-a', shouldDeliver: () => allowed,
+    });
+    expect(result).toMatchObject({ suppressed: true, text: null, error: null });
+    expect(session.prompt).not.toHaveBeenCalled();
+    expect(session.dispose).toHaveBeenCalledOnce();
+    expect(manager.activeSessions.has('bridge-stopped-loop')).toBe(false);
+  });
+
   it("emits normal bridge turns through the desktop chat stream contract", async () => {
     const agent = makeAgent(rootDir);
     const mgrPath = path.join(agent.sessionDir, "bridge", "owner", "stream.jsonl");

@@ -612,5 +612,76 @@ describe("update-settings-tool", () => {
         status: "applied",
       });
     });
+
+    it("hides ultrafast codex speed until eligibility is explicit", async () => {
+      const { tool, engine } = buildTool();
+      engine.getCodexServiceTier = () => "ultrafast";
+      engine.setCodexServiceTier = vi.fn((value) => value);
+
+      const hidden = await tool.execute("c-speed-hidden", { action: "search", query: "codex speed" });
+      const hiddenText = hidden.content[0].text;
+      expect(hiddenText).toContain("standard");
+      expect(hiddenText).toContain("fast");
+      expect(hiddenText).not.toContain("ultrafast");
+
+      const missed = await tool.execute("c-speed-miss", { action: "search", query: "ultrafast" });
+      expect(missed.content[0].text).toContain("No settings matching");
+
+      const rejected = await tool.execute("c-speed-reject", { action: "apply", key: "codex_speed", value: "ultrafast" });
+      expect(rejected.content[0].text).toContain("standard");
+      expect(rejected.content[0].text).toContain("fast");
+      expect(rejected.content[0].text).not.toContain("ultrafast");
+      expect(engine.setCodexServiceTier).not.toHaveBeenCalled();
+
+      engine.getCodexServiceTierState = () => ({
+        tier: "fast",
+        preferredTier: "fast",
+        ultrafastEligible: true,
+        options: ["standard", "fast", "ultrafast"],
+      });
+      const shown = await tool.execute("c-speed-shown", { action: "search", query: "ultrafast" });
+      expect(shown.content[0].text).toContain("ultrafast");
+
+      const applied = await tool.execute("c-speed-apply", { action: "apply", key: "codex_speed", value: "ultrafast" });
+      expect(engine.setCodexServiceTier).toHaveBeenCalledWith("ultrafast");
+      expect(applied.details.settingsUpdate.status).toBe("applied");
+    });
+
+    it("refreshes Codex entitlement before a speed search or apply", async () => {
+      let eligible = false;
+      const { tool, engine } = buildTool();
+      engine.refreshCodexServiceEntitlement = vi.fn(async () => {
+        eligible = true;
+      });
+      engine.getCodexServiceTierState = () => ({
+        tier: eligible ? "ultrafast" : "fast",
+        preferredTier: "ultrafast",
+        ultrafastEligible: eligible,
+        planType: eligible ? "promax" : null,
+        options: eligible ? ["standard", "fast", "ultrafast"] : ["standard", "fast"],
+      });
+      engine.setCodexServiceTier = vi.fn((value) => value);
+
+      const locale = await tool.execute("c-speed-locale", { action: "search", query: "locale" });
+      expect(engine.refreshCodexServiceEntitlement).not.toHaveBeenCalled();
+      expect(locale.content[0].text).not.toContain("ultrafast");
+
+      const shown = await tool.execute("c-speed-refresh-search", { action: "search", query: "codex speed" });
+      expect(engine.refreshCodexServiceEntitlement).toHaveBeenCalledTimes(1);
+      expect(shown.content[0].text).toContain("ultrafast");
+
+      eligible = false;
+      const applied = await tool.execute("c-speed-refresh-apply", { action: "apply", key: "codex_speed", value: "ultrafast" });
+      expect(engine.refreshCodexServiceEntitlement).toHaveBeenCalledTimes(2);
+      expect(engine.setCodexServiceTier).toHaveBeenCalledWith("ultrafast");
+      expect(applied.details.settingsUpdate.status).toBe("applied");
+
+      engine.refreshCodexServiceEntitlement = vi.fn(async () => {
+        throw new Error("account check failed");
+      });
+      const blocked = await tool.execute("c-speed-refresh-fail", { action: "apply", key: "codex_speed", value: "ultrafast" });
+      expect(blocked.content[0].text).toContain("account check failed");
+      expect(engine.setCodexServiceTier).toHaveBeenCalledTimes(1);
+    });
   });
 });

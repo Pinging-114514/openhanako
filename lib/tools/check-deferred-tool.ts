@@ -9,6 +9,9 @@
 import { Type } from "../pi-sdk/index.ts";
 import { getToolSessionPath } from "./tool-session.ts";
 import { t } from "../i18n.ts";
+import { isUiOnlyDeferredResultTask, shouldNotifyAgentOnFailure } from "../deferred-result-notification.ts";
+
+import { MAX_OBSERVABLE_RESULT_BYTES } from '../deferred-result-observation.ts';
 
 /**
  * @param {{
@@ -20,8 +23,10 @@ export function createCheckDeferredTool({ getDeferredStore, getSessionPath }) {
   return {
     name: "check_pending_tasks",
     label: "Check Pending Tasks",
-    description: "Check the status of all background async tasks in the current conversation (image/video generation, subagent, etc.). Only returns tasks from the current conversation.",
+    description: "Check background tasks in the current conversation. Full results returned within 32KB are marked observed, avoiding a duplicate automatic wake. Use taskId to narrow a large response; oversized responses are not acknowledged automatically.",
     parameters: Type.Object({
+      acknowledgeTaskIds: Type.Optional(Type.Array(Type.String(), { description: "Acknowledge completed task results you have already processed (including results read via another status tool). Only this conversation's terminal agent results are affected; pending tasks and media delivery are untouched." })),
+      taskId: Type.Optional(Type.String({ description: "Read one task from this conversation; useful when the full list is too large." })),
       status: Type.Optional(
         Type.String({ description: "Filter by status: pending / resolved / failed. Omit to return all." }),
       ),
@@ -45,9 +50,18 @@ export function createCheckDeferredTool({ getDeferredStore, getSessionPath }) {
       }
 
       const all = store.listBySession(sessionPath);
-      const filtered = params.status
-        ? all.filter((t) => t.status === params.status)
-        : all;
+      const canAcknowledge = (task) => task.meta?.deliveryTarget?.kind !== 'bridge'
+        && (!isUiOnlyDeferredResultTask(task) || shouldNotifyAgentOnFailure(task));
+      if (!_signal?.aborted && Array.isArray(params.acknowledgeTaskIds)) {
+        const acknowledgedIds = new Set(params.acknowledgeTaskIds);
+        for (const task of all) {
+          if (acknowledgedIds.has(task.taskId) && canAcknowledge(task)) {
+            store.markObserved?.(task.taskId, sessionPath, Number(task.generation || 0));
+          }
+        }
+      }
+      const filtered = all.filter((task) => (!params.status || task.status === params.status)
+        && (!params.taskId || task.taskId === params.taskId));
 
       if (!filtered.length) {
         const qualifier = params.status ? t("tool.checkDeferred.noTasksQualifier", { status: params.status }) : "";
@@ -64,8 +78,20 @@ export function createCheckDeferredTool({ getDeferredStore, getSessionPath }) {
         ...(t.meta && Object.keys(t.meta).length > 1 && { meta: t.meta }),
       }));
 
+      const text = JSON.stringify(summary, null, 2);
+      const canObserve = Buffer.byteLength(text, 'utf8') <= MAX_OBSERVABLE_RESULT_BYTES && !_signal?.aborted;
+      if (canObserve) {
+        for (const task of filtered) {
+          // Reading a media status must not swallow delivery of generated files to UI/Bridge.
+          if (!canAcknowledge(task)) continue;
+          store.markObserved?.(task.taskId, sessionPath, Number(task.generation || 0));
+        }
+      }
       return {
-        content: [{ type: "text", text: JSON.stringify(summary, null, 2) }],
+        content: [{ type: "text", text }, ...(!canObserve && !_signal?.aborted ? [{
+          type: 'text' as const,
+          text: 'This response may be truncated. Results have NOT been marked observed; query an individual taskId to read its full result and avoid a duplicate wake.',
+        }] : [])],
       };
     },
   };

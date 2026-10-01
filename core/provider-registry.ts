@@ -400,6 +400,7 @@ import { groqPlugin } from "../lib/providers/groq.ts";
 import { togetherPlugin } from "../lib/providers/together.ts";
 import { fireworksPlugin } from "../lib/providers/fireworks.ts";
 import { mistralPlugin } from "../lib/providers/mistral.ts";
+import { metaPlugin } from "../lib/providers/meta.ts";
 import { perplexityPlugin } from "../lib/providers/perplexity.ts";
 import { xaiPlugin } from "../lib/providers/xai.ts";
 import { xaiOAuthPlugin } from "../lib/providers/xai-oauth.ts";
@@ -444,6 +445,7 @@ const BUILTIN_PLUGINS = [
   togetherPlugin,
   fireworksPlugin,
   mistralPlugin,
+  metaPlugin,
   perplexityPlugin,
   xaiPlugin,
   xaiOAuthPlugin,

@@ -60,12 +60,41 @@ export interface SidebarUiSlice {
 
 export const createSidebarUiSlice = (
   set: (partial: Partial<SidebarUiSlice>) => void,
-  get: () => Pick<SidebarUiSlice, 'sidebarUiPrefs'>,
-): SidebarUiSlice => ({
+  get: () => Pick<SidebarUiSlice, 'sidebarUiPrefs'> & { activeServerConnection?: unknown },
+): SidebarUiSlice => {
+  let savingProjectView = false;
+  let queuedProjectView: { projectView: SidebarUiPrefs['projectView']; connection: unknown } | null = null;
+  const persistProjectView = async (): Promise<void> => {
+    if (savingProjectView) return;
+    savingProjectView = true;
+    try {
+      while (queuedProjectView) {
+        const { projectView, connection } = queuedProjectView;
+        queuedProjectView = null;
+        // Never send a queued preference write to a different active server.
+        if (get().activeServerConnection !== connection) continue;
+        try {
+          await hanaFetch('/api/preferences/sidebar-ui', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectView }),
+          });
+        } catch (err) {
+          console.warn('[sessions] persist sidebar UI prefs failed:', err);
+        }
+      }
+    } finally {
+      savingProjectView = false;
+    }
+  };
+  return {
   sidebarUiPrefs: readCachedSidebarUiPrefs(),
   sidebarUiPrefsLoaded: false,
   applySidebarUiPrefs: (data) => {
     const prefs = normalizeSidebarUiResponse(data);
+    // Older server echoes may arrive while a newer local collapse is being saved.
+    // Keep local project intent until the serialized writes finish; unrelated row prefs still sync.
+    if (savingProjectView || queuedProjectView) prefs.projectView = get().sidebarUiPrefs.projectView;
     writeCachedSidebarUiPrefs(prefs);
     set({ sidebarUiPrefs: prefs, sidebarUiPrefsLoaded: true });
   },
@@ -81,13 +110,11 @@ export const createSidebarUiSlice = (
     });
     writeCachedSidebarUiPrefs(next);
     set({ sidebarUiPrefs: next });
-    hanaFetch('/api/preferences/sidebar-ui', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ projectView: next.projectView }),
-    }).catch(err => console.warn('[sessions] persist sidebar UI prefs failed:', err));
+    queuedProjectView = { projectView: next.projectView, connection: get().activeServerConnection };
+    void persistProjectView();
   },
-});
+  };
+};
 
 let inFlightLoad: Promise<void> | null = null;
 
@@ -109,9 +136,30 @@ export function loadSidebarUiPrefs(): Promise<void> {
     const { useStore } = await import('./index');
     for (let attempt = 0; ; attempt += 1) {
       try {
+        const before = useStore.getState();
+        const prefsAtRequest = before.sidebarUiPrefs;
+        const connectionAtRequest = before.activeServerConnection;
         const res = await hanaFetch('/api/preferences/sidebar-ui');
         const data = await res.json();
-        useStore.getState().applySidebarUiPrefs(data);
+        const latest = useStore.getState();
+        // A reply/list refresh must not resurrect a snapshot captured before the user's collapse.
+        // Also fence responses from a connection that is no longer active.
+        if (latest.activeServerConnection !== connectionAtRequest) {
+          if (!latest.activeServerConnection) return;
+          continue; // Callers that joined the old request still need the new connection's snapshot.
+        }
+        if (latest.sidebarUiPrefs !== prefsAtRequest) {
+          const incoming = normalizeSidebarUiResponse(data);
+          if (JSON.stringify(latest.sidebarUiPrefs.projectView) !== JSON.stringify(prefsAtRequest.projectView)) {
+            incoming.projectView = latest.sidebarUiPrefs.projectView;
+          }
+          if (latest.sidebarUiPrefs.sessionList.rowMode !== prefsAtRequest.sessionList.rowMode) {
+            incoming.sessionList = latest.sidebarUiPrefs.sessionList;
+          }
+          latest.applySidebarUiPrefs({ sidebarUi: incoming });
+        } else {
+          latest.applySidebarUiPrefs(data);
+        }
         return;
       } catch (err) {
         const retryDelay = SIDEBAR_UI_PREF_RETRY_DELAYS_MS[attempt];

@@ -7,7 +7,7 @@
 
 import { QUOTE_ORIGINAL_END, QUOTE_ORIGINAL_START } from './quoted-selection';
 import { moodLabelForYuan } from '../../../../shared/yuan-visuals.ts';
-import { parseLeadingInternalMoodBlock } from '../../../../shared/internal-mood-block.ts';
+import { findInternalMoodBlock } from '../../../../shared/internal-mood-block.ts';
 
 // ── Mood 解析 ──
 
@@ -42,11 +42,13 @@ export function cleanMoodText(raw: string): string {
 
 export function parseMoodFromContent(content: string): { mood: string | null; yuan: string | null; text: string } {
   if (!content) return { mood: null, yuan: null, text: '' };
-  const block = parseLeadingInternalMoodBlock(content);
+  const block = findInternalMoodBlock(content);
   if (!block) return { mood: null, yuan: null, text: content };
   const yuan = TAG_TO_YUAN[block.tag] || 'hanako';
   const mood = cleanMoodText(block.content.trim());
-  const text = block.rest.replace(/^\n+/, '').trim();
+  const before = block.prefix.replace(/\s+$/u, '');
+  const after = block.rest.replace(/^\s+/u, '');
+  const text = before && after ? `${before}\n\n${after}` : (before || after);
   return { mood, yuan, text };
 }
 

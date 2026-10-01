@@ -3,6 +3,300 @@
   "entries": [
     {
       "schemaVersion": 1,
+      "tag": "v0.460.0",
+      "version": "0.460.0",
+      "previousTag": "v0.453.0",
+      "generatedAt": "2026-10-01T02:10:00.000Z",
+      "noUserFacingChanges": false,
+      "summary": {
+        "zh": "汇总 v0.453.0 之后的本地更新：消息排队与附件编辑、稳定的历史加载和滚动、会话后台交接与定时结果、OAuth 账号和模型目录修复，以及附件交付和七天活动历史保留。",
+        "en": "Consolidates the local changes after v0.453.0: queued input and attachment editing, stable history and scrolling, session-owned background work and automation, safer OAuth and model discovery, reliable file delivery, and seven-day activity retention."
+      },
+      "counts": {
+        "feature": 4,
+        "fix": 6,
+        "improvement": 2,
+        "migration": 0
+      },
+      "source": {
+        "owner": "Pinging-114514",
+        "repo": "openhanako",
+        "commitRange": "v0.453.0..v0.460.0",
+        "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.460.0",
+        "releaseNotes": "Release preparation; see docs/releases/v0.460.0.md for verification scope, retention behavior, and compatibility notes."
+      },
+      "items": [
+        {
+          "id": "session-bound-input-queue",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "可编辑、可撤回的会话消息队列",
+            "en": "Editable session-bound message queues"
+          },
+          "summary": {
+            "zh": "忙时默认排队，支持排序、编辑和逐条发送；读取附件期间撤回有效，切会话不误投，也不重复发送。",
+            "en": "Queue while busy, reorder and edit pending messages, and send sequentially. Withdrawal during attachment loading works without cross-session delivery or duplicate sends."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Session-bound queues and optimistic sends"
+            }
+          ]
+        },
+        {
+          "id": "background-handoff",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "当前任务交给后台继续",
+            "en": "Hand current work to a background session"
+          },
+          "summary": {
+            "zh": "隔离后台会话继承父会话权限；交接等待真正空闲，停止失败或超时就取消。",
+            "en": "Isolated background sessions inherit parent permissions. Handoff waits for real idleness and cancels when stopping fails or times out."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Permission-preserving multitask handoff"
+            }
+          ]
+        },
+        {
+          "id": "session-automation-results",
+          "kind": "feature",
+          "importance": "high",
+          "title": {
+            "zh": "会话定时与固定位置的检查结果",
+            "en": "Session timers with anchored results"
+          },
+          "summary": {
+            "zh": "会话定时与巡查分区，检查结果回到原回合；修复检查状态残留、历史结论覆盖和确认卡隐藏。",
+            "en": "Separate session timers from patrol jobs and anchor results to their originating turns, with reliable check states, retained conclusions, and visible approval cards."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Session cron slots and lifecycle"
+            }
+          ]
+        },
+        {
+          "id": "model-catalog-and-reference",
+          "kind": "improvement",
+          "importance": "high",
+          "title": {
+            "zh": "账号真实模型目录与统一参数参考",
+            "en": "Account-derived catalogs and consistent model references"
+          },
+          "summary": {
+            "zh": "在线查询优先使用账号目录，补齐本地模型资料；思考档、上下文与模态保留用户明确设置，修复旧目录版本漏掉 Sol。",
+            "en": "Prefer account-derived catalogs, expand local references, preserve explicit thinking/context/modality settings, and fix stale client-version discovery that omitted Sol."
+          },
+          "details": [
+            {
+              "zh": "目录条目不保证所有账号或渠道都能调用。",
+              "en": "Catalog entries do not guarantee availability for every account or provider."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Model reference lookup and OAuth discovery"
+            }
+          ]
+        },
+        {
+          "id": "meta-provider-entry",
+          "kind": "feature",
+          "importance": "medium",
+          "title": {
+            "zh": "新增 Meta 供应商入口",
+            "en": "Add a Meta provider entry"
+          },
+          "summary": {
+            "zh": "补入 Meta API Key 预设、Responses 接入与 Muse 模型参考，账号是否可用以实际渠道为准。",
+            "en": "Add the Meta API-key preset, Responses integration, and Muse model references, subject to actual provider availability."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Meta provider registration"
+            }
+          ]
+        },
+        {
+          "id": "oauth-state-and-service-tiers",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "OAuth 账号刷新与速度权益不再串状态",
+            "en": "Keep OAuth refresh and service-tier state scoped"
+          },
+          "summary": {
+            "zh": "旧快照不再复活已删账号或撤销切号，优先使用活槽新凭证；Ultrafast 同时检查当前账号权益与模型支持。",
+            "en": "Stale refresh snapshots no longer resurrect deleted accounts or undo switches. Prefer live credentials and gate Ultrafast by both current-account entitlement and model support."
+          },
+          "details": [
+            {
+              "zh": "未知或普通套餐保留 Standard/Fast；高价套餐正向分支使用模拟响应验证。",
+              "en": "Unknown and ordinary plans retain Standard/Fast; higher-tier positive cases were verified with simulated responses."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "OAuth vault races and Codex entitlement checks"
+            }
+          ]
+        },
+        {
+          "id": "history-and-reading-stability",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "补齐历史漏加载与上下滚动抽动",
+            "en": "Fix missing history and unstable transcript scrolling"
+          },
+          "summary": {
+            "zh": "首屏缺提问或不足一屏也能补页；按阅读消息保持位置，修正高度补偿、虚拟间距和停流折叠，保留正常贴底。",
+            "en": "Load older history even when the first page lacks the question or cannot scroll. Anchor reading position across prepends, virtual spacing, height changes, and stream-end folding while preserving bottom-follow behavior."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Bounded pagination and transcript anchors"
+            }
+          ]
+        },
+        {
+          "id": "attachment-edit-and-delivery",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "附件编辑、预览与交付语义补齐",
+            "en": "Reliable attachment editing, previews, and delivery"
+          },
+          "summary": {
+            "zh": "修复多图补读错位、删光附件仍带回和新图片丢失；交付兼容空占位，明确报告参数错误与部分失败。",
+            "en": "Fix reordered image recovery, deleted attachments reappearing, and lost pasted images. Delivery tolerates unused placeholders and reports invalid parameters and partial failures explicitly."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Attachment snapshots and stage_files validation"
+            }
+          ]
+        },
+        {
+          "id": "stop-and-thinking-settings",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "立即停止后仍能保存推理档位",
+            "en": "Save thinking settings immediately after stopping"
+          },
+          "summary": {
+            "zh": "首字前可停止；保存推理档位时按需静默恢复会话实例，无需先生成一轮回复，旧回包不串改新会话。",
+            "en": "Stop before the first token and quietly restore the session runtime when saving thinking settings, without requiring another model reply or applying late results to another chat."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Pre-stream cancellation and post-abort thinking settings"
+            }
+          ]
+        },
+        {
+          "id": "background-result-and-loop-guards",
+          "kind": "fix",
+          "importance": "high",
+          "title": {
+            "zh": "后台结果去重与停止状态保护",
+            "en": "Deduplicate background results and preserve stopped state"
+          },
+          "summary": {
+            "zh": "按运行批次记录完整结果消费，覆盖状态查询与待办查询；续接结果不误吞，停止后的旧循环唤醒不再覆盖新状态。",
+            "en": "Record full-result consumption per run across status and pending-result queries, preserve continuation results, and discard stale loop wakeups after stopping."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Deferred-result observation and loop generations"
+            }
+          ]
+        },
+        {
+          "id": "runtime-errors-and-interface",
+          "kind": "fix",
+          "importance": "medium",
+          "title": {
+            "zh": "错误、更新状态与界面竞态修正",
+            "en": "Correct error handling, update labels, and UI races"
+          },
+          "summary": {
+            "zh": "区分请求过大与限流，移除无依据的重试文案；修复代理指纹、远程卡片票据、折叠偏好和内部标签显示，并区分内容更新与桌面外壳更新。",
+            "en": "Separate oversized requests from rate limits, remove unsupported retry claims, fix proxy fingerprints, remote card tickets, collapse preferences and internal labels, and distinguish content updates from desktop-shell updates."
+          },
+          "details": [],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "Retry policy, proxy state, card tickets, and UI consistency"
+            }
+          ]
+        },
+        {
+          "id": "seven-day-activity-history",
+          "kind": "improvement",
+          "importance": "high",
+          "title": {
+            "zh": "已结束活动历史最多保留七天",
+            "en": "Retain completed activity history for seven days"
+          },
+          "summary": {
+            "zh": "已结束记录保留七天、最多一百条；启动、读取和写入时清理，保护运行中记录、共享会话文件、任务配置与工作产物。",
+            "en": "Retain up to seven days and one hundred completed records, pruning on startup, reads, and writes while protecting active records, shared session files, job definitions, and work products."
+          },
+          "details": [
+            {
+              "zh": "过期历史及其专属活动会话会被删除；需要保留旧历史时请先备份。",
+              "en": "Expired history and its dedicated activity-session files are removed; back up older history first if it must be retained."
+            }
+          ],
+          "sources": [
+            {
+              "type": "commit",
+              "ref": "HEAD",
+              "title": "ActivityStore retention and safe cleanup"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "schemaVersion": 1,
       "tag": "v0.453.0",
       "version": "0.453.0",
       "previousTag": "v0.452.0",

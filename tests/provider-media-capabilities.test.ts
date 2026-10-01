@@ -410,6 +410,7 @@ describe("ProviderRegistry media capabilities", () => {
       credentialSource: "auth-storage",
     });
     expect(registry.getChatModelIds("openai-codex-oauth")).toEqual(expect.arrayContaining([
+      "gpt-6.1-sol",
       "gpt-5.6-sol",
       "gpt-5.6-terra",
       "gpt-5.6-luna",

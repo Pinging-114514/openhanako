@@ -1,221 +1,97 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.453.0",
-  "version": "0.453.0",
-  "previousTag": "v0.452.0",
-  "generatedAt": "2026-09-14T13:40:00.000Z",
+  "tag": "v0.460.0",
+  "version": "0.460.0",
+  "previousTag": "v0.453.0",
+  "generatedAt": "2026-10-01T02:10:00.000Z",
   "noUserFacingChanges": false,
   "summary": {
-    "zh": "跟上 pi 0.85.1。目录有 GPT-6 Astra，思考档和 Codex 速度能对上线上。WebSocket 走同一套代理，OAuth 用量会自己刷新。远程网页的排序和卡片也能用了。",
-    "en": "Moves onto pi 0.85.1. GPT-6 Astra is in the catalog, thinking levels and Codex speed match the wire, WebSocket uses the same proxy as fetch, OAuth usage refreshes on its own, and remote sort plus cards work."
+    "zh": "汇总 v0.453.0 之后的本地更新：消息排队与附件编辑、稳定的历史加载和滚动、会话后台交接与定时结果、OAuth 账号和模型目录修复，以及附件交付和七天活动历史保留。",
+    "en": "Consolidates the local changes after v0.453.0: queued input and attachment editing, stable history and scrolling, session-owned background work and automation, safer OAuth and model discovery, reliable file delivery, and seven-day activity retention."
   },
-  "counts": {
-    "feature": 3,
-    "fix": 5,
-    "improvement": 0,
-    "migration": 1
-  },
+  "counts": { "feature": 4, "fix": 6, "improvement": 2, "migration": 0 },
   "source": {
     "owner": "Pinging-114514",
     "repo": "openhanako",
-    "commitRange": "v0.452.0..v0.453.0",
-    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.453.0",
-    "releaseNotes": ""
+    "commitRange": "v0.453.0..v0.460.0",
+    "releaseUrl": "https://github.com/Pinging-114514/openhanako/releases/tag/v0.460.0",
+    "releaseNotes": "Release preparation; see docs/releases/v0.460.0.md for verification scope, retention behavior, and compatibility notes."
   },
   "items": [
     {
-      "id": "pi-0851",
-      "kind": "migration",
-      "importance": "high",
-      "title": {
-        "zh": "运行时升到 pi 0.85.1",
-        "en": "Runtime moves to pi 0.85.1"
-      },
-      "summary": {
-        "zh": "三件套和 typebox 对齐。凭证改走 ModelRuntime，流包装认新的 streamFunction。",
-        "en": "The pi trio and typebox are aligned. Credentials go through ModelRuntime, and stream wrappers use streamFunction."
-      },
-      "details": [
-        {
-          "zh": "AuthStorage 深路径还在适配层里，下次再跟 pi 时只改这一处。",
-          "en": "The AuthStorage deep import stays behind the adapter, so the next pi bump only changes that seam."
-        }
-      ],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "pi 0.85.1 runtime"
-        }
-      ]
+      "id": "session-bound-input-queue", "kind": "feature", "importance": "high",
+      "title": { "zh": "可编辑、可撤回的会话消息队列", "en": "Editable session-bound message queues" },
+      "summary": { "zh": "忙时默认排队，支持排序、编辑和逐条发送；读取附件期间撤回有效，切会话不误投，也不重复发送。", "en": "Queue while busy, reorder and edit pending messages, and send sequentially. Withdrawal during attachment loading works without cross-session delivery or duplicate sends." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Session-bound queues and optimistic sends" }]
     },
     {
-      "id": "gpt-6-astra-catalog",
-      "kind": "feature",
-      "importance": "high",
-      "title": {
-        "zh": "Codex OAuth 加上 GPT-6 Astra",
-        "en": "GPT-6 Astra on Codex OAuth"
-      },
-      "summary": {
-        "zh": "本地目录写入 gpt-6-astra。窗口按 Codex 合同 872K，不是 API 的 1M。",
-        "en": "The local catalog adds gpt-6-astra. The window follows the Codex contract at 872K, not the API 1M figure."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "gpt-6-astra catalog"
-        }
-      ]
+      "id": "background-handoff", "kind": "feature", "importance": "high",
+      "title": { "zh": "当前任务交给后台继续", "en": "Hand current work to a background session" },
+      "summary": { "zh": "隔离后台会话继承父会话权限；交接等待真正空闲，停止失败或超时就取消。", "en": "Isolated background sessions inherit parent permissions. Handoff waits for real idleness and cancels when stopping fails or times out." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Permission-preserving multitask handoff" }]
     },
     {
-      "id": "thinking-level-map",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "思考档真正送给模型",
-        "en": "Thinking levels actually reach the model"
-      },
-      "summary": {
-        "zh": "补上 thinkingLevelMap。xhigh 和 Max 不再被 pi 钳成 high 或 low。",
-        "en": "thinkingLevelMap is filled in, so xhigh and Max are no longer clamped to high or low."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "thinkingLevelMap"
-        }
-      ]
+      "id": "session-automation-results", "kind": "feature", "importance": "high",
+      "title": { "zh": "会话定时与固定位置的检查结果", "en": "Session timers with anchored results" },
+      "summary": { "zh": "会话定时与巡查分区，检查结果回到原回合；修复检查状态残留、历史结论覆盖和确认卡隐藏。", "en": "Separate session timers from patrol jobs and anchor results to their originating turns, with reliable check states, retained conclusions, and visible approval cards." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Session cron slots and lifecycle" }]
     },
     {
-      "id": "codex-ws-proxy",
-      "kind": "fix",
-      "importance": "high",
-      "title": {
-        "zh": "Codex WebSocket 跟代理走",
-        "en": "Codex WebSocket follows the proxy"
-      },
-      "summary": {
-        "zh": "全局 WebSocket 和 fetch 用同一套出站决定，避免直连超时后悄悄退成 SSE。",
-        "en": "The global WebSocket uses the same outbound decision as fetch, so a direct timeout no longer silently falls back to SSE."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "proxied WebSocket"
-        }
-      ]
+      "id": "model-catalog-and-reference", "kind": "improvement", "importance": "high",
+      "title": { "zh": "账号真实模型目录与统一参数参考", "en": "Account-derived catalogs and consistent model references" },
+      "summary": { "zh": "在线查询优先使用账号目录，补齐本地模型资料；思考档、上下文与模态保留用户明确设置，修复旧目录版本漏掉 Sol。", "en": "Prefer account-derived catalogs, expand local references, preserve explicit thinking/context/modality settings, and fix stale client-version discovery that omitted Sol." },
+      "details": [{ "zh": "目录条目不保证所有账号或渠道都能调用。", "en": "Catalog entries do not guarantee availability for every account or provider." }],
+      "sources": [{ "type": "commit", "ref": "HEAD", "title": "Model reference lookup and OAuth discovery" }]
     },
     {
-      "id": "codex-speed-tier",
-      "kind": "feature",
-      "importance": "medium",
-      "title": {
-        "zh": "Codex 速度档",
-        "en": "Codex speed tier"
-      },
-      "summary": {
-        "zh": "标准、快速、超快。快速在线上发 priority。设置和 update_settings 都能切。",
-        "en": "Standard, fast, and ultrafast. Fast is sent as priority. Settings and update_settings can switch it."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "codex service tier"
-        }
-      ]
+      "id": "meta-provider-entry", "kind": "feature", "importance": "medium",
+      "title": { "zh": "新增 Meta 供应商入口", "en": "Add a Meta provider entry" },
+      "summary": { "zh": "补入 Meta API Key 预设、Responses 接入与 Muse 模型参考，账号是否可用以实际渠道为准。", "en": "Add the Meta API-key preset, Responses integration, and Muse model references, subject to actual provider availability." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Meta provider registration" }]
     },
     {
-      "id": "oauth-usage-refresh",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "OAuth 用量自己刷新",
-        "en": "OAuth usage refreshes itself"
-      },
-      "summary": {
-        "zh": "后台轮询用量。暂态失败不再把上次剩余数字擦掉。",
-        "en": "Usage is polled in the background. A transient failure no longer wipes the last remaining count."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "oauth usage refresh"
-        }
-      ]
+      "id": "oauth-state-and-service-tiers", "kind": "fix", "importance": "high",
+      "title": { "zh": "OAuth 账号刷新与速度权益不再串状态", "en": "Keep OAuth refresh and service-tier state scoped" },
+      "summary": { "zh": "旧快照不再复活已删账号或撤销切号，优先使用活槽新凭证；Ultrafast 同时检查当前账号权益与模型支持。", "en": "Stale refresh snapshots no longer resurrect deleted accounts or undo switches. Prefer live credentials and gate Ultrafast by both current-account entitlement and model support." },
+      "details": [{ "zh": "未知或普通套餐保留 Standard/Fast；高价套餐正向分支使用模拟响应验证。", "en": "Unknown and ordinary plans retain Standard/Fast; higher-tier positive cases were verified with simulated responses." }],
+      "sources": [{ "type": "commit", "ref": "HEAD", "title": "OAuth vault races and Codex entitlement checks" }]
     },
     {
-      "id": "add-model-dropdown",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "添加模型不再闪关",
-        "en": "Add-model menu stays open"
-      },
-      "summary": {
-        "zh": "打开下拉时不再把自动滚动当成点外面。",
-        "en": "Opening the menu no longer treats the autofocus scroll as an outside click."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "anchored dropdown"
-        }
-      ]
+      "id": "history-and-reading-stability", "kind": "fix", "importance": "high",
+      "title": { "zh": "补齐历史漏加载与上下滚动抽动", "en": "Fix missing history and unstable transcript scrolling" },
+      "summary": { "zh": "首屏缺提问或不足一屏也能补页；按阅读消息保持位置，修正高度补偿、虚拟间距和停流折叠，保留正常贴底。", "en": "Load older history even when the first page lacks the question or cannot scroll. Anchor reading position across prepends, virtual spacing, height changes, and stream-end folding while preserving bottom-follow behavior." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Bounded pagination and transcript anchors" }]
     },
     {
-      "id": "remote-sort-menu",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "远程排序菜单能看见",
-        "en": "Remote sort menu is visible"
-      },
-      "summary": {
-        "zh": "远程壳补上 context-menu 的定位，菜单不再画在视口外。",
-        "en": "The remote shell gets the context-menu positioning, so the menu is no longer painted off-screen."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "remote sort CSS"
-        }
-      ]
+      "id": "attachment-edit-and-delivery", "kind": "fix", "importance": "high",
+      "title": { "zh": "附件编辑、预览与交付语义补齐", "en": "Reliable attachment editing, previews, and delivery" },
+      "summary": { "zh": "修复多图补读错位、删光附件仍带回和新图片丢失；交付兼容空占位，明确报告参数错误与部分失败。", "en": "Fix reordered image recovery, deleted attachments reappearing, and lost pasted images. Delivery tolerates unused placeholders and reports invalid parameters and partial failures explicitly." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Attachment snapshots and stage_files validation" }]
     },
     {
-      "id": "remote-card-ticket",
-      "kind": "fix",
-      "importance": "medium",
-      "title": {
-        "zh": "远程卡片能加载",
-        "en": "Remote cards can load"
-      },
-      "summary": {
-        "zh": "卡片接口改走 chat 权限，iframe 带一次性 ticket，不再靠店主钥。",
-        "en": "Card routes use chat scope, and the iframe carries a one-time ticket instead of an owner key."
-      },
-      "details": [],
-      "sources": [
-        {
-          "type": "commit",
-          "ref": "HEAD",
-          "title": "card iframe ticket"
-        }
-      ]
+      "id": "stop-and-thinking-settings", "kind": "fix", "importance": "high",
+      "title": { "zh": "立即停止后仍能保存推理档位", "en": "Save thinking settings immediately after stopping" },
+      "summary": { "zh": "首字前可停止；保存推理档位时按需静默恢复会话实例，无需先生成一轮回复，旧回包不串改新会话。", "en": "Stop before the first token and quietly restore the session runtime when saving thinking settings, without requiring another model reply or applying late results to another chat." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Pre-stream cancellation and post-abort thinking settings" }]
+    },
+    {
+      "id": "background-result-and-loop-guards", "kind": "fix", "importance": "high",
+      "title": { "zh": "后台结果去重与停止状态保护", "en": "Deduplicate background results and preserve stopped state" },
+      "summary": { "zh": "按运行批次记录完整结果消费，覆盖状态查询与待办查询；续接结果不误吞，停止后的旧循环唤醒不再覆盖新状态。", "en": "Record full-result consumption per run across status and pending-result queries, preserve continuation results, and discard stale loop wakeups after stopping." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Deferred-result observation and loop generations" }]
+    },
+    {
+      "id": "runtime-errors-and-interface", "kind": "fix", "importance": "medium",
+      "title": { "zh": "错误、更新状态与界面竞态修正", "en": "Correct error handling, update labels, and UI races" },
+      "summary": { "zh": "区分请求过大与限流，移除无依据的重试文案；修复代理指纹、远程卡片票据、折叠偏好和内部标签显示，并区分内容更新与桌面外壳更新。", "en": "Separate oversized requests from rate limits, remove unsupported retry claims, fix proxy fingerprints, remote card tickets, collapse preferences and internal labels, and distinguish content updates from desktop-shell updates." },
+      "details": [], "sources": [{ "type": "commit", "ref": "HEAD", "title": "Retry policy, proxy state, card tickets, and UI consistency" }]
+    },
+    {
+      "id": "seven-day-activity-history", "kind": "improvement", "importance": "high",
+      "title": { "zh": "已结束活动历史最多保留七天", "en": "Retain completed activity history for seven days" },
+      "summary": { "zh": "已结束记录保留七天、最多一百条；启动、读取和写入时清理，保护运行中记录、共享会话文件、任务配置与工作产物。", "en": "Retain up to seven days and one hundred completed records, pruning on startup, reads, and writes while protecting active records, shared session files, job definitions, and work products." },
+      "details": [{ "zh": "过期历史及其专属活动会话会被删除；需要保留旧历史时请先备份。", "en": "Expired history and its dedicated activity-session files are removed; back up older history first if it must be retained." }],
+      "sources": [{ "type": "commit", "ref": "HEAD", "title": "ActivityStore retention and safe cleanup" }]
     }
   ]
 }

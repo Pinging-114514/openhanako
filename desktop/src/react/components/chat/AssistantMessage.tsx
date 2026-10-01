@@ -180,6 +180,7 @@ export const AssistantMessage = memo(function AssistantMessage({
         </div>
       )}
       <div className={`${styles.message} ${styles.messageAssistant}${hasWideBlock ? ` ${styles.messageHasWideBlock}` : ''}${isInterludeOnly ? ` ${styles.messageAssistantInterludeOnly}` : ''}`}>
+        {message.cronSlotLabel ? <div className={styles.cronSlotLabel}>{message.cronSlotLabel}</div> : null}
         {blocks.map((block, i) => (
           <ContentBlockErrorBoundary
             key={`block-${i}`}

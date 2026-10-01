@@ -40,6 +40,8 @@ describe('UserMessage Codex-style actions', () => {
         'common.edit': '编辑',
         'common.cancel': '取消',
         'common.confirm': '确认',
+        'chat.resend': '重发',
+        'chat.sendFailed': '这条消息没发出去，可以编辑后重发',
       }[key] || key),
     });
     Object.assign(navigator, {
@@ -62,7 +64,7 @@ describe('UserMessage Codex-style actions', () => {
     } as never);
   });
 
-  it('shows retry and fork for every persisted user message while keeping edit latest-only', () => {
+  it('shows retry, fork, and edit for every persisted user message', () => {
     const message = { id: 'u1', sourceEntryId: 'entry-u1', role: 'user' as const, text: '旧消息', textHtml: '<p>旧消息</p>', timestamp: new Date(2026, 4, 7, 5, 42).getTime() };
 
     render(
@@ -103,11 +105,10 @@ describe('UserMessage Codex-style actions', () => {
 
     const footer = screen.getByTestId('user-message-footer-actions');
     expect(footer).toHaveAttribute('data-message-actions');
-    const ordered = Array.from(footer.children).map(child => (
-      child.textContent?.trim() || child.getAttribute('title') || ''
-    ));
+    const time = footer.querySelector('span')?.textContent?.trim();
+    const titles = Array.from(footer.querySelectorAll('button')).map(button => button.getAttribute('title') || '');
 
-    expect(ordered).toEqual([
+    expect([time, ...titles]).toEqual([
       '05:42',
       '重新生成',
       '分支为新会话',
@@ -146,7 +147,7 @@ describe('UserMessage Codex-style actions', () => {
     expect(useStore.getState().selectedIdsBySession['/session/a.jsonl']).toBeUndefined();
   });
 
-  it('keeps retry and fork available for older user messages without edit', () => {
+  it('keeps retry, fork, and edit available for older persisted user messages', () => {
     const message = { id: 'u1', sourceEntryId: 'entry-u1', role: 'user' as const, text: '旧消息', textHtml: '<p>旧消息</p>', timestamp: new Date(2026, 4, 7, 5, 42).getTime() };
 
     render(
@@ -168,7 +169,7 @@ describe('UserMessage Codex-style actions', () => {
     expect(screen.getByTitle('选择消息')).toBeInTheDocument();
     expect(screen.getByTitle('重新生成')).toBeInTheDocument();
     expect(screen.getByTitle('分支为新会话')).toBeInTheDocument();
-    expect(screen.queryByTitle('编辑')).not.toBeInTheDocument();
+    expect(screen.getByTitle('编辑')).toBeInTheDocument();
   });
 
   it('keeps retry and fork available for review user nodes without exposing text edit', () => {
@@ -264,7 +265,164 @@ describe('UserMessage Codex-style actions', () => {
     }));
   });
 
-  it('submits inline edits through the latest-turn replay action', async () => {
+  it('submits inline edits through the branch-aware replay action', async () => {
+    const message = { id: 'u1', sourceEntryId: 'entry-u1', role: 'user' as const, text: '旧消息', textHtml: '<p>旧消息</p>' };
+
+    render(
+      <UserMessage
+        viewerIdentity={{ name: '小黎', avatarUrl: null }}
+        isStreaming={false}
+        isSelected={false}
+        message={message}
+        showAvatar={false}
+        sessionPath="/session/a.jsonl"
+        isLatestUserMessage={false}
+      />,
+    );
+
+    fireEvent.click(screen.getByTitle('编辑'));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: '新消息' } });
+    fireEvent.click(screen.getByTitle('确认'));
+
+    expect(retryMock).toHaveBeenCalledWith(
+      '/session/a.jsonl',
+      { role: 'user', entryId: 'entry-u1' },
+      { message, replacementText: '新消息' },
+    );
+  });
+
+  it.each(['all', 'some'] as const)('sends an explicit attachment snapshot when a persisted edit removes %s chips', (mode) => {
+    const message = {
+      id: 'u1',
+      sourceEntryId: 'entry-u1',
+      role: 'user' as const,
+      text: '旧消息',
+      textHtml: '<p>旧消息</p>',
+      attachments: [
+        { fileId: 'sf-a', path: '/tmp/a.png', name: 'a.png', isDir: false },
+        { fileId: 'sf-b', path: '/tmp/b.png', name: 'b.png', isDir: false },
+      ],
+    };
+    render(
+      <UserMessage
+        viewerIdentity={{ name: '小黎', avatarUrl: null }}
+        isStreaming={false}
+        isSelected={false}
+        message={message}
+        showAvatar={false}
+        sessionPath="/session/a.jsonl"
+        isLatestUserMessage
+      />,
+    );
+    fireEvent.click(screen.getByTitle('编辑'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove b.png' }));
+    if (mode === 'all') fireEvent.click(screen.getByRole('button', { name: 'Remove a.png' }));
+    fireEvent.click(screen.getByTitle('确认'));
+    const expected = mode === 'all'
+      ? []
+      : [expect.objectContaining({ fileId: 'sf-a', path: '/tmp/a.png', name: 'a.png' })];
+    expect(retryMock).toHaveBeenCalledWith(
+      '/session/a.jsonl',
+      { role: 'user', entryId: 'entry-u1' },
+      {
+        message: expect.objectContaining({ attachments: expected }),
+        replacementText: '旧消息',
+      },
+    );
+  });
+
+  it('resends a failed message with the edited attachment list, including an empty one', () => {
+    const message = {
+      id: 'client-stuck',
+      sourceEntryId: 'entry-stuck',
+      role: 'user' as const,
+      text: '封面',
+      textHtml: '<p>封面</p>',
+      sendStatus: 'failed' as const,
+      attachments: [{ path: '/tmp/cover.png', name: 'cover.png', isDir: false }],
+    };
+    useStore.setState({
+      chatSessions: {
+        '/session/a.jsonl': {
+          hasMore: false,
+          loadingMore: false,
+          items: [{ type: 'message', data: message }],
+        },
+      },
+    } as never);
+    render(
+      <UserMessage
+        viewerIdentity={{ name: '小黎', avatarUrl: null }}
+        isStreaming={false}
+        isSelected={false}
+        message={message}
+        showAvatar={false}
+        sessionPath="/session/a.jsonl"
+        isLatestUserMessage={false}
+      />,
+    );
+    fireEvent.click(screen.getByTitle('编辑'));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove cover.png' }));
+    fireEvent.click(screen.getByTitle('确认'));
+    expect(retryMock).not.toHaveBeenCalled();
+    expect(useStore.getState().composerResendRequest).toEqual({
+      sessionPath: '/session/a.jsonl',
+      text: '封面',
+      attachedFiles: [],
+      autoSend: true,
+    });
+  });
+
+  it('lets a failed optimistic message be resent from the composer', () => {
+    const message = {
+      id: 'client-stuck',
+      role: 'user' as const,
+      text: '封面',
+      textHtml: '<p>封面</p>',
+      sendStatus: 'failed' as const,
+      attachments: [{ path: '/tmp/cover.png', name: 'cover.png', isDir: false }],
+    };
+    useStore.setState({
+      chatSessions: {
+        '/session/a.jsonl': {
+          hasMore: false,
+          loadingMore: false,
+          items: [{ type: 'message', data: message }],
+        },
+      },
+    } as never);
+
+    render(
+      <UserMessage
+        viewerIdentity={{ name: '小黎', avatarUrl: null }}
+        isStreaming={false}
+        isSelected={false}
+        message={message}
+        showAvatar={false}
+        sessionPath="/session/a.jsonl"
+        isLatestUserMessage={false}
+      />,
+    );
+
+    expect(screen.getByText('这条消息没发出去，可以编辑后重发')).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle('重发'));
+
+    expect(useStore.getState().composerResendRequest).toEqual({
+      sessionPath: '/session/a.jsonl',
+      text: '封面',
+      attachedFiles: [expect.objectContaining({ path: '/tmp/cover.png', name: 'cover.png' })],
+      autoSend: true,
+    });
+    expect(useStore.getState().chatSessions['/session/a.jsonl']?.items).toEqual([]);
+  });
+
+  it('includes newly pasted edit attachments in the retry envelope', async () => {
+    const file = new File([new Uint8Array([1])], 'extra.png', { type: 'image/png' });
+    Object.assign(window, {
+      platform: {
+        getFilePath: (candidate: File) => (candidate.name === 'extra.png' ? '/tmp/extra.png' : undefined),
+      },
+    });
     const message = { id: 'u1', sourceEntryId: 'entry-u1', role: 'user' as const, text: '旧消息', textHtml: '<p>旧消息</p>' };
 
     render(
@@ -280,13 +438,23 @@ describe('UserMessage Codex-style actions', () => {
     );
 
     fireEvent.click(screen.getByTitle('编辑'));
+    fireEvent.paste(screen.getByRole('textbox'), {
+      clipboardData: {
+        items: [{ type: 'image/png', getAsFile: () => file }],
+      },
+    });
     fireEvent.change(screen.getByRole('textbox'), { target: { value: '新消息' } });
     fireEvent.click(screen.getByTitle('确认'));
 
     expect(retryMock).toHaveBeenCalledWith(
       '/session/a.jsonl',
       { role: 'user', entryId: 'entry-u1' },
-      { message, replacementText: '新消息' },
+      {
+        message: expect.objectContaining({
+          attachments: [expect.objectContaining({ path: '/tmp/extra.png', name: 'extra.png', isDir: false })],
+        }),
+        replacementText: '新消息',
+      },
     );
   });
 });

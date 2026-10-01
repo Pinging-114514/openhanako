@@ -1,71 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
-import {
-  CODEX_SERVICE_TIERS,
-  DEFAULT_CODEX_SERVICE_TIER,
-  normalizeCodexServiceTier,
-  type CodexServiceTier,
-} from '../../../../../shared/codex-service-tier.ts';
+import { normalizeCodexServiceTier, type CodexServiceTier } from '../../../../../shared/codex-service-tier.ts';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
+import { useCodexServiceTier } from '../../hooks/use-codex-service-tier';
 import { useI18n } from '../../hooks/use-i18n';
 import { SelectWidget, type SelectOption } from '@/ui';
 import styles from './InputArea.module.css';
 
 const SPEED_COPY: Record<CodexServiceTier, { label: string; description: string }> = {
   standard: { label: 'Standard', description: 'Default speed' },
-  fast: { label: 'Fast', description: '1.5x speed, more usage' },
+  fast: { label: 'Fast', description: 'Faster, uses more quota' },
   ultrafast: { label: 'Ultrafast', description: 'Fastest available' },
 };
 
-export function CodexSpeedButton() {
+export function CodexSpeedButton({ modelId = '' }: { modelId?: string | null }) {
   const { t } = useI18n();
-  const [tier, setTier] = useState<CodexServiceTier>(DEFAULT_CODEX_SERVICE_TIER);
-  const [available, setAvailable] = useState<boolean | null>(null);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    let cancelled = false;
-    hanaFetch('/api/preferences/codex-service-tier')
-      .then(async (res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled) return;
-        setTier(normalizeCodexServiceTier(data?.tier));
-        setAvailable(true);
-      })
-      .catch(() => {
-        // Keep the control visible even if an older server lacks the route.
-        if (!cancelled) setAvailable(true);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const selectTier = useCallback(async (next: CodexServiceTier) => {
-    if (next === tier || saving) return;
-    setSaving(true);
-    try {
-      const res = await hanaFetch('/api/preferences/codex-service-tier', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: next }),
-      });
-      const data = await res.json();
-      setTier(normalizeCodexServiceTier(data?.tier || next));
-    } catch (err) {
-      console.error('[codex-speed] save failed:', err);
-    } finally {
-      setSaving(false);
-    }
-  }, [saving, tier]);
-
-  if (available === false) return null;
+  const speed = useCodexServiceTier(hanaFetch, { modelId: modelId ?? '' });
 
   const tOr = (key: string, fallback: string) => {
     const value = t(key);
     return value !== key ? value : fallback;
   };
 
-  const options: SelectOption[] = CODEX_SERVICE_TIERS.map((option) => {
+  const options: SelectOption[] = speed.options.map((option) => {
     const copy = SPEED_COPY[option];
     return {
       value: option,
@@ -74,17 +29,19 @@ export function CodexSpeedButton() {
     };
   });
 
-  const boosted = tier !== 'standard';
+  const boosted = speed.ready && !speed.downgradeUnconfirmed && speed.tier !== 'standard';
   const speedLabel = tOr('input.codexSpeedLabel', 'Speed');
-  const currentLabel = options.find((option) => option.value === tier)?.label || SPEED_COPY[tier].label;
+  const currentLabel = speed.downgradeUnconfirmed
+    ? tOr('input.codexSpeedUnconfirmed', 'Saved speed has not been changed yet')
+    : options.find((option) => option.value === speed.tier)?.label || SPEED_COPY[speed.tier].label;
 
   return (
     <SelectWidget
       className={`${styles['thinking-selector']} ${styles['speed-selector']}`}
       options={options}
-      value={tier}
-      onChange={(value) => selectTier(normalizeCodexServiceTier(value))}
-      disabled={saving || available !== true}
+      value={speed.selectValue}
+      onChange={(value) => { void speed.selectTier(normalizeCodexServiceTier(value)); }}
+      disabled={speed.saving || speed.loading}
       align="end"
       placement="top"
       offset={4}

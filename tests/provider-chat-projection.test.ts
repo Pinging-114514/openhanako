@@ -128,6 +128,8 @@ describe("ProviderRegistry chat projection plans", () => {
       "x-grok-client-identifier": "hana",
     });
     expect(plan?.modelExecutionHeaders).toEqual({
+      "grok-4.7": { "x-grok-model-override": "grok-4.7" },
+      "grok-4.7-build-fast": { "x-grok-model-override": "grok-4.7-build-fast" },
       "grok-4.6": { "x-grok-model-override": "grok-4.6" },
       "grok-4.5": { "x-grok-model-override": "grok-4.5" },
       "grok-4.5-latest": { "x-grok-model-override": "grok-4.5-latest" },
@@ -135,6 +137,8 @@ describe("ProviderRegistry chat projection plans", () => {
       "grok-4.3": { "x-grok-model-override": "grok-4.3" },
     });
     expect(registry.getDefaultModels("xai-oauth")).toEqual([
+      "grok-4.7",
+      "grok-4.7-build-fast",
       "grok-4.6",
       "grok-4.5",
       "grok-4.5-latest",

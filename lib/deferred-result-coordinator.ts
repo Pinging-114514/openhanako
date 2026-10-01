@@ -59,6 +59,8 @@ export class DeferredResultCoordinator {
   start() {
     if (this._started) return;
     this._started = true;
+    const releaseDeliveryOwner = this.store.setDeliveryHandler?.((taskId) => this.deliverTask(taskId));
+    if (releaseDeliveryOwner) this._unsubs.push(releaseDeliveryOwner);
     this._unsubs.push(this.store.onResult((taskId) => {
       this.deliverTask(taskId);
     }));
@@ -122,17 +124,25 @@ export class DeferredResultCoordinator {
     }
 
     try {
-      const shouldDeliver = () => this.store.query(taskId)?.deliverySuppressed !== true;
+      const generation = Number(task.generation || 0);
+      const shouldDeliver = () => {
+        const current = this.store.query(taskId);
+        return isDeliverable(current) && current.deliverySuppressed !== true
+          && Number(current.generation || 0) === generation;
+      };
       if (!shouldDeliver()) return false;
       const delivery = await this.sessionCoordinator.deliverCustomMessage(
         task.sessionPath,
         buildDeferredResultMessage(taskId, task),
-        { triggerTurn: shouldTriggerParentTurn(task), shouldDeliver },
+        // A queued follow-up cannot be recalled when the model reads the same result via a tool.
+        // Keep the result in the store while busy; the retry sweep wakes an idle parent once.
+        { triggerTurn: shouldTriggerParentTurn(task), requireIdle: true, shouldDeliver },
       );
       if (delivery?.mode === "suppressed") return false;
-      this.store.markDelivered(taskId);
+      this.store.markDelivered(taskId, generation);
       return true;
     } catch (err) {
+      if (err?.code === 'session_busy' || err?.message === 'session_busy') return false;
       this.log.warn?.(`[deferred-result] delivery failed for ${taskId}: ${err.message}`);
       return false;
     }
@@ -156,7 +166,7 @@ export class DeferredResultCoordinator {
         DEFERRED_RESULT_RECORD_TYPE,
         buildDeferredResultRecord(taskId, task),
       );
-      this.store.markDelivered(taskId);
+      this.store.markDelivered(taskId, Number(task.generation || 0));
       return true;
     } catch (err) {
       this.log.warn?.(`[deferred-result] UI-only record failed for ${taskId}: ${err.message}`);

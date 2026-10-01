@@ -70,6 +70,7 @@ export class DeferredResultStore {
   declare _resultCbs: any;
   declare _saveTimer: any;
   declare _tasks: any;
+  declare _deliveryHandler: ((taskId: string) => Promise<boolean>) | null;
   /**
    * @param {object} [bus] - EventBus 实例
    * @param {string} [persistPath] - 持久化文件路径。不传则纯内存（兼容测试）。
@@ -82,6 +83,7 @@ export class DeferredResultStore {
     this._persistPath = persistPath || null;
     /** @type {Map<string, { status: string, sessionId?: string|null, sessionPath: string|null, sessionRef?: object|null, meta: object, deferredAt: number, result: any, reason: any, delivered: boolean }>} */
     this._tasks = new Map();
+    this._deliveryHandler = null;
     this._resultCbs = [];
     this._failCbs = [];
     if (this._persistPath) this._load();
@@ -111,6 +113,7 @@ export class DeferredResultStore {
     if (this._tasks.has(taskId)) return;
     const sessionRef = normalizeSessionRef(sessionPath, this._getSessionIdForPath);
     this._tasks.set(taskId, {
+      generation: 1,
       status: "pending",
       sessionId: sessionRef.sessionId,
       sessionPath: sessionRef.sessionPath,
@@ -168,6 +171,7 @@ export class DeferredResultStore {
     const existing = this._tasks.get(taskId);
     const sessionRef = normalizeSessionRef(sessionPath, this._getSessionIdForPath);
     const next = {
+      generation: Number(existing?.generation || 0) + 1,
       status: "pending",
       sessionId: sessionRef.sessionId,
       sessionPath: sessionRef.sessionPath,
@@ -183,6 +187,8 @@ export class DeferredResultStore {
       delete existing.deliverySuppressed;
       delete existing.suppressedAt;
       delete existing.suppressionReason;
+      delete existing.observedAt;
+      delete existing.observedVia;
     } else {
       this._tasks.set(taskId, next);
     }
@@ -211,9 +217,10 @@ export class DeferredResultStore {
   }
 
   /** 标记任务结果已成功送达（steer 成功后调用） */
-  markDelivered(taskId) {
+  markDelivered(taskId, expectedGeneration?: number) {
     const task = this._tasks.get(taskId);
     if (task) {
+      if (expectedGeneration !== undefined && Number(task.generation || 0) !== expectedGeneration) return false;
       // Retry may fence a discarded branch while a delivery coroutine is
       // already awaiting sendCustomMessage(). That stale completion must not
       // reopen delivery by clearing the fence afterwards.
@@ -226,6 +233,30 @@ export class DeferredResultStore {
       return true;
     }
     return false;
+  }
+
+  /** A full tool result already delivered to its owning model must not schedule another turn. */
+  markObserved(taskId, sessionRef, expectedGeneration?: number, via = 'check_pending_tasks') {
+    const task = this._tasks.get(taskId);
+    if (!task || !matchesSession(task, sessionRef, this._getSessionIdForPath)) return false;
+    if (!['resolved', 'failed', 'aborted'].includes(task.status)) return false;
+    if (expectedGeneration !== undefined && Number(task.generation || 0) !== expectedGeneration) return false;
+    if (task.deliverySuppressed) return false;
+    task.observedAt = Date.now();
+    task.observedVia = via;
+    task.delivered = true;
+    this._save();
+    return true;
+  }
+
+  /** Share one delivery owner with legacy session-start extensions. */
+  setDeliveryHandler(handler: (taskId: string) => Promise<boolean>) {
+    this._deliveryHandler = handler;
+    return () => { if (this._deliveryHandler === handler) this._deliveryHandler = null; };
+  }
+
+  requestDelivery(taskId: string): Promise<boolean> | null {
+    return this._deliveryHandler?.(taskId) || null;
   }
 
   suppressDelivery(taskId, reason = "delivery suppressed") {

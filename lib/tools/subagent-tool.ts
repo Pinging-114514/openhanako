@@ -446,6 +446,7 @@ export function createSubagentTool(deps) {
       const executeForAgent = (agentId) => {
         const executorIdentity = resolveAgentIdentity(deps.listAgents, deps.currentAgentId, agentId);
         threadStore?.beginRun?.(threadId, {
+          taskId,
           kind: threadKind,
           parentSessionId,
           parentSessionPath,
@@ -786,6 +787,7 @@ export function createSubagentReplyTool(deps) {
           throw new Error("subagent thread has no child session to resume");
         }
         threadStore.beginRun(threadId, {
+          taskId,
           kind: "direct",
           parentSessionId,
           parentSessionPath,

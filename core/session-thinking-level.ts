@@ -1,4 +1,4 @@
-import { lookupKnown } from "../shared/known-models.ts";
+import { lookupDisplayModelMeta, lookupKnown } from "../shared/known-models.ts";
 
 export const DEFAULT_SESSION_THINKING_LEVEL = "medium";
 const VALID_THINKING_LEVELS = new Set(["off", "low", "medium", "high", "xhigh", "max"]);
@@ -32,6 +32,7 @@ const ANTHROPIC_MAX_EFFORT_MODEL_MARKERS = [
   "sonnet-4.6",
 ];
 const GROK_XHIGH_MODEL_MARKERS = [
+  "grok-4.7",
   "grok-4.6",
 ];
 
@@ -155,8 +156,18 @@ export function modelSupportsMax(model) {
 }
 
 export function getModelThinkingLevels(model) {
-  const explicitLevels = normalizeThinkingLevelChoices(model?.thinkingLevels)
-    || normalizeThinkingLevelChoices(knownOf(model)?.thinkingLevels);
+  const savedLevels = normalizeThinkingLevelChoices(model?.thinkingLevels);
+  // ModelManager resolves saved overrides and reference defaults before a
+  // model reaches a session. Its explicit levels remain authoritative even
+  // when serialization or SDK copies omit the internal user-saved marker.
+  // Re-reading the reference card here can re-enable a deliberately excluded
+  // level (for example max on a four-level proxy model).
+  if (savedLevels) return savedLevels;
+  const displayedLevels = normalizeThinkingLevelChoices(
+    lookupDisplayModelMeta(model?.provider, model?.id)?.thinkingLevels,
+  );
+  if (displayedLevels) return displayedLevels;
+  const explicitLevels = normalizeThinkingLevelChoices(knownOf(model)?.thinkingLevels);
   if (explicitLevels) return explicitLevels;
   const levels = [...DEFAULT_VISIBLE_THINKING_LEVELS];
   if (modelSupportsXhigh(model)) levels.push("xhigh");

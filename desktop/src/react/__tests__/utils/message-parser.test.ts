@@ -64,9 +64,18 @@ describe('parseMoodFromContent', () => {
     expect(parseMoodFromContent(input)).toEqual({ mood: null, yuan: null, text: input });
   });
 
-  it('正文开始后不再把成对标签当作内部块', () => {
+  it('行内成对标签仍当正文', () => {
     const input = 'prefix <pulse>literal</pulse> suffix';
     expect(parseMoodFromContent(input)).toEqual({ mood: null, yuan: null, text: input });
+  });
+
+  it('正文之后单独成行的 mood 会收进卡片', () => {
+    const input = '改好了。\n\n<mood>\nVibe: 另做一套\n</mood>';
+    expect(parseMoodFromContent(input)).toEqual({
+      mood: 'Vibe: 另做一套',
+      yuan: 'hanako',
+      text: '改好了。',
+    });
   });
 
   it('允许 BOM 与空白后的完整开头块', () => {

@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { useI18n } from '../../hooks/use-i18n';
 import { useStore } from '../../stores';
@@ -24,6 +24,21 @@ export function ThinkingLevelButton({ level, onChange, availableLevels }: {
   const { t } = useI18n();
   const currentSessionPath = useStore(s => s.currentSessionPath);
   const pendingNewSession = useStore(s => s.pendingNewSession);
+  const connectionId = useStore(s => s.activeServerConnectionId ?? s.activeServerConnection?.connectionId ?? null);
+  const requestVersion = useRef(0);
+  const requestAbort = useRef<AbortController | null>(null);
+  const savingRef = useRef(false);
+  const [saving, setSaving] = useState(false);
+  useEffect(() => {
+    savingRef.current = false;
+    setSaving(false);
+    return () => {
+      requestVersion.current += 1;
+      requestAbort.current?.abort();
+      requestAbort.current = null;
+      savingRef.current = false;
+    };
+  }, [currentSessionPath, pendingNewSession, connectionId]);
   const activeLevel = normalizeThinkingLevel(level);
 
   const normalizedAvailableLevels = useMemo(
@@ -32,6 +47,19 @@ export function ThinkingLevelButton({ level, onChange, availableLevels }: {
   );
 
   const selectLevel = useCallback(async (next: ThinkingLevel) => {
+    if (savingRef.current) return;
+    const version = ++requestVersion.current;
+    const controller = new AbortController();
+    requestAbort.current = controller;
+    savingRef.current = true;
+    setSaving(true);
+    const stillOwnsInput = () => {
+      const state = useStore.getState();
+      return version === requestVersion.current && !controller.signal.aborted
+        && state.currentSessionPath === currentSessionPath
+        && !!state.pendingNewSession === !!pendingNewSession
+        && (state.activeServerConnectionId ?? state.activeServerConnection?.connectionId ?? null) === connectionId;
+    };
     try {
       const useSessionThinking = !!currentSessionPath && !pendingNewSession;
       if (!useSessionThinking) {
@@ -39,8 +67,10 @@ export function ThinkingLevelButton({ level, onChange, availableLevels }: {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ level: next }),
+          signal: controller.signal,
         });
         const data = await res.json();
+        if (!stillOwnsInput()) return;
         if (!res.ok || data?.ok === false) {
           throw new Error(data?.error || 'failed to save thinking level');
         }
@@ -53,16 +83,27 @@ export function ThinkingLevelButton({ level, onChange, availableLevels }: {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionPath: currentSessionPath, level: next }),
+        signal: controller.signal,
       });
       const data = await res.json();
+      if (!stillOwnsInput()) return;
       if (!res.ok || data?.ok === false) {
         throw new Error(data?.error || 'failed to save thinking level');
       }
       onChange(normalizeThinkingLevel((data?.thinkingLevel || next) as ThinkingLevel));
     } catch (err) {
+      if (!stillOwnsInput()) return;
       console.error('[thinking-level] save failed:', err);
+      const message = err instanceof Error ? err.message : String(err);
+      useStore.getState().addToast(message || 'Failed to save thinking level', 'error', 5000);
+    } finally {
+      if (version === requestVersion.current) {
+        requestAbort.current = null;
+        savingRef.current = false;
+        setSaving(false);
+      }
     }
-  }, [currentSessionPath, onChange, pendingNewSession]);
+  }, [connectionId, currentSessionPath, onChange, pendingNewSession]);
 
   const tLevel = (key: string, fallback: string) => {
     const v = t(key);
@@ -86,6 +127,7 @@ export function ThinkingLevelButton({ level, onChange, availableLevels }: {
       options={options}
       value={activeLevel}
       onChange={(v) => selectLevel(v as ThinkingLevel)}
+      disabled={saving}
       align="end"
       placement="top"
       offset={4}

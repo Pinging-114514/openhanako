@@ -1,7 +1,16 @@
 import { useStore } from '../stores';
 import { selectDeskFiles, selectSessionFiles } from '../stores/selectors/file-refs';
 import type { FileRef, FileKind, FileSource } from '../types/file-ref';
-import { isMediaKind, buildFileRefId } from './file-kind';
+import { extOfName, isMediaKind, buildFileRefId, kindOfFileName } from './file-kind';
+
+export interface InputAttachmentMedia {
+  path?: string;
+  name: string;
+  fileId?: string;
+  base64Data?: string;
+  mimeType?: string;
+  isDirectory?: boolean;
+}
 
 interface OpenInput {
   filePath: string;
@@ -110,4 +119,69 @@ export function openMediaViewerForRef(ref: FileRef, opts: {
   } else {
     state.setMediaViewer({ files: [ref], currentId: ref.id, origin: opts.origin });
   }
+}
+
+/**
+ * 输入框草稿附件：还没进 session / desk 序列，自己组成一轮预览。
+ * 粘贴图可能只有 base64（Quick Chat 的 path 甚至只是本地 id），不能走 desk path 查找。
+ */
+export function buildInputAttachmentMediaRefs(
+  files: readonly InputAttachmentMedia[],
+): FileRef[] {
+  const refs: FileRef[] = [];
+  files.forEach((file, index) => {
+    const ref = inputAttachmentToMediaRef(file, index);
+    if (ref) refs.push(ref);
+  });
+  return refs;
+}
+
+export function openMediaViewerForInputAttachments(
+  files: readonly InputAttachmentMedia[],
+  start: Pick<InputAttachmentMedia, 'path' | 'name' | 'fileId' | 'base64Data'>,
+): void {
+  const refs = buildInputAttachmentMediaRefs(files);
+  if (refs.length === 0) return;
+  const startRef = findInputAttachmentStart(refs, files, start) ?? refs[0];
+  useStore.getState().setMediaViewer({
+    files: refs,
+    currentId: startRef.id,
+    origin: 'desk',
+  });
+}
+
+function inputAttachmentToMediaRef(file: InputAttachmentMedia, index: number): FileRef | null {
+  if (file.isDirectory) return null;
+  const kind = kindOfFileName(file.name || file.path || '', file.mimeType);
+  if (!isMediaKind(kind)) return null;
+  const path = file.path || '';
+  const hasInline = !!(file.base64Data && file.mimeType);
+  if (!path && !hasInline) return null;
+  return {
+    id: `input-att:${index}:${file.fileId || path || file.name}`,
+    fileId: file.fileId,
+    kind,
+    source: 'desk',
+    name: file.name || path.split(/[\\/]/).pop() || 'image',
+    path,
+    ext: extOfName(file.name || path),
+    mime: file.mimeType,
+    inlineData: hasInline ? { base64: file.base64Data!, mimeType: file.mimeType! } : undefined,
+  };
+}
+
+function findInputAttachmentStart(
+  refs: readonly FileRef[],
+  files: readonly InputAttachmentMedia[],
+  start: Pick<InputAttachmentMedia, 'path' | 'name' | 'fileId' | 'base64Data'>,
+): FileRef | undefined {
+  const startIndex = files.findIndex((file) => (
+    (!!start.fileId && file.fileId === start.fileId)
+    || (!!start.path && !!file.path && file.path === start.path)
+    || (!!start.base64Data && file.base64Data === start.base64Data && file.name === start.name)
+    || (!start.fileId && !start.path && !start.base64Data && file.name === start.name)
+  ));
+  if (startIndex < 0) return undefined;
+  const startIdPrefix = `input-att:${startIndex}:`;
+  return refs.find((ref) => ref.id.startsWith(startIdPrefix));
 }

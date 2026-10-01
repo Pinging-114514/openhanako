@@ -83,6 +83,33 @@ describe("LoopAlarmService.schedule", () => {
 });
 
 describe("LoopAlarmService fire & retry", () => {
+  it.each(['stop', 'replace'])('fences a delayed input commit after %s', async (action) => {
+    const store = makeStore();
+    store.create(D, 't');
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    let guard: (() => boolean) | undefined;
+    let commits = 0;
+    const { service } = makeService(store, { deliverWakeup: async (_key, _reason, options) => {
+      guard = options.shouldDeliver;
+      expect(options.requireIdle).toBe(true);
+      await gate;
+      if (!guard!()) return { mode: 'suppressed' };
+      commits++;
+      return { mode: 'triggerTurn' };
+    } });
+    try {
+      service.schedule(DK, 60, 'old wake');
+      const firing = (service as any)._fire(DK);
+      await vi.waitFor(() => expect(guard).toBeTypeOf('function'));
+      if (action === 'stop') { service.cancel(DK); store.update(DK, { status: 'stopped' }); }
+      else service.schedule(DK, 120, 'new wake');
+      expect(guard!()).toBe(false);
+      release(); await firing;
+      expect(commits).toBe(0);
+      if (action === 'replace') expect(store.get(DK).alarm.reason).toBe('new wake');
+    } finally { service.dispose(); }
+  });
   it("does not fire for a loop that is no longer running", async () => {
     vi.useFakeTimers();
     const store = makeStore();
@@ -170,6 +197,66 @@ describe("LoopAlarmService.rehydrate", () => {
     service.rehydrate();
     await vi.advanceTimersByTimeAsync(6_000);
     expect(calls.delivered).toEqual([[DK, "overdue"]]);
+  });
+});
+
+describe("LoopAlarmService stale retries", () => {
+  it("does not let a busy result replace a newer alarm", async () => {
+    vi.useFakeTimers();
+    const store = makeStore();
+    store.create(D, "t");
+    let release!: (value: any) => void;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const { service } = makeService(store, {
+      deliverWakeup: () => gate.then(() => ({ mode: "busy" })),
+    });
+    service.schedule(DK, 60, "old");
+    await vi.advanceTimersByTimeAsync(60_000);
+    service.schedule(DK, 10_000, "new");
+    const kept = store.get(DK).alarm;
+    release({ mode: "busy" });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(store.get(DK).status).toBe("running");
+    expect(store.get(DK).alarm.reason).toBe("new");
+    expect(store.get(DK).alarm.wakeAt).toBe(kept.wakeAt);
+  });
+
+  it("does not rearm a busy retry after the loop has stopped", async () => {
+    vi.useFakeTimers();
+    const store = makeStore();
+    store.create(D, "t");
+    let release!: (value: any) => void;
+    const gate = new Promise((resolve) => { release = resolve; });
+    const { service } = makeService(store, {
+      deliverWakeup: () => gate.then(() => ({ mode: "busy" })),
+    });
+    service.schedule(DK, 60, "old");
+    await vi.advanceTimersByTimeAsync(60_000);
+    store.update(DK, { status: "stopped", pausedReason: null });
+    release({ mode: "busy" });
+    await Promise.resolve();
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(store.get(DK).status).toBe("stopped");
+    expect(store.get(DK).alarm).toBeNull();
+  });
+
+  it("does not exhaust a retry into a loop that already left running", async () => {
+    vi.useFakeTimers();
+    const store = makeStore();
+    store.create(D, "t");
+    const { service, calls } = makeService(store, {
+      deliverWakeup: async () => ({ mode: "suppressed" }),
+    });
+    service.schedule(DK, 60, "old");
+    await vi.advanceTimersByTimeAsync(60_000);
+    service.cancel(DK);
+    store.update(DK, { status: "completed", pausedReason: null, completedSummary: "done" });
+    await vi.advanceTimersByTimeAsync(200_000);
+    expect(calls.exhausted).toEqual([]);
+    expect(store.get(DK).status).toBe("completed");
+    expect(store.get(DK).completedSummary).toBe("done");
+    expect(store.get(DK).pausedReason).toBeNull();
   });
 });
 

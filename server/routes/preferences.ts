@@ -46,6 +46,8 @@ import {
   CODEX_SERVICE_TIERS,
   DEFAULT_CODEX_SERVICE_TIER,
   normalizeCodexServiceTier,
+  availableCodexServiceTiers,
+  resolveCodexServiceTier,
 } from "../../shared/codex-service-tier.ts";
 import {
   normalizeSharedModelsPatch,
@@ -315,12 +317,21 @@ export function createPreferencesRoute(engine: any, options: Record<string, any>
     }
   });
 
+  function codexSpeedState(modelId?: unknown) {
+    if (typeof engine.getCodexServiceTierState === "function") return engine.getCodexServiceTierState(modelId);
+    const preferredTier = engine.getCodexServiceTier?.() ?? DEFAULT_CODEX_SERVICE_TIER;
+    return {
+      tier: resolveCodexServiceTier(preferredTier, false, modelId),
+      preferredTier,
+      options: availableCodexServiceTiers(false, modelId),
+      ultrafastEligible: false,
+    };
+  }
+
   route.get("/preferences/codex-service-tier", async (c) => {
     try {
-      return c.json({
-        tier: engine.getCodexServiceTier?.() ?? DEFAULT_CODEX_SERVICE_TIER,
-        options: CODEX_SERVICE_TIERS,
-      });
+      await engine.refreshCodexServiceEntitlement?.();
+      return c.json(codexSpeedState(c.req.query("modelId")));
     } catch (err) {
       return c.json({ error: err.message }, 500);
     }
@@ -341,8 +352,14 @@ export function createPreferencesRoute(engine: any, options: Record<string, any>
       if (!(CODEX_SERVICE_TIERS as readonly string[]).includes(requested) && requested !== "priority") {
         return c.json({ error: `tier must be one of ${CODEX_SERVICE_TIERS.join(", ")}` }, 400);
       }
-      const saved = engine.setCodexServiceTier(normalizeCodexServiceTier(requested));
-      return c.json({ ok: true, tier: saved, options: CODEX_SERVICE_TIERS });
+      if (requested === "ultrafast") {
+        await engine.refreshCodexServiceEntitlement?.();
+        if (!codexSpeedState(body.modelId).options.includes("ultrafast")) {
+          return c.json({ error: "Ultrafast requires a verified current Pro $500 (Pro Max) OAuth account and a supported model", ...codexSpeedState(body.modelId) }, 403);
+        }
+      }
+      engine.setCodexServiceTier(normalizeCodexServiceTier(requested));
+      return c.json({ ok: true, ...codexSpeedState(body.modelId) });
     } catch (err) {
       return c.json({ error: err.message }, 500);
     }

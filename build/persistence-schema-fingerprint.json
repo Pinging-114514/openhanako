@@ -668,7 +668,7 @@
     ],
     "version": 3
   },
-  "payloadFingerprint": "sha256:7b5a558ce716296a38155fc8799bef7cd345d9a352fb8b383699ab4dc4cc06b6",
+  "payloadFingerprint": "sha256:8249b86de684171480a9cf11bff9a891d7ae6dc32f3277a59c70c2236b98c4ae",
   "registry": [
     {
       "affectedByEpochMigration": true,
@@ -1881,6 +1881,43 @@
         "contract": "normalizeMcpConfig read-time normalization (servers/connectors alias, auth and OAuth field defaults, per-connector permission policy defaults, deferred-loading defaults)",
         "kind": "runtime-contract",
         "module": "core/mcp/manager.ts"
+      }
+    },
+    {
+      "affectedByEpochMigration": true,
+      "bootstrapSafety": null,
+      "checkpointPolicy": "Checkpoint as permission-preserving secret material together with the matching provider auth.json active slots.",
+      "epochPolicy": "epoch-managed",
+      "exemption": null,
+      "firstPossibleOpenPhase": "engine_construct",
+      "firstPossibleWritePhase": "engine_construct",
+      "format": "json",
+      "id": "oauth-account-vault",
+      "identityContract": "Provider key and provider-owned account ID identify each account; activeId selects an existing account in that provider vault.",
+      "migrationEntry": [],
+      "openEntry": [
+        "readOauthAccountVault",
+        "writeOauthAccountVault"
+      ],
+      "ownerModule": "lib/auth/oauth-account-vault.ts",
+      "pathExclusions": [],
+      "pathKind": "file",
+      "pathPattern": "oauth-accounts.json",
+      "pathPatterns": [
+        "oauth-accounts.json"
+      ],
+      "preCoordinatorReadProjection": null,
+      "protocolModules": [],
+      "restorePolicy": "Restore atomically before OAuth account refresh; never merge credentials from another HANA_HOME.",
+      "schemaContract": {
+        "compatibility": "The named runtime reader is canonical; this inventory does not imply stricter validation than runtime currently performs.",
+        "kind": "runtime-source",
+        "source": "lib/auth/oauth-account-vault.ts"
+      },
+      "schemaSource": {
+        "contract": "versioned multi-account OAuth vault normalization and owner-only serializer",
+        "kind": "runtime-contract",
+        "module": "lib/auth/oauth-account-vault.ts"
       }
     },
     {
@@ -3122,8 +3159,8 @@
   ],
   "review": {
     "classification": "compatible",
-    "compatibilityReason": "pi-coding-agent 0.80.3 -> 0.85.1: session jsonl CURRENT_SESSION_VERSION stays 3 and no Hana SQLite store schema changed; only the external package version/integrity in the guarded source inventory moved",
-    "payloadFingerprint": "sha256:7b5a558ce716296a38155fc8799bef7cd345d9a352fb8b383699ab4dc4cc06b6"
+    "compatibilityReason": "v0.460.0 adds optional deferred-result generation/observation and subagent last-run identity fields with legacy defaults. OAuth vault data retains its existing version and account identity; its existing writer is now explicitly registered for secret-preserving checkpoints. Activity retention changes deletion policy, not serialized shape; users are warned to back up history. No DATA_EPOCH change is required.",
+    "payloadFingerprint": "sha256:8249b86de684171480a9cf11bff9a891d7ae6dc32f3277a59c70c2236b98c4ae"
   },
   "schemas": [
     {
@@ -3271,14 +3308,14 @@
       "contract": "DeferredResultStore normalization, seven-day cleanup, and atomic serializer",
       "kind": "runtime-contract",
       "module": "lib/deferred-result-store.ts",
-      "sourceHash": "sha256:43930be66cf5571a03128df9769c3ddbf01146ad8adc31bd4ae646b54b8520cc",
+      "sourceHash": "sha256:0b25fa552cd7cb9e4c32ecc3b4f4b3146e01f7869e35ab59de604b976f69e09d",
       "storeId": "deferred-result-state"
     },
     {
       "contract": "activity index and activity-session JSONL lifecycle",
       "kind": "directory-contract",
       "module": "lib/desk/activity-store.ts",
-      "sourceHash": "sha256:0bf7d6125868836dfd253e5b0d3599eef0f0340df6e78edbf688ae28b32d18e2",
+      "sourceHash": "sha256:f85a77bed5d2f5b2ba7c4950034479c4e6a0cdaa10113818d8448f985fd2fb72",
       "storeId": "desk-activity"
     },
     {
@@ -3320,7 +3357,7 @@
       "contract": "desktop window bounds, release announcement bookmark, and update cache version marker readers",
       "kind": "directory-contract",
       "module": "desktop/main.cjs",
-      "sourceHash": "sha256:0ba08f1c6bb4d35617fb0876bbca17b2a3c3275beb974f31c4b7288ff0a96280",
+      "sourceHash": "sha256:7c3c76a11e5be32823ac6700efeb71912035f92e3617ec0c0feae04cb49bffd2",
       "storeId": "desktop-window-version-state"
     },
     {
@@ -3429,6 +3466,13 @@
       "storeId": "mcp-config"
     },
     {
+      "contract": "versioned multi-account OAuth vault normalization and owner-only serializer",
+      "kind": "runtime-contract",
+      "module": "lib/auth/oauth-account-vault.ts",
+      "sourceHash": "sha256:e984457bbbda597785d370ed1ebe5c5e9e333243144195f78ab2171fb51769b9",
+      "storeId": "oauth-account-vault"
+    },
+    {
       "contract": "job.json/input.html request contract and generated PDF output lifecycle",
       "kind": "directory-contract",
       "module": "plugins/office/lib/html-to-pdf.ts",
@@ -3522,7 +3566,7 @@
       "contract": "server-info writer and desktop bootstrap reader",
       "kind": "runtime-contract",
       "module": "server/index.ts",
-      "sourceHash": "sha256:663421adffde271b75b58f94b007f733180f9fde8bd9fded4fdd6065819d74b4",
+      "sourceHash": "sha256:3fb82084593b4f46f17638e4b46c3f28a31c90e9c6d04e2495d12dc512258f8f",
       "storeId": "server-runtime-info"
     },
     {
@@ -3544,7 +3588,7 @@
         {
           "contract": "core/session-coordinator.ts Hana metadata extensions",
           "module": "core/session-coordinator.ts",
-          "sourceHash": "sha256:8c9d669f756056b997099e671a0165e8dfe1bfd535bc1f2e850b0286e7547f5b"
+          "sourceHash": "sha256:3f30a75fd6c2faa9a555713d79fabcf18d8b929e5580139e90e71f8d3c818000"
         },
         {
           "contract": "core/session-jsonl-file.ts repair contract",
@@ -3642,7 +3686,7 @@
       "contract": "bridge index, legacy session metadata, title, and vision sidecar readers",
       "kind": "runtime-contract",
       "module": "core/bridge-session-manager.ts",
-      "sourceHash": "sha256:7ed05febd0506adb3cdc38c86a652f1c47a4e1a499f9308a7e940faaae1297ef",
+      "sourceHash": "sha256:fc92cbfc80d7529c616efd336418fa58214048a9ea11f995fa8fbce63f90551c",
       "storeId": "session-sidecars"
     },
     {
@@ -3698,7 +3742,7 @@
       "contract": "PreferencesManager defaults, coercion, and _dataVersion migration driver",
       "kind": "runtime-contract",
       "module": "core/preferences-manager.ts",
-      "sourceHash": "sha256:a5cbbabdd902ace09aba6a9d4ad07375e24d9196cc175b5a13ccadf4c9da1b48",
+      "sourceHash": "sha256:826e11c35634c79f712c89c1680dfc0e6873470c1081950c8cc6663bf2c586ab",
       "storeId": "user-preferences"
     },
     {
@@ -6578,6 +6622,14 @@
       "reason": "Reads, repairs, removes, or edits agent/user profile material.",
       "sourceFile": "lib/agent-appearance-summary.ts",
       "storeId": "agent-profile"
+    },
+    {
+      "exemptionId": null,
+      "kind": "secret-write",
+      "ordinal": 0,
+      "reason": "Persists the normalized multi-account OAuth vault with owner-only permissions.",
+      "sourceFile": "lib/auth/oauth-account-vault.ts",
+      "storeId": "oauth-account-vault"
     },
     {
       "exemptionId": null,
@@ -9989,6 +10041,14 @@
     },
     {
       "exemptionId": "generic-secret-fs-primitives",
+      "kind": "remove-path",
+      "ordinal": 5,
+      "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
+      "sourceFile": "shared/secret-fs.ts",
+      "storeId": null
+    },
+    {
+      "exemptionId": "generic-secret-fs-primitives",
       "kind": "rename",
       "ordinal": 0,
       "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
@@ -9997,8 +10057,8 @@
     },
     {
       "exemptionId": "generic-secret-fs-primitives",
-      "kind": "rename",
-      "ordinal": 1,
+      "kind": "write-file",
+      "ordinal": 0,
       "reason": "Shared owner-only write primitives have no store ownership; callers are scanned and assigned to concrete descriptors.",
       "sourceFile": "shared/secret-fs.ts",
       "storeId": null

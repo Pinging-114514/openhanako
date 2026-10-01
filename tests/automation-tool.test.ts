@@ -546,6 +546,81 @@ describe("automation tool", () => {
     expect(store.addJob).not.toHaveBeenCalled();
   });
 
+  it("passes the tool context into auto approve so a full-permission session can commit", async () => {
+    const store = makeStore();
+    const seen = [];
+    const tool = createAutomationTool(store, {
+      getAutoApprove: (ctx) => {
+        seen.push(ctx?.sessionId || null);
+        return ctx?.sessionId === "session-operate";
+      },
+      getAgentId: () => "agent-a",
+      getSessionCwd: () => "/workspace/current",
+    });
+
+    const blocked = await tool.execute(
+      "call_ask",
+      { action: "create", scheduleType: "every", schedule: "10", label: "Watch", prompt: "probe" },
+      undefined,
+      undefined,
+      { sessionId: "session-ask", sessionManager: { getSessionFile: () => AGENT_SESSION_PATH } },
+    );
+    expect(blocked.content[0].text).toBe("我准备了一项自动任务建议，等你确认后再创建。");
+    expect(store.addJob).not.toHaveBeenCalled();
+
+    const created = await tool.execute(
+      "call_operate",
+      { action: "create", scheduleType: "every", schedule: "10", label: "Watch", prompt: "probe" },
+      undefined,
+      undefined,
+      { sessionId: "session-operate", sessionManager: { getSessionFile: () => AGENT_SESSION_PATH } },
+    );
+    expect(created.content[0].text).toContain("Automation created");
+    expect(store.addJob).toHaveBeenCalledOnce();
+    expect(seen).toEqual(["session-ask", "session-operate"]);
+  });
+
+  it("turns off only the scheduled task owned by this session", async () => {
+    const ownJob = {
+      id: "studio_job_own",
+      type: "every",
+      schedule: 600000,
+      prompt: "probe",
+      label: "Watch",
+      enabled: true,
+      actorAgentId: "agent-a",
+      executionContext: { sourceSessionId: "session-operate", createdByAgentId: "agent-a" },
+      createdBy: { sourceSessionId: "session-operate" },
+    };
+    const store = makeStore([ownJob]);
+    const tool = createAutomationTool(store, {
+      getAutoApprove: () => true,
+      getAgentId: () => "agent-a",
+    });
+
+    const blocked = await tool.execute(
+      "call_other",
+      { action: "update", id: "studio_job_own", enabled: false },
+      undefined,
+      undefined,
+      { sessionId: "session-other" },
+    );
+    expect(blocked.content[0].text).toContain("只能关闭或修改当前会话创建的定时任务");
+    expect(store.updateJob).not.toHaveBeenCalled();
+
+    const result = await tool.execute(
+      "call_own",
+      { action: "update", id: "studio_job_own", enabled: false },
+      undefined,
+      undefined,
+      { sessionId: "session-operate" },
+    );
+    expect(result.content[0].text).toContain("Automation updated");
+    expect(store.updateJob).toHaveBeenCalledWith("studio_job_own", expect.objectContaining({
+      enabled: false,
+    }));
+  });
+
   it("creates immediately only when auto approve is explicitly enabled", async () => {
     const store = makeStore();
     const { store: suggestionStore } = makeSuggestionStore("automation_suggestion_3", "6001");

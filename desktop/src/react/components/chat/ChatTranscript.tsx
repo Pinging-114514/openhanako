@@ -1,6 +1,7 @@
-import { memo, useCallback, useMemo, type RefObject } from 'react';
+import { cloneElement, memo, useCallback, useMemo, useRef, type RefObject } from 'react';
 import type { ChatListItem, ChatMessage } from '../../stores/chat-types';
-import { useTranscriptWindow } from './transcript-window';
+import { useTranscriptWindow, type TranscriptScrollAnchorOptions } from './transcript-window';
+import { foldAliasMap } from './transcript-scroll-anchor';
 import styles from './Chat.module.css';
 import { UserMessage } from './UserMessage';
 import { AgentOriginMessage } from './AgentOriginMessage';
@@ -28,7 +29,10 @@ interface Props {
   onForkCreated?: ForkedSessionHandler;
   scrollParentRef?: RefObject<HTMLElement | null>;
   pinnedMessageIds?: readonly string[];
+  scrollAnchorOptions?: TranscriptScrollAnchorOptions;
 }
+
+export type { TranscriptScrollAnchorOptions };
 
 export const ChatTranscript = memo(function ChatTranscript({
   items,
@@ -42,8 +46,11 @@ export const ChatTranscript = memo(function ChatTranscript({
   onForkCreated,
   scrollParentRef,
   pinnedMessageIds,
+  scrollAnchorOptions,
 }: Props) {
   const isStreaming = useStore(s => selectIsStreamingSession(s, sessionPath));
+  const wasStreamingRef = useRef(isStreaming);
+  const foldHoldRef = useRef<ReadonlySet<string> | null>(null);
   const agents = useStore(s => s.agents);
   const globalAgentName = useStore(s => s.agentName) || 'Hanako';
   const globalYuan = useStore(s => s.agentYuan) || 'hanako';
@@ -64,60 +71,145 @@ export const ChatTranscript = memo(function ChatTranscript({
     name: storeUserName || t('common.me'),
     avatarUrl: userAvatarUrl,
   }), [storeUserName, userAvatarUrl, t]);
+  const preserveReading = scrollAnchorOptions?.active === false
+    ? false
+    : scrollAnchorOptions?.shouldPreserveAnchor
+      ? scrollAnchorOptions.shouldPreserveAnchor()
+      : Boolean(scrollParentRef);
+  if (wasStreamingRef.current && !isStreaming && preserveReading) {
+    foldHoldRef.current = trailingAssistantKeys(items);
+  }
+  if (foldHoldRef.current && (!preserveReading || !heldTurnStillVisible(items, foldHoldRef.current))) {
+    foldHoldRef.current = null;
+  }
+  wasStreamingRef.current = isStreaming;
+  const heldMessageKeys = foldHoldRef.current;
   const renderItems = useMemo(
-    () => enableProcessFold
-      ? buildTranscriptRenderItems(items, { isStreaming })
-      : items.map((item, originalIndex) => ({ type: 'source' as const, item, originalIndex })),
-    [enableProcessFold, isStreaming, items],
+    () => {
+      const built = enableProcessFold
+        ? buildTranscriptRenderItems(items, { isStreaming })
+        : items.map((item, originalIndex) => ({ type: 'source' as const, item, originalIndex }));
+      const held = heldMessageKeys ? expandHeldTurnFold(built, heldMessageKeys) : built;
+      return held.filter((renderItem) => !isUnrenderedTranscriptRow(renderItem));
+    },
+    [enableProcessFold, heldMessageKeys, isStreaming, items],
   );
   const turnState = useMemo(() => buildTurnState(items), [items]);
   const renderKeys = useMemo(() => renderItems.map(renderItemKey), [renderItems]);
-  const windowLayout = useTranscriptWindow(renderKeys, scrollParentRef, pinnedMessageIds);
+  const foldAliases = useMemo(() => foldAliasMap(
+    renderItems.flatMap((renderItem) => (
+      renderItem.type === 'process_fold'
+        ? [{ id: renderItem.id, sourceIds: renderItem.items.map((entry) => entry.item.data.id) }]
+        : []
+    )),
+  ), [renderItems]);
+  const windowLayout = useTranscriptWindow(renderKeys, scrollParentRef, pinnedMessageIds, {
+    active: scrollAnchorOptions?.active,
+    shouldPreserveAnchor: scrollAnchorOptions?.shouldPreserveAnchor,
+    restoreScrollTop: scrollAnchorOptions?.restoreScrollTop,
+    aliasesByKey: scrollAnchorOptions?.aliasesByKey ?? foldAliases,
+  });
   const visibleItems = windowLayout.virtualized
     ? renderItems.slice(windowLayout.start, windowLayout.end + 1)
     : renderItems;
+  const useWindowChrome = Boolean(scrollParentRef) || windowLayout.virtualized;
 
-  const rendered = visibleItems.map((renderItem) => (
-    <TranscriptRenderItemView
-      key={renderItemKey(renderItem)}
-      renderItem={renderItem}
-      sourceItems={items}
-      sessionPath={sessionPath}
-      agentId={agentId}
-      readOnly={readOnly}
-      hideUserIdentity={hideUserIdentity}
-      userIdentity={userIdentity}
-      latestUserIndex={turnState.latestUserIndex}
-      latestAssistantIndex={turnState.latestAssistantIndex}
-      turnCompletionAssistantIndexes={turnState.turnCompletionAssistantIndexes}
-      assistantTurnSelectionIdsByCompletionIndex={turnState.assistantTurnSelectionIdsByCompletionIndex}
-      assistantTurnTargetsByCompletionIndex={turnState.assistantTurnTargetsByCompletionIndex}
-      assistantTurnRetryMessagesByCompletionIndex={turnState.assistantTurnRetryMessagesByCompletionIndex}
-      isStreamingSession={isStreaming}
-      agentDisplay={agentDisplay}
-      viewerIdentity={viewerIdentity}
-      selectedIds={selectedIds}
-      registerMessageElement={registerMessageElement}
-      onForkCreated={onForkCreated}
-    />
-  ));
+  const rendered = visibleItems.map((renderItem) => {
+    const key = renderItemKey(renderItem);
+    const view = (
+      <TranscriptRenderItemView
+        renderItem={renderItem}
+        sourceItems={items}
+        sessionPath={sessionPath}
+        agentId={agentId}
+        readOnly={readOnly}
+        hideUserIdentity={hideUserIdentity}
+        userIdentity={userIdentity}
+        latestUserIndex={turnState.latestUserIndex}
+        latestAssistantIndex={turnState.latestAssistantIndex}
+        turnCompletionAssistantIndexes={turnState.turnCompletionAssistantIndexes}
+        assistantTurnSelectionIdsByCompletionIndex={turnState.assistantTurnSelectionIdsByCompletionIndex}
+        assistantTurnTargetsByCompletionIndex={turnState.assistantTurnTargetsByCompletionIndex}
+        assistantTurnRetryMessagesByCompletionIndex={turnState.assistantTurnRetryMessagesByCompletionIndex}
+        isStreamingSession={isStreaming}
+        agentDisplay={agentDisplay}
+        viewerIdentity={viewerIdentity}
+        selectedIds={selectedIds}
+        registerMessageElement={registerMessageElement}
+        onForkCreated={onForkCreated}
+      />
+    );
+    if (!useWindowChrome) return cloneElement(view, { key });
+    return (
+      <div key={key} data-transcript-key={key} data-transcript-first={renderItem === renderItems[0] ? 'true' : undefined} className={styles.transcriptRow}>
+        {view}
+      </div>
+    );
+  });
 
-  if (!windowLayout.virtualized) return <>{rendered}</>;
+  if (!useWindowChrome) return <>{rendered}</>;
 
   return (
     <div className={styles.transcriptWindow}>
-      {windowLayout.padTop > 0 && (
-        <div className={styles.transcriptPad} style={{ height: windowLayout.padTop }} aria-hidden="true" />
-      )}
+      <div className={styles.transcriptPad} style={{ height: windowLayout.padTop }} aria-hidden="true" />
       <div ref={windowLayout.listRef} className={styles.transcriptList}>
         {rendered}
       </div>
-      {windowLayout.padBottom > 0 && (
-        <div className={styles.transcriptPad} style={{ height: windowLayout.padBottom }} aria-hidden="true" />
-      )}
+      <div className={styles.transcriptPad} style={{ height: windowLayout.padBottom }} aria-hidden="true" />
     </div>
   );
 });
+
+function stableAssistantKey(message: ChatMessage): string {
+  return message.sourceEntryId || message.id;
+}
+
+function trailingAssistantKeys(items: ChatListItem[]): ReadonlySet<string> | null {
+  const keys = new Set<string>();
+  let turnInput: string | null = null;
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    const item = items[index];
+    if (item.type !== 'message') continue;
+    if (item.data.role === 'user') break;
+    const input = item.data.turnInputEntryId || null;
+    if (turnInput && input && turnInput !== input) break;
+    if (input) turnInput = input;
+    keys.add(stableAssistantKey(item.data));
+  }
+  return keys.size ? keys : null;
+}
+
+function heldTurnStillVisible(items: ChatListItem[], held: ReadonlySet<string>): boolean {
+  let lastHeld = -1;
+  let lastUser = -1;
+  for (let index = 0; index < items.length; index += 1) {
+    const item = items[index];
+    if (item.type !== 'message') continue;
+    if (item.data.role === 'user') lastUser = index;
+    else if (held.has(stableAssistantKey(item.data))) lastHeld = index;
+  }
+  // Prepending the previously unloaded question must not look like a new user turn.
+  return lastHeld >= 0 && lastHeld > lastUser;
+}
+
+function isUnrenderedTranscriptRow(renderItem: TranscriptRenderItem): boolean {
+  return renderItem.type === 'source' && renderItem.item.type === 'compaction';
+}
+
+function expandHeldTurnFold(
+  renderItems: TranscriptRenderItem[],
+  heldKeys: ReadonlySet<string>,
+): TranscriptRenderItem[] {
+  const expanded: TranscriptRenderItem[] = [];
+  for (const renderItem of renderItems) {
+    if (renderItem.type !== 'process_fold' || !renderItem.items.some(entry => heldKeys.has(stableAssistantKey(entry.item.data)))) {
+      expanded.push(renderItem);
+      continue;
+    }
+    for (const entry of renderItem.items) expanded.push({ type: 'source', item: entry.item, originalIndex: entry.originalIndex });
+  }
+  return expanded;
+}
 
 function renderItemKey(renderItem: TranscriptRenderItem): string {
   if (renderItem.type === 'process_fold') return renderItem.id;

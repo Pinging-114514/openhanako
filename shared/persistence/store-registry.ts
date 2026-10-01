@@ -457,6 +457,20 @@ export const PERSISTENT_STORES: readonly StoreDescriptor[] = Object.freeze([
     ], "Owns provider catalog, authentication, model compatibility, local provider plugin state, or the retention of their migration backups."),
   }),
   defineStore({
+    id: "oauth-account-vault",
+    ownerModule: "lib/auth/oauth-account-vault.ts",
+    pathPatterns: ["oauth-accounts.json"],
+    format: "json",
+    schemaSource: runtimeSource("lib/auth/oauth-account-vault.ts", "versioned multi-account OAuth vault normalization and owner-only serializer"),
+    openEntry: ["readOauthAccountVault", "writeOauthAccountVault"],
+    firstPossibleOpenPhase: "engine_construct",
+    firstPossibleWritePhase: "engine_construct",
+    checkpointPolicy: "Checkpoint as permission-preserving secret material together with the matching provider auth.json active slots.",
+    restorePolicy: "Restore atomically before OAuth account refresh; never merge credentials from another HANA_HOME.",
+    identityContract: "Provider key and provider-owned account ID identify each account; activeId selects an existing account in that provider vault.",
+    siteRules: rules(["lib/auth/oauth-account-vault.ts"], "Persists the normalized multi-account OAuth vault with owner-only permissions.", ["secret-write"], "oauthAccountVaultPath"),
+  }),
+  defineStore({
     id: "agent-profile",
     ownerModule: "core/agent-manager.ts",
     pathPatterns: [

@@ -26,7 +26,8 @@
     color: var(--text-muted);
 }
 
-.name {
+.name,
+.open {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -34,6 +35,23 @@
     align-items: center;
     gap: 4px;
     color: var(--text);
+    min-width: 0;
+}
+
+.open {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    cursor: pointer;
+    text-align: left;
+}
+
+.label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
     min-width: 0;
 }
 

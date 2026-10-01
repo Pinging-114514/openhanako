@@ -11,6 +11,11 @@ import path from "path";
 import { createAgentSession, SessionManager, estimateTokens, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.ts";
 import { getAgentStreamFn, setAgentStreamFn } from "../lib/pi-sdk/agent-stream.ts";
 import { isSessionJsonlFilename } from "../lib/session-jsonl.ts";
+import {
+  installSessionCronContextFilter,
+  oneLineConclusion,
+  trailingSessionCronSegment,
+} from "../lib/desk/session-cron-slot.ts";
 import { createDefaultSettings } from "./session-defaults.ts";
 import { isDefaultWorkspacePath, restoreDefaultWorkspaceIfMissing } from "../shared/default-workspace.ts";
 import {
@@ -115,6 +120,11 @@ import {
   normalizeStringArray,
 } from "./session-prompt-snapshot.ts";
 import { buildTurnInputPresentationEvent } from "../lib/turn-input-presentation.ts";
+import {
+  buildMultitaskHandoffPrompt,
+  extractLastTurnTexts,
+  summarizeMultitaskLabel,
+} from "./session-multitask.ts";
 import { ensureSessionRefForPath } from "./session-manifest/ref.ts";
 import { resolveSessionNodeTarget } from "./session-turn-actions.ts";
 import { acquireSessionOperation } from "./session-operation-lock.ts";
@@ -2154,6 +2164,7 @@ export class SessionCoordinator {
       sessionOpts.model = effectiveModel || unavailableSessionModel;
     }
     const { session, modelFallbackMessage } = await createAgentSession(sessionOpts);
+    installSessionCronContextFilter(session);
     if (modelFallbackMessage) {
       if (restore) {
         await teardownSessionResources({
@@ -4973,12 +4984,50 @@ export class SessionCoordinator {
   async promptSession(sessionPath: any, text: any, opts: any, submitOptions: any = {}) {
     const turnContext = normalizeSessionTurnContext(opts?.context);
     this._assertActiveDesktopSessionPath(sessionPath, "promptSession");
+    // 停止要覆盖整个「已提交、还没开流」窗口：从这里到 Pi 真正开流。
+    // 否则用户点停止时刚好卡在加载/预处理里，abort 找不到流，随后开流又要等一轮。
+    const abortController = new AbortController();
+    this._setRuntimeValueForPath(this._prePromptAbortControllers, sessionPath, abortController);
+    const ownsPrePromptController = () =>
+      this._getRuntimeValueForPath(this._prePromptAbortControllers, sessionPath) === abortController;
+    const releasePrePromptController = () => {
+      if (ownsPrePromptController()) this._deleteRuntimeValueForPath(this._prePromptAbortControllers, sessionPath);
+    };
     let entry = this._getSessionEntryByPath(sessionPath);
-    if (!entry) {
-      await this.ensureSessionLoaded(sessionPath);
-      entry = this._getSessionEntryByPath(sessionPath);
+    try {
+      if (!entry) {
+        await this.ensureSessionLoaded(sessionPath);
+        entry = this._getSessionEntryByPath(sessionPath);
+      }
+      abortController.signal.throwIfAborted();
+    } catch (err) {
+      releasePrePromptController();
+      throw err;
     }
-    if (!entry) throw new Error(t("error.sessionNotInCache", { path: sessionPath }));
+    if (!entry) {
+      releasePrePromptController();
+      throw new Error(t("error.sessionNotInCache", { path: sessionPath }));
+    }
+    // Pi 的 prompt() 在开流之前还有自己的钩子和模板展开。停止若落在那段里，
+    // 等它一开流就立刻收掉，不让用户再等一轮。
+    const promptEntry = entry;
+    abortController.signal.addEventListener("abort", () => {
+      if (promptEntry.session?.isStreaming) {
+        this._forceReleaseStreamingSession(promptEntry, sessionPath, "abort");
+        return;
+      }
+      let unsubStart: (() => void) | null = null;
+      try {
+        unsubStart = promptEntry.session?.subscribe?.((event: any) => {
+          if (event?.type !== "agent_start") return;
+          try { unsubStart?.(); } catch {}
+          unsubStart = null;
+          if (this._getSessionEntryByPath(sessionPath) === promptEntry) {
+            this._forceReleaseStreamingSession(promptEntry, sessionPath, "abort");
+          }
+        }) || null;
+      } catch {}
+    }, { once: true });
     if (sessionPath === this.currentSessionPath && this._session !== entry.session) {
       this._session = entry.session;
     }
@@ -4989,8 +5038,6 @@ export class SessionCoordinator {
     }
     if (sessionPath === this.currentSessionPath) this._sessionStarted = true;
     const engine = this._d.getEngine?.();
-    const abortController = new AbortController();
-    this._setRuntimeValueForPath(this._prePromptAbortControllers, sessionPath, abortController);
     try {
       ({ text, opts } = await prepareVisionInputForTextOnlyModel({
         targetModel: entry.session.model,
@@ -5007,14 +5054,13 @@ export class SessionCoordinator {
         opts,
         signal: abortController.signal,
       }));
-    } finally {
-      if (this._getRuntimeValueForPath(this._prePromptAbortControllers, sessionPath) === abortController) {
-        this._deleteRuntimeValueForPath(this._prePromptAbortControllers, sessionPath);
-      }
+      abortController.signal.throwIfAborted();
+      assertVideoInputSupported(entry.session.model, opts?.videos);
+      assertAudioInputSupported(entry.session.model, opts?.audios);
+    } catch (err) {
+      releasePrePromptController();
+      throw err;
     }
-    abortController.signal.throwIfAborted();
-    assertVideoInputSupported(entry.session.model, opts?.videos);
-    assertAudioInputSupported(entry.session.model, opts?.audios);
     let promptPreflightReported = false;
     const needsPromptReceipt = typeof submitOptions?.afterCachePreflight === "function"
       || typeof submitOptions?.afterInputAccepted === "function";
@@ -5038,14 +5084,29 @@ export class SessionCoordinator {
     const promptOpts = buildPromptMediaOptions(opts, notifyPromptPreflight);
     const nativeMediaTurn = engine?.beginCurrentTurnNativeMedia?.(sessionPath, opts);
     if (turnContext) this._setRuntimeValueForPath(this._turnContextBySession, sessionPath, turnContext);
+    // 一旦 Pi 开流，abortSession 就该走 force-release 那条路，不再算「预提交」。
+    let unsubStreamStart: (() => void) | null = null;
+    try {
+      unsubStreamStart = entry.session.subscribe?.((event: any) => {
+        if (event?.type !== "agent_start") return;
+        try { unsubStreamStart?.(); } catch {}
+        unsubStreamStart = null;
+        releasePrePromptController();
+      }) || null;
+    } catch {
+      unsubStreamStart = null;
+    }
     try {
       // Recheck after asynchronous media preparation. A background custom turn
       // may have started since the route-level guard; no input side effects may
       // be committed onto a now-streaming Session.
       if (entry.session.isStreaming) throw new Error("session_busy");
       this.preflightSessionInput(sessionPath);
+      abortController.signal.throwIfAborted();
       await entry.session.prompt(text, promptOpts);
     } finally {
+      try { unsubStreamStart?.(); } catch {}
+      releasePrePromptController();
       if (turnContext) this._deleteRuntimeValueForPath(this._turnContextBySession, sessionPath);
       engine?.endCurrentTurnNativeMedia?.(nativeMediaTurn);
       pruneSessionInlineMediaHistory(entry.session);
@@ -5059,6 +5120,10 @@ export class SessionCoordinator {
     agent?._memoryTicker?.notifyTurn(sessionPath, { forceSummary });
   }
 
+  /**
+   * Pi AgentSession.steer() 会等当前 assistant 这轮的工具跑完，再在下一次
+   * LLM 调用前注入。这就是工具边界 Steer，不要在这里 abort 再重发。
+   */
   steerSession(sessionPath: any, text: any) {
     const entry = this._getSessionEntryByPath(sessionPath);
     if (!entry?.session.isStreaming) return false;
@@ -5068,10 +5133,341 @@ export class SessionCoordinator {
     return true;
   }
 
+  async handoffStreamingTurnToSibling(sessionPath: any) {
+    const entry = this._getSessionEntryByPath(sessionPath);
+    if (!entry?.session?.isStreaming) {
+      const error: any = new Error(t("error.code.multitaskIdle"));
+      error.code = "multitask_idle";
+      throw error;
+    }
+    const parentSession = entry.session;
+    const sourceUserMessage = [...(parentSession.messages || [])].reverse().find((message: any) => message?.role === 'user');
+    const { userText, assistantText } = extractLastTurnTexts(parentSession.messages || []);
+    if (!userText) {
+      const error: any = new Error(t("error.code.multitaskNoUserTurn"));
+      error.code = "multitask_no_user_turn";
+      throw error;
+    }
+    const agent = this._d.getAgentById?.(entry.agentId) || this._d.getAgent?.();
+    if (!agent?.agentDir) {
+      const error: any = new Error(t("error.code.multitaskFailed"));
+      error.code = "multitask_failed";
+      throw error;
+    }
+    const cwd = this._sessionCwdFor(sessionPath, entry);
+    let permissionMode: string;
+    try {
+      permissionMode = normalizeSessionPermissionMode(this.getPermissionMode(sessionPath));
+    } catch (err: any) {
+      log.warn(`multitask permission lookup failed: ${err?.message || err}`);
+      const error: any = new Error(t("error.code.multitaskFailed"));
+      error.code = "multitask_permission_unresolved";
+      throw error;
+    }
+    if (!new Set<string>(Object.values(SESSION_PERMISSION_MODES)).has(permissionMode)) {
+      const error: any = new Error(t("error.code.multitaskFailed"));
+      error.code = "multitask_permission_unresolved";
+      throw error;
+    }
+    const taskId = `multitask-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const controller = new AbortController();
+    const registry = this._d.getTaskRegistry?.() || this._d.taskRegistry || this._d.getEngine?.()?.taskRegistry || null;
+    const parentSessionId = this._d.getSessionIdForPath?.(sessionPath) || null;
+    if (typeof registry?.register !== "function"
+      || (typeof this._d.setSubagentController !== "function" && typeof this._d.getEngine?.()?.setSubagentController !== "function")) {
+      throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_cancellation_unavailable" });
+    }
+    let releasePrompt!: () => void;
+    const promptGate = new Promise<void>((resolve) => { releasePrompt = resolve; });
+    controller.signal.addEventListener("abort", () => releasePrompt(), { once: true });
+    const bindController = (ctrl: AbortController) => {
+      if (typeof this._d.setSubagentController === "function") {
+        this._d.setSubagentController(taskId, ctrl);
+        return;
+      }
+      this._d.getEngine?.()?.setSubagentController?.(taskId, ctrl);
+    };
+    const unbind = () => {
+      try {
+        if (typeof this._d.removeSubagentController === "function") this._d.removeSubagentController(taskId);
+        else this._d.getEngine?.()?.removeSubagentController?.(taskId);
+      } catch (err: any) {
+        log.warn(`multitask controller cleanup failed: ${err?.message || err}`);
+      }
+    };
+    const terminalTask = (status: any) => (
+      status === "completed" || status === "failed" || status === "canceled" || status === "aborted"
+    );
+    try {
+      registry?.register?.(taskId, {
+        type: "subagent",
+        parentSessionPath: sessionPath,
+        parentSessionId,
+        meta: { kind: "multitask" },
+        persist: false,
+      });
+      bindController(controller);
+    } catch (err: any) {
+      controller.abort();
+      try { registry?.fail?.(taskId, "multitask_registration_failed"); } catch {}
+      unbind();
+      log.warn(`multitask register failed: ${err?.message || err}`);
+      throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_registration_failed" });
+    }
+
+    const gate: { phase: "pending" | "ready" | "failed" } = { phase: "pending" };
+    let released = false;
+    let cancelRequested = false;
+    let finished = false;
+    let hubVisible = false;
+    let childSessionPath: string | null = null;
+    let childSessionId: string | null = null;
+    let settleReady: (info?: any, err?: any) => void = () => {};
+    const publishHub = (status: "running" | "done" | "failed" | "aborted") => {
+      if (status !== "running" && !hubVisible) return;
+      const hub = this._d.getActivityHub?.();
+      if (typeof hub?.upsert !== "function") return;
+      try {
+        hub.upsert({
+          id: taskId,
+          kind: "subagent",
+          status,
+          sessionPath,
+          ...(childSessionId ? { childSessionId } : {}),
+          ...(childSessionPath ? { childSessionPath } : {}),
+          agentId: entry.agentId || agent.id,
+          label: summarizeMultitaskLabel(userText),
+          ...(status === "running" ? { startedAt: Date.now() } : { finishedAt: Date.now() }),
+        });
+        hubVisible = true;
+      } catch (err: any) {
+        log.warn(`multitask activity update failed: ${err?.message || err}`);
+      }
+    };
+    const markRegistryTerminal = (reason: string, outcome: "canceled" | "failed" | "completed", result: any = null) => {
+      const task = registry?.query?.(taskId);
+      if (!task || terminalTask(task.status)) return task?.status || null;
+      if (outcome === "completed" && typeof registry.complete === "function") {
+        registry.complete(taskId, result);
+      } else if (outcome === "failed" && typeof registry.fail === "function") {
+        registry.fail(taskId, reason);
+      } else if (typeof registry.cancel === "function") {
+        registry.cancel(taskId, reason);
+      } else if (typeof registry.abort === "function") {
+        registry.abort(taskId, reason);
+      }
+      const after = registry?.query?.(taskId);
+      if (after && !terminalTask(after.status) && typeof registry.update === "function") {
+        registry.update(taskId, { status: outcome === "completed" ? "completed" : outcome === "failed" ? "failed" : "canceled" });
+      }
+      return registry?.query?.(taskId)?.status || outcome;
+    };
+    const cancelChild = (reason: string) => {
+      if (!cancelRequested) {
+        cancelRequested = true;
+        try {
+          markRegistryTerminal(reason, "canceled");
+        } catch (err: any) {
+          log.warn(`multitask cancel failed: ${err?.message || err}`);
+        }
+      }
+      if (!controller.signal.aborted) controller.abort();
+      publishHub("aborted");
+      unbind();
+    };
+    const releaseFromParent = () => {
+      if (released) return true;
+      if (typeof registry?.update !== "function") {
+        released = true;
+        return true;
+      }
+      const task = registry.query?.(taskId);
+      if (!task) {
+        released = true;
+        return true;
+      }
+      try {
+        registry.update(taskId, {
+          parentSessionPath: null,
+          parentSessionId: null,
+          parentSessionRef: null,
+          meta: { multitaskHandoff: "released" },
+        });
+        const detached = registry.query?.(taskId);
+        if (
+          detached?.parentSessionPath
+          || detached?.parentSessionId
+          || detached?.parentSessionRef
+        ) {
+          return false;
+        }
+        released = true;
+        return true;
+      } catch (err: any) {
+        log.warn(`multitask handoff release failed: ${err?.message || err}`);
+        return false;
+      }
+    };
+    const finishChild = (result: any) => {
+      if (finished) return;
+      finished = true;
+      const aborted = controller.signal.aborted || result?.error === "aborted" || gate.phase === "failed";
+      let hubStatus: "done" | "failed" | "aborted" = aborted ? "aborted" : result?.error ? "failed" : "done";
+      try {
+        if (aborted) {
+          if (!cancelRequested) cancelChild(result?.error || "aborted");
+          hubStatus = "aborted";
+        } else if (result?.error) {
+          markRegistryTerminal(result.error, "failed");
+          hubStatus = "failed";
+        } else {
+          markRegistryTerminal("completed", "completed", { replyText: result?.replyText || result?.text || "" });
+          hubStatus = "done";
+        }
+      } catch (err: any) {
+        log.warn(`multitask finish failed: ${err?.message || err}`);
+      }
+      publishHub(hubStatus);
+      unbind();
+    };
+
+    let readySettled = false;
+    const ready = new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (gate.phase !== "pending") return;
+        gate.phase = "failed";
+        cancelChild("multitask_ready_timeout");
+        settleReady(null, Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_ready_timeout" }));
+      }, 20_000);
+      settleReady = (info, err) => {
+        if (readySettled) return;
+        readySettled = true;
+        clearTimeout(timer);
+        if (err) reject(err);
+        else resolve(info);
+      };
+    });
+    controller.signal.addEventListener("abort", () => {
+      if (gate.phase !== "pending") return;
+      gate.phase = "failed";
+      settleReady(null, Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_aborted" }));
+    }, { once: true });
+
+    const run = Promise.resolve(this.executeIsolated(buildMultitaskHandoffPrompt(userText, assistantText), {
+      agentId: entry.agentId || agent.id,
+      cwd: cwd || undefined,
+      parentSessionPath: sessionPath,
+      emitEvents: true,
+      persist: path.join(agent.agentDir, "subagent-sessions", "multitask"),
+      approvalPolicy: "deny_on_prompt",
+      allowHumanApproval: false,
+      subagentContext: true,
+      subagentTaskId: taskId,
+      fileReadSessionPaths: [sessionPath],
+      permissionMode,
+      signal: controller.signal,
+      // Ready only means initialized. Do not let child tools run until the parent has stopped.
+      beforePrompt: () => promptGate,
+      onSessionReady: (sp: any, readyInfo: any = null) => {
+        childSessionPath = readyInfo?.sessionPath || sp || null;
+        childSessionId = readyInfo?.sessionId || null;
+        if (gate.phase !== "pending" || controller.signal.aborted) {
+          cancelChild(controller.signal.aborted ? "multitask_aborted" : "multitask_not_accepted");
+          return;
+        }
+        if (!releaseFromParent()) {
+          gate.phase = "failed";
+          cancelChild("multitask_release_failed");
+          settleReady(null, Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_release_failed" }));
+          return;
+        }
+        if (controller.signal.aborted || gate.phase !== "pending") {
+          gate.phase = "failed";
+          cancelChild("multitask_aborted");
+          settleReady(null, Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_aborted" }));
+          return;
+        }
+        gate.phase = "ready";
+        publishHub("running");
+        settleReady({ childSessionPath, childSessionId });
+      },
+    })).then(
+      (result) => {
+        finishChild(result);
+        return result;
+      },
+      (err: any) => {
+        log.warn(`multitask isolated failed: ${err?.message || err}`);
+        if (gate.phase === "pending") {
+          gate.phase = "failed";
+          settleReady(null, err);
+        }
+        finishChild({ error: err?.message || String(err) });
+        return null;
+      },
+    );
+    void run;
+    try {
+      const child: any = await ready;
+      if (controller.signal.aborted || gate.phase !== "ready") {
+        cancelChild("multitask_aborted");
+        throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_aborted" });
+      }
+      const latestParent = this._getSessionEntryByPath(sessionPath)?.session;
+      const latestUser = [...(latestParent?.messages || [])].reverse().find((message: any) => message?.role === 'user');
+      if (latestParent !== parentSession || latestUser !== sourceUserMessage || !parentSession.isStreaming) {
+        throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_parent_changed" });
+      }
+      const stopped = await this.abortSession(sessionPath, { reason: "multitask_handoff" });
+      if (!stopped || typeof parentSession.waitForIdle !== 'function') {
+        throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_parent_not_stopped" });
+      }
+      // abortSession releases the UI immediately. Its SDK tool/stream can still be winding down.
+      let idleTimer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          parentSession.waitForIdle(),
+          new Promise((_, reject) => {
+            idleTimer = setTimeout(() => reject(Object.assign(new Error(t("error.code.multitaskFailed")), { code: 'multitask_parent_stop_timeout' })), 20_000);
+          }),
+        ]);
+      } finally {
+        if (idleTimer) clearTimeout(idleTimer);
+      }
+      if (controller.signal.aborted) {
+        cancelChild("multitask_aborted");
+        throw Object.assign(new Error(t("error.code.multitaskFailed")), { code: "multitask_aborted" });
+      }
+      releasePrompt();
+      return { ...child, taskId };
+    } catch (err) {
+      // A failed parent stop must not leave a detached child writing alongside it.
+      cancelChild((err as any)?.code || (err as any)?.message || "multitask_failed");
+      throw err;
+    }
+  }
+
   _emitTurnInputPresentation(sessionPath: any, message: any, deliveryMode: any) {
     const event = buildTurnInputPresentationEvent(message, { deliveryMode });
     if (!event) return;
     this._d.emitEvent?.(event, sessionPath);
+  }
+
+  async prepareSessionCronWake(sessionPath: any, options: any = {}) {
+    if (!sessionPath) return { previousConclusion: "", anchorEntryId: options?.anchorEntryId || null };
+    await this.ensureSessionLoaded(sessionPath);
+    const entry = this._getSessionEntryByPath(sessionPath);
+    const session = entry?.session;
+    const manager = session?.sessionManager;
+    installSessionCronContextFilter(session);
+    if (typeof manager?.getBranch !== "function") {
+      return { previousConclusion: "", anchorEntryId: options?.anchorEntryId || null };
+    }
+    const branch = manager.getBranch();
+    const segment = trailingSessionCronSegment(branch, options?.jobId || "");
+    const previousConclusion = oneLineConclusion(segment?.text || "");
+    const anchorEntryId = options?.anchorEntryId || segment?.anchorEntryId || null;
+    return { previousConclusion, anchorEntryId };
   }
 
   async deliverCustomMessage(sessionPath: any, message: any, options: any = {}) {
@@ -5202,12 +5598,19 @@ export class SessionCoordinator {
   async abortSession(sessionPath: any, options: any = {}) {
     const reason = this._normalizeAbortReason(options, "abort");
     const pending = this._getRuntimeValueForPath(this._prePromptAbortControllers, sessionPath);
+    const pendingEntry = pending ? this._getSessionEntryByPath(sessionPath) : null;
+    if (pending && pendingEntry?.session?.isStreaming) {
+      // 已经开流但 agent_start 还没把预提交句柄摘掉：按正常流中止走，不要双发。
+      this._deleteRuntimeValueForPath(this._prePromptAbortControllers, sessionPath);
+      this._cleanupAbortedSessionSidecars(sessionPath, reason);
+      return this._forceReleaseStreamingSession(pendingEntry, sessionPath, reason);
+    }
     if (pending) {
       // preflight 窗口的中止不补发 turn_end：promptSession 尚未运行，本轮
       // turn input 还没落入 branch，合成 turn_end 会把上一轮的 entry id
       // 错绑到本轮的乐观消息上。
-      pending.abort();
       this._deleteRuntimeValueForPath(this._prePromptAbortControllers, sessionPath);
+      pending.abort();
       this._cleanupAbortedSessionSidecars(sessionPath, reason);
       this._d.emitEvent?.({
         type: "session_status",
@@ -5409,7 +5812,16 @@ export class SessionCoordinator {
     if (!sessionPath) {
       return { ok: false, error: "session thinking level requires sessionPath" };
     }
-    const entry = this._getSessionEntryByPath(sessionPath);
+    let entry = this._getSessionEntryByPath(sessionPath);
+    if (!entry?.session
+      && !this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath)
+      && this.isRunnableSessionPath(sessionPath)) {
+      // Abort intentionally evicts the SDK runtime. A settings change must not require
+      // another model turn to rebuild it. Attach quietly, preserving focus and reusing
+      // the existing single-flight/locator guards; this does not call prompt().
+      await this.ensureSessionLoaded(sessionPath);
+      entry = this._getSessionEntryByPath(sessionPath);
+    }
     if (!entry?.session) {
       const meta = this._getRuntimeValueForPath(this._hibernatedSessionMeta, sessionPath);
       if (meta) {
@@ -8143,6 +8555,10 @@ export class SessionCoordinator {
       }
 
       try {
+        if (typeof opts.beforePrompt === "function") await opts.beforePrompt();
+        if (opts.signal?.aborted) {
+          return { sessionPath: childSessionPath || null, replyText: "", error: "aborted" };
+        }
         await session.prompt(prompt);
       } finally {
         if (childSessionPath) {

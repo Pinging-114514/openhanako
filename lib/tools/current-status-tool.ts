@@ -10,6 +10,19 @@ import { StringEnum, Type } from "../pi-sdk/index.ts";
 import { getAppearanceStatus } from "./appearance-status.ts";
 import { getToolSessionPath } from "./tool-session.ts";
 import { toolError, toolOk } from "./tool-result.ts";
+import {
+  captureSubagentResultReceipt,
+  stillMatchesSubagentReceipt,
+  MAX_OBSERVABLE_RESULT_BYTES,
+  type SubagentResultReceipt,
+} from "../deferred-result-observation.ts";
+
+// Keep the exact snapshot beside (not inside) the public payload until serialization succeeds.
+const subagentResultReceipts = new WeakMap<object, {
+  store: any;
+  sessionPath: string;
+  receipts: SubagentResultReceipt[];
+}>();
 
 const DAY_BOUNDARY_HOUR = 4;
 
@@ -222,6 +235,7 @@ function normalizeSubagentThread(thread) {
   const source = thread && typeof thread === "object" ? thread : {};
   return {
     threadId: nullableString(source.threadId),
+    ...(nullableString(source.lastRunTaskId) ? { lastRunTaskId: source.lastRunTaskId as string } : {}),
     agentId: nullableString(source.agentId),
     agentName: nullableString(source.agentName),
     label: nullableString(source.label),
@@ -397,15 +411,27 @@ export function createCurrentStatusRegistry(deps: Record<string, any> = {}) {
     ),
     provider(
       "subagents",
-      "Open direct subagent instances for the current session. Use this before deciding whether to continue, close, or create a subagent colleague.",
-      async ({ sessionPath }) => ({
-        subagents: {
-          sessionPath: sessionPath || null,
-          open: typeof deps.listOpenSubagentThreads === "function" && sessionPath
-            ? deps.listOpenSubagentThreads(sessionPath).map(normalizeSubagentThread)
-            : [],
-        },
-      }),
+      "Open direct subagent instances for the current session. Use threadId to continue or close an instance. Completed summaries returned in full are observed for their exact run, avoiding a duplicate wake.",
+      async ({ sessionPath }) => {
+        const open = typeof deps.listOpenSubagentThreads === "function" && sessionPath
+          ? deps.listOpenSubagentThreads(sessionPath).map(normalizeSubagentThread)
+          : [];
+        const payload = { subagents: { sessionPath: sessionPath || null, open } };
+        const store = deps.getDeferredStore?.();
+        if (sessionPath && typeof store?.listBySession === 'function' && typeof store?.query === 'function' && typeof store?.markObserved === 'function') {
+          const tasks = store.listBySession(sessionPath);
+          const receipts: SubagentResultReceipt[] = [];
+          for (const thread of open) {
+            const receipt = captureSubagentResultReceipt(thread, tasks);
+            if (receipt) {
+              thread.lastRunTaskId = receipt.taskId;
+              receipts.push(receipt);
+            }
+          }
+          subagentResultReceipts.set(payload, { store, sessionPath, receipts });
+        }
+        return payload;
+      },
     ),
   ];
 
@@ -475,7 +501,26 @@ export function createCurrentStatusTool(deps: Record<string, any> = {}) {
           },
         };
       }
-      return toolOk(JSON.stringify(payload, null, 2), { action, key });
+      const text = JSON.stringify(payload, null, 2);
+      const observation = subagentResultReceipts.get(payload);
+      subagentResultReceipts.delete(payload);
+      const observedTaskIds: string[] = [];
+      const withinBudget = typeof text === 'string' && Buffer.byteLength(text, 'utf8') <= MAX_OBSERVABLE_RESULT_BYTES;
+      if (observation && withinBudget && !signal?.aborted) {
+        for (const receipt of observation.receipts) {
+          // Another continuation or retry may have settled while item.get() was awaited.
+          const current = observation.store.query(receipt.taskId);
+          if (!stillMatchesSubagentReceipt(current, receipt)) continue;
+          if (observation.store.markObserved(receipt.taskId, observation.sessionPath, receipt.generation, 'current_status.subagents')) {
+            observedTaskIds.push(receipt.taskId);
+          }
+        }
+      }
+      const result = toolOk(text, { action, key, ...(observation ? { observedTaskIds } : {}) });
+      if (observation && !withinBudget && !signal?.aborted) {
+        result.content.push({ type: 'text', text: 'This status output may be truncated and has NOT been marked observed. Read the relevant lastRunTaskId with check_pending_tasks, or explicitly acknowledge results you have already processed.' });
+      }
+      return result;
     },
   };
 }

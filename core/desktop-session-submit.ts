@@ -56,7 +56,42 @@ export const MESSAGE_ORIGIN_RECORD_TYPE = "hana-message-origin";
 export const MESSAGE_PRESENTATION_RECORD_TYPE = "hana-message-presentation";
 export const AGENT_REVIEW_RECORD_TYPE = "hana-agent-review-result";
 
-const pendingDesktopSessionSubmissions = new Set();
+/**
+ * 「已收到、还没交给 Pi」的桌面提交。值是这次提交的中止句柄：
+ * 用户在这段窗口里点停止，要能把它掐掉，而不是让它随后悄悄开流。
+ */
+const pendingDesktopSessionSubmissions = new Map<string, AbortController>();
+
+function desktopSubmissionKeys(engine: any, sessionId?: string, sessionPath?: string): string[] {
+  const keys = new Set<string>();
+  if (sessionId) keys.add(sessionId);
+  if (sessionPath) {
+    keys.add(sessionPath);
+    const resolvedId = engine?.getSessionIdForPath?.(sessionPath);
+    if (typeof resolvedId === "string" && resolvedId.trim()) keys.add(resolvedId.trim());
+  }
+  return [...keys];
+}
+
+/**
+ * 中止某会话仍在预处理的桌面提交。返回是否真的掐掉了一个。
+ * 只覆盖 ensureSessionLoaded / 附件落盘 / 媒体补读这段；进了 promptSession
+ * 之后由 SessionCoordinator.abortSession 接手。
+ */
+export function abortPendingDesktopSessionSubmission(
+  engine: any,
+  target: { sessionId?: string | null; sessionPath?: string | null } = {},
+): boolean {
+  let aborted = false;
+  for (const key of desktopSubmissionKeys(engine, target.sessionId || undefined, target.sessionPath || undefined)) {
+    const controller = pendingDesktopSessionSubmissions.get(key);
+    if (!controller) continue;
+    if (!controller.signal.aborted) controller.abort();
+    pendingDesktopSessionSubmissions.delete(key);
+    aborted = true;
+  }
+  return aborted;
+}
 
 function renderPendingReminderBlock(engine: any, sessionPath: string) {
   if (typeof engine.renderSessionReminderBlock === "function") {
@@ -227,7 +262,9 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
     throw new Error("desktop-session-submit: text, images, videos, or audios required");
   }
   const submissionKey = sessionId || sessionPath;
-  if (pendingDesktopSessionSubmissions.has(submissionKey)) {
+  const previousSubmission = pendingDesktopSessionSubmissions.get(submissionKey);
+  // 已被停止掐掉、只是还没从 await 里退出来的旧提交不算忙，新消息直接顶上。
+  if (previousSubmission && !previousSubmission.signal.aborted) {
     throw new Error("session_busy");
   }
   if (typeof engine.isSessionStreaming === "function" && engine.isSessionStreaming(sessionPath)) {
@@ -236,9 +273,11 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
 
   liftBrowserAuthorizationRevocation(sessionPath);
 
-  pendingDesktopSessionSubmissions.add(submissionKey);
+  const submission = new AbortController();
+  pendingDesktopSessionSubmissions.set(submissionKey, submission);
   try {
     const session = await engine.ensureSessionLoaded(sessionPath);
+    submission.signal.throwIfAborted();
     if (!session) throw new Error(`desktop-session-submit: failed to load session ${sessionPath}`);
 
     if (uiContext !== undefined) {
@@ -293,6 +332,7 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
         files: inboundFiles,
         registerSessionFile: engine.registerSessionFile?.bind(engine),
       });
+      submission.signal.throwIfAborted();
       promptImageAttachmentPaths = [
         ...promptImageAttachmentPaths,
         ...materialized.imageAttachmentPaths,
@@ -416,6 +456,7 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
         engine,
         sessionPath,
       });
+      submission.signal.throwIfAborted();
       const promptOpts = buildPromptOptions({
         images: promptImages,
         videos: promptVideos,
@@ -448,7 +489,9 @@ export async function submitDesktopSessionMessage(engine: any, opts: {
       toolMedia,
     };
   } finally {
-    pendingDesktopSessionSubmissions.delete(submissionKey);
+    if (pendingDesktopSessionSubmissions.get(submissionKey) === submission) {
+      pendingDesktopSessionSubmissions.delete(submissionKey);
+    }
   }
 }
 
@@ -683,6 +726,67 @@ function isEmptyDesktopSessionPayload(opts: {
     && !opts.displayMessage?.attachments?.length;
 }
 
+/**
+ * Fill path-backed media without positional `.slice(existing.length)`.
+ * A client that failed to read an earlier file still sends the later pixels, so
+ * index alignment duplicates that later file and drops the missing one.
+ * Pixel bytes are the identity. `complete` keeps unmatched inline payloads for
+ * old clients and skips disk IO when every path already has a payload.
+ * `replace` is an explicit attachment snapshot: only path-ordered matches remain.
+ */
+export async function mergeOrderedPathMediaPayloads({
+  existing,
+  paths,
+  kind,
+  readFile,
+  resolveBytesPath,
+  onReadError,
+  mode = "complete",
+}: {
+  existing?: Array<{ type: string; data: string; mimeType: string }>;
+  paths?: string[];
+  kind: "image" | "video" | "audio";
+  readFile: (filePath: string) => Promise<Buffer | Uint8Array>;
+  resolveBytesPath?: (markerPath: string) => string;
+  onReadError?: (bytesPath: string, err: unknown) => void;
+  mode?: "complete" | "replace";
+}) {
+  const payloads = [...(existing || [])];
+  const orderedPaths = uniquePaths(paths || []);
+  if (mode === "replace" && !orderedPaths.length) return [];
+  if (mode === "complete" && payloads.length >= orderedPaths.length) {
+    return payloads.length ? payloads : existing;
+  }
+  const fallbackMime = kind === "video" ? "video/mp4" : kind === "audio" ? "audio/wav" : "image/png";
+  const unmatched = payloads.map((payload) => ({ payload, used: false }));
+  const ordered = [];
+  for (const markerPath of orderedPaths) {
+    const bytesPath = resolveBytesPath?.(markerPath) || markerPath;
+    try {
+      const bytes = Buffer.from(await readFile(bytesPath));
+      const data = bytes.toString("base64");
+      const match = unmatched.find((item) => !item.used && item.payload?.data === data);
+      if (match) {
+        match.used = true;
+        ordered.push(match.payload);
+      } else {
+        ordered.push({
+          type: kind,
+          data,
+          mimeType: detectMime(bytes, fallbackMime, markerPath),
+        });
+      }
+    } catch (err) {
+      if (!onReadError) throw err;
+      onReadError(bytesPath, err);
+    }
+  }
+  if (mode === "replace") return ordered;
+  const leftovers = unmatched.filter((item) => !item.used).map((item) => item.payload);
+  const merged = [...leftovers, ...ordered];
+  return merged.length ? merged : existing;
+}
+
 async function completePromptMediaFromPaths({
   existing,
   paths,
@@ -696,28 +800,23 @@ async function completePromptMediaFromPaths({
   engine?: any;
   sessionPath?: string;
 }) {
-  const payloads = [...(existing || [])];
-  const missingPaths = uniquePaths(paths).slice(payloads.length);
-  if (!missingPaths.length) return payloads.length ? payloads : existing;
-  const fallbackMime = kind === "video" ? "video/mp4" : kind === "audio" ? "audio/wav" : "image/png";
-  for (const markerPath of missingPaths) {
-    const activeFile = engine?.resolveActiveSessionFile?.({
-      filePath: markerPath,
-      sessionPath: sessionPath || null,
-    }) || null;
-    const bytesPath = activeFile?.realPath || activeFile?.filePath || markerPath;
-    try {
-      const bytes = Buffer.from(await fsp.readFile(bytesPath));
-      payloads.push({
-        type: kind,
-        data: bytes.toString("base64"),
-        mimeType: detectMime(bytes, fallbackMime, markerPath),
-      });
-    } catch (err) {
+  return mergeOrderedPathMediaPayloads({
+    existing,
+    paths,
+    kind,
+    mode: "complete",
+    readFile: (filePath) => fsp.readFile(filePath),
+    resolveBytesPath: (markerPath) => {
+      const activeFile = engine?.resolveActiveSessionFile?.({
+        filePath: markerPath,
+        sessionPath: sessionPath || null,
+      }) || null;
+      return activeFile?.realPath || activeFile?.filePath || markerPath;
+    },
+    onReadError: (bytesPath, err) => {
       console.warn(`[desktop-session-submit] failed to read ${kind} attachment ${bytesPath}: ${(err as any)?.message || err}`);
-    }
-  }
-  return payloads;
+    },
+  });
 }
 
 function buildPromptOptions({
@@ -751,7 +850,7 @@ function queueVoiceInputTranscriptions({ speechRecognition, sessionPath, attachm
   }
 }
 
-function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, registerSessionFile }) {
+export function registerDisplayAttachments({ hanakoHome, sessionPath, attachments, registerSessionFile }) {
   const nextAttachments = [];
   const imageAttachmentPaths = [];
   const videoAttachmentPaths = [];
@@ -839,7 +938,7 @@ function displayAttachmentStorageKind(hanakoHome, filePath) {
   return "external";
 }
 
-function addAttachedImageMarkers(text, imageAttachmentPaths) {
+export function addAttachedImageMarkers(text, imageAttachmentPaths) {
   let promptText = text || "";
   const missing = uniquePaths(imageAttachmentPaths)
     .filter((filePath) => filePath && !promptText.includes(`[attached_image: ${filePath}]`));
@@ -848,7 +947,7 @@ function addAttachedImageMarkers(text, imageAttachmentPaths) {
   return promptText ? `${markerText}\n${promptText}` : markerText;
 }
 
-function addAttachedVideoMarkers(text, videoAttachmentPaths) {
+export function addAttachedVideoMarkers(text, videoAttachmentPaths) {
   let promptText = text || "";
   const missing = uniquePaths(videoAttachmentPaths)
     .filter((filePath) => filePath && !promptText.includes(`[attached_video: ${filePath}]`));
@@ -857,7 +956,7 @@ function addAttachedVideoMarkers(text, videoAttachmentPaths) {
   return promptText ? `${markerText}\n${promptText}` : markerText;
 }
 
-function addAttachedAudioMarkers(text, audioAttachmentPaths) {
+export function addAttachedAudioMarkers(text, audioAttachmentPaths) {
   let promptText = text || "";
   const missing = uniquePaths(audioAttachmentPaths)
     .filter((filePath) => filePath && !promptText.includes(`[attached_audio: ${filePath}]`));

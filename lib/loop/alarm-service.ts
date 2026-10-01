@@ -39,6 +39,8 @@ export class LoopAlarmService {
   declare _log: any;
   declare _timers: Map<string, any>;
   declare _busyDeferrals: Map<string, number>;
+  declare _generation: Map<string, number>;
+  declare _disposed: boolean;
 
   constructor({ store, deliverWakeup, hasLiveBackgroundWork, hooks = {}, log = console }) {
     this._store = store;
@@ -48,6 +50,8 @@ export class LoopAlarmService {
     this._log = log;
     this._timers = new Map();
     this._busyDeferrals = new Map();
+    this._generation = new Map();
+    this._disposed = false;
   }
 
   schedule(key, delaySec, reason) {
@@ -66,6 +70,7 @@ export class LoopAlarmService {
       );
     }
     const wakeAt = Date.now() + effectiveDelaySec * 1000;
+    this._bumpGeneration(key);
     this._store.update(key, { alarm: { wakeAt, reason: reason || "" } });
     this._busyDeferrals.delete(key);
     this._arm(key, wakeAt);
@@ -73,6 +78,7 @@ export class LoopAlarmService {
   }
 
   cancel(key) {
+    this._bumpGeneration(key);
     this._clearTimer(key);
     this._busyDeferrals.delete(key);
     const loop = this._store.get(key);
@@ -92,6 +98,13 @@ export class LoopAlarmService {
   }
 
   dispose() {
+    this._disposed = true;
+    const keys = new Set([
+      ...this._timers.keys(),
+      ...this._generation.keys(),
+      ...this._busyDeferrals.keys(),
+    ]);
+    for (const key of keys) this._bumpGeneration(key);
     for (const key of [...this._timers.keys()]) this._clearTimer(key);
     this._busyDeferrals.clear();
   }
@@ -121,17 +134,23 @@ export class LoopAlarmService {
   }
 
   async _fire(key) {
+    const generation = this._generationOf(key);
     const loop = this._store.get(key);
-    if (!loop || loop.status !== "running" || !loop.alarm) return;
+    if (!this._isCurrent(key, generation) || !loop?.alarm) return;
     const reason = loop.alarm.reason;
     // 先清槽再投递：投递触发的轮里模型可立即再约，不会撞上旧槽。
     this._store.update(key, { alarm: null });
     let lastError = null;
     for (let attempt = 0; attempt <= DELIVERY_RETRY_DELAYS_MS.length; attempt++) {
+      if (!this._isCurrent(key, generation)) return;
       try {
-        const delivery = await this._deliverWakeup(key, reason);
+        const delivery = await this._deliverWakeup(key, reason, {
+          shouldDeliver: () => this._isCurrent(key, generation),
+          requireIdle: true,
+        });
+        if (!this._isCurrent(key, generation)) return;
         if (delivery?.mode === "busy") {
-          this._deferBusy(key, reason);
+          this._deferBusy(key, reason, generation);
           return;
         }
         if (delivery && delivery.mode !== "suppressed") {
@@ -144,24 +163,48 @@ export class LoopAlarmService {
       }
       if (attempt < DELIVERY_RETRY_DELAYS_MS.length) {
         await sleep(DELIVERY_RETRY_DELAYS_MS[attempt]);
+        if (!this._isCurrent(key, generation)) return;
       }
     }
+    if (!this._isCurrent(key, generation)) return;
     this._log.warn?.(`[loop-alarm] wakeup delivery exhausted for ${key}: ${lastError?.message}`);
     this._hooks.onDeliveryExhausted?.(key, lastError);
   }
 
-  _deferBusy(key, reason) {
+  _deferBusy(key, reason, generation) {
+    if (!this._isCurrent(key, generation)) return;
     const count = (this._busyDeferrals.get(key) || 0) + 1;
     if (count > MAX_BUSY_DEFERRALS) {
       this._busyDeferrals.delete(key);
+      if (!this._isCurrent(key, generation)) return;
       this._log.warn?.(`[loop-alarm] busy deferrals exhausted for ${key}`);
       this._hooks.onDeliveryExhausted?.(key, new Error("wakeup deferred too long: target stayed busy"));
       return;
     }
+    if (!this._isCurrent(key, generation)) return;
     this._busyDeferrals.set(key, count);
     const wakeAt = Date.now() + BUSY_DEFER_MS;
     // busy 顺延要把槽写回去：守恒检查依赖"槽里有闹钟"这个事实
     this._store.update(key, { alarm: { wakeAt, reason } });
     this._arm(key, wakeAt);
+  }
+
+  _bumpGeneration(key) {
+    const next = this._generationOf(key) + 1;
+    this._generation.set(key, next);
+    return next;
+  }
+
+  _generationOf(key) {
+    const value = this._generation.get(key);
+    return Number.isInteger(value) ? value : 0;
+  }
+
+  /** In-flight retries belong to the generation that started them. */
+  _isCurrent(key, generation) {
+    if (this._disposed) return false;
+    if (this._generationOf(key) !== generation) return false;
+    const loop = this._store.get(key);
+    return !!loop && loop.status === "running";
   }
 }

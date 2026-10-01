@@ -142,6 +142,7 @@ export function AutomationCard({
           <span className={styles.title} title={jobTitle(job)}>{jobTitle(job)}</span>
           <span className={styles.subline}>
             <span className={styles.meta}>{schedulePreviewFromDraft(scheduleDraftFromStored(job.type, job.schedule))}</span>
+            {job.executionContext?.sourceSessionId ? <span className={styles.badge}>{t('automation.sessionJob')}</span> : null}
             {job.nextRunAt ? <span className={styles.meta}>{new Date(job.nextRunAt).toLocaleString(undefined, { hour12: false })}</span> : null}
             <span className={styles.badge}>{executorLabel}</span>
           </span>

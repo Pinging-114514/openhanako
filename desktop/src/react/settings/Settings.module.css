@@ -5558,6 +5558,10 @@ a.about-link:hover {
     line-height: 1.4;
 }
 
+.oauth-speed-select {
+    max-width: 240px;
+}
+
 /* ── 已收藏模型（紧凑列表） ── */
 .pv-fav-section {
     margin-bottom: var(--space-16);

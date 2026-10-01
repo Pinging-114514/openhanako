@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ActivityStore } from "../lib/desk/activity-store.ts";
 
 const roots: string[] = [];
@@ -20,7 +20,9 @@ function writeActivities(root: string, entries: any[]) {
 }
 
 describe("ActivityStore lifecycle reconciliation", () => {
+  beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(Date.UTC(2026, 5, 6, 12, 0, 0)); });
   afterEach(() => {
+    vi.useRealTimers();
     for (const root of roots.splice(0)) {
       fs.rmSync(root, { recursive: true, force: true });
     }

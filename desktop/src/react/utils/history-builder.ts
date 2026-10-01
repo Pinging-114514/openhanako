@@ -74,6 +74,7 @@ export interface HistoryApiResponse {
     sessionRefs?: Array<{ sessionId: string; label: string }>;
     agentMentions?: Array<{ agentId: string; label: string }>;
     displayText?: string;
+    cronSlotLabel?: string;
   }>;
   sessionFiles?: SessionRegistryFile[];
   blocks?: Array<any>;
@@ -620,6 +621,7 @@ export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] 
         sourceEntryId: m.entryId,
         role: 'assistant',
         blocks,
+        ...(m.cronSlotLabel ? { cronSlotLabel: m.cronSlotLabel } : {}),
         ...(m.turnInputEntryId ? { turnInputEntryId: m.turnInputEntryId } : {}),
         ...(typeof m.turnInputVisible === 'boolean' ? { turnInputVisible: m.turnInputVisible } : {}),
       };

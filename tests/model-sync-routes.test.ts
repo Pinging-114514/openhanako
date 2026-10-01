@@ -558,6 +558,45 @@ describe("model sync related routes", () => {
     });
   });
 
+  it("preserves provider thinking levels after public serialization drops internal markers", async () => {
+    const { createModelsRoute } = await import("../server/routes/models.ts");
+    const { getModelThinkingLevels: sessionLevels } = await import("../core/session-thinking-level.ts");
+    const { getModelThinkingLevels: composerLevels } = await import("../desktop/src/react/stores/model-slice.ts");
+    const levels = ["low", "medium", "high", "xhigh"];
+    const model = {
+      id: "gpt-6-astra",
+      name: "GPT-6 Astra (Tokyo BPS)",
+      provider: "tokyo-bps",
+      reasoning: true,
+      thinkingLevels: levels,
+      thinkingLevelsUserSaved: true,
+      thinkingLevelMap: { xhigh: "xhigh" },
+      defaultThinkingLevel: "medium",
+    };
+    const app = new Hono();
+    app.route("/api", createModelsRoute({
+      availableModels: [model], currentModel: model, config: {},
+      providerRegistry: { get: () => ({}) },
+    }));
+
+    const response = await app.request("/api/models");
+    const data = await response.json();
+    expect(response.status).toBe(200);
+    const serialized = data.models[0];
+    expect(serialized.thinkingLevels).toEqual(levels);
+    expect(serialized.thinkingLevelsUserSaved).toBeUndefined();
+    expect(sessionLevels(serialized)).toEqual(levels);
+    expect(composerLevels(serialized)).toEqual(levels);
+
+    const replay = new Hono();
+    replay.route("/api", createModelsRoute({
+      availableModels: [serialized], currentModel: serialized, config: {},
+      providerRegistry: { get: () => ({}) },
+    }));
+    const replayData = await (await replay.request("/api/models")).json();
+    expect(replayData.models[0].thinkingLevels).toEqual(levels);
+  });
+
   it("auxiliary vision route exposes availability without settings secrets", async () => {
     const { createModelsRoute } = await import("../server/routes/models.ts");
     const app = new Hono();
@@ -1914,20 +1953,45 @@ describe("model sync related routes", () => {
     expect(data.models).toHaveLength(3);
   });
 
-  it("codex oauth model discovery uses the local catalog and never probes ChatGPT backend /models", async () => {
+  it("codex oauth fetch reads the account catalog and skips hidden slugs", async () => {
     const { createProvidersRoute } = await import("../server/routes/providers.ts");
     const app = new Hono();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        models: [
+          {
+            slug: "gpt-5.6-sol",
+            display_name: "GPT-5.6-Sol",
+            visibility: "list",
+            supported_in_api: true,
+            context_window: 272000,
+            max_context_window: 872000,
+            default_reasoning_level: "low",
+            supported_reasoning_levels: [{ effort: "low" }, { effort: "medium" }, { effort: "high" }, { effort: "xhigh" }, { effort: "max" }, { effort: "ultra" }],
+          },
+          {
+            slug: "codex-auto-review",
+            display_name: "Codex Auto Review",
+            visibility: "hide",
+            supported_in_api: true,
+            context_window: 272000,
+          },
+        ],
+      }),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const engine = withResolveCreds({
       getRegistryModelsForProvider: vi.fn().mockReturnValue([
-        { id: "gpt-5.4", name: "GPT-5.4", provider: "openai-codex", contextWindow: 272000, maxOutputTokens: 128000 },
+        { id: "gpt-5.4", name: "GPT-5.4" },
       ]),
       providerRegistry: {
         getCredentials: () => ({ apiKey: "oauth-token", baseUrl: "https://chatgpt.com/backend-api", api: "openai-codex-responses" }),
         getAuthJsonKey: () => "openai-codex",
-        getDefaultModels: () => [],
+        getDefaultModels: () => ["gpt-5.4"],
         isOAuth: () => true,
         resolveChatProvider: () => ({
           sourceProviderId: "openai-codex-oauth",
@@ -1935,7 +1999,7 @@ describe("model sync related routes", () => {
           credentialSource: "auth-storage",
           entry: { id: "openai-codex-oauth", baseUrl: "https://chatgpt.com/backend-api" },
         }),
-        getChatDiscoverableModelEntries: () => [{ id: "gpt-5.4", name: "GPT-5.4", contextWindow: 272000, maxOutputTokens: 96000 }],
+        getChatDiscoverableModelEntries: () => ["gpt-5.4"],
       },
       hanakoHome: "/tmp",
     });
@@ -1947,20 +2011,56 @@ describe("model sync related routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "openai-codex-oauth" }),
     });
+    const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(fetchMock).not.toHaveBeenCalled();
-    const data = await res.json();
-    expect(data.source).toBe("hana-catalog");
-    expect(data.models[0].id).toBe("gpt-5.4");
-    expect(data.models[0]).toMatchObject({ context: 272000, maxOutput: 96000 });
+    expect(data.source).toBe("remote");
+    expect(data.models.map((model) => model.id)).toEqual(["gpt-5.6-sol"]);
+    expect(data.models[0]).toMatchObject({ context: 872000, defaultThinkingLevel: "low" });
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://chatgpt.com/backend-api/codex/models?client_version=0.159.2");
     expect(engine.getRegistryModelsForProvider).not.toHaveBeenCalled();
   });
 
-  it("codex oauth discovery still exposes Hana defaults when the runtime allowlist is explicitly empty", async () => {
+  it("codex oauth catalog keeps gpt-6.1-sol at the account window and drops ultra", async () => {
     const { createProvidersRoute } = await import("../server/routes/providers.ts");
     const app = new Hono();
-    const fetchMock = vi.fn();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        models: [
+          {
+            slug: "gpt-6.1-sol",
+            display_name: "GPT-6.1 Sol",
+            visibility: "list",
+            supported_in_api: true,
+            context_window: 272000,
+            max_context_window: 872000,
+            default_reasoning_level: "low",
+            supported_reasoning_levels: [
+              { effort: "low" },
+              { effort: "medium" },
+              { effort: "high" },
+              { effort: "xhigh" },
+              { effort: "max" },
+              { effort: "ultra" },
+            ],
+            input_modalities: ["text", "image"],
+          },
+          {
+            slug: "gpt-6-astra",
+            display_name: "GPT-6 Astra",
+            visibility: "list",
+            supported_in_api: true,
+            context_window: 272000,
+            max_context_window: 872000,
+            default_reasoning_level: "low",
+            supported_reasoning_levels: [{ effort: "low" }, { effort: "high" }],
+          },
+        ],
+      }),
+    });
     vi.stubGlobal("fetch", fetchMock);
 
     const engine = withResolveCreds({
@@ -1976,7 +2076,7 @@ describe("model sync related routes", () => {
           credentialSource: "auth-storage",
           entry: { id: "openai-codex-oauth", baseUrl: "https://chatgpt.com/backend-api" },
         }),
-        getChatDiscoverableModelEntries: () => ["gpt-5.6-sol"],
+        getChatDiscoverableModelEntries: () => [],
       },
       hanakoHome: "/tmp",
     });
@@ -1988,12 +2088,131 @@ describe("model sync related routes", () => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name: "openai-codex-oauth" }),
     });
+    const data = await res.json();
+    const sol = data.models.find((model) => model.id === "gpt-6.1-sol");
+    const astra = data.models.find((model) => model.id === "gpt-6-astra");
 
     expect(res.status).toBe(200);
-    expect(fetchMock).not.toHaveBeenCalled();
+    expect(data.source).toBe("remote");
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://chatgpt.com/backend-api/codex/models?client_version=0.159.2");
+    expect(sol).toMatchObject({
+      context: 872000,
+      maxOutput: 128000,
+      defaultThinkingLevel: "low",
+      thinkingLevels: ["low", "medium", "high", "xhigh", "max"],
+      image: true,
+    });
+    expect(sol.context).not.toBe(1050000);
+    expect(sol.thinkingLevels).not.toContain("ultra");
+    expect(astra).toMatchObject({
+      context: 872000,
+      defaultThinkingLevel: "low",
+      thinkingLevels: ["low", "high"],
+    });
+  });
+
+  it("xai oauth fetch reads the account catalog and does not advertise local-only ids", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      statusText: "OK",
+      json: async () => ({
+        data: [
+          { id: "grok-4.7", name: "Grok 4.7", context_window: 500000 },
+          { id: "grok-4.7-build-fast", name: "Grok 4.7 Fast", context_window: 500000 },
+        ],
+      }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const engine = withResolveCreds({
+      getRegistryModelsForProvider: vi.fn().mockReturnValue([
+        { id: "grok-4.7-fast", name: "Grok 4.7 Fast" },
+      ]),
+      providerRegistry: {
+        getCredentials: () => ({
+          apiKey: "oauth-token",
+          baseUrl: "https://cli-chat-proxy.grok.com/v1",
+          api: "openai-responses",
+          headers: { "x-grok-client-identifier": "hana" },
+        }),
+        getAuthJsonKey: () => "xai-oauth",
+        getDefaultModels: () => ["grok-4.7-fast"],
+        isOAuth: () => true,
+        resolveChatProvider: () => ({
+          sourceProviderId: "xai-oauth",
+          projection: "models-json",
+          credentialSource: "auth-storage",
+          entry: { id: "xai-oauth", baseUrl: "https://cli-chat-proxy.grok.com/v1" },
+        }),
+        getChatDiscoverableModelEntries: () => [{ id: "grok-4.7-fast", name: "Grok 4.7 Fast" }],
+      },
+      hanakoHome: "/tmp",
+    });
+
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/fetch-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "xai-oauth" }),
+    });
     const data = await res.json();
-    expect(data.source).toBe("hana-catalog");
-    expect(data.models.map((model) => model.id)).toContain("gpt-5.6-sol");
+
+    expect(res.status).toBe(200);
+    expect(data.source).toBe("remote");
+    expect(data.models.map((model) => model.id)).toEqual(["grok-4.7", "grok-4.7-build-fast"]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0][0])).toBe("https://cli-chat-proxy.grok.com/v1/models");
+    expect(engine.getRegistryModelsForProvider).not.toHaveBeenCalled();
+  });
+
+  it("xai oauth uses the local model list when the account catalog is unreachable", async () => {
+    const { createProvidersRoute } = await import("../server/routes/providers.ts");
+    const app = new Hono();
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: false,
+      status: 503,
+      statusText: "Unavailable",
+    }));
+
+    const engine = withResolveCreds({
+      getRegistryModelsForProvider: vi.fn().mockReturnValue([]),
+      providerRegistry: {
+        getCredentials: () => ({
+          apiKey: "oauth-token",
+          baseUrl: "https://cli-chat-proxy.grok.com/v1",
+          api: "openai-responses",
+        }),
+        getAuthJsonKey: () => "xai-oauth",
+        getDefaultModels: () => ["grok-4.7", "grok-4.7-build-fast"],
+        isOAuth: () => true,
+        resolveChatProvider: () => ({
+          sourceProviderId: "xai-oauth",
+          projection: "models-json",
+          credentialSource: "auth-storage",
+          entry: { id: "xai-oauth", baseUrl: "https://cli-chat-proxy.grok.com/v1" },
+        }),
+        getChatDiscoverableModelEntries: () => [],
+      },
+      hanakoHome: "/tmp",
+    });
+
+    app.route("/api", createProvidersRoute(engine));
+
+    const res = await app.request("/api/providers/fetch-models", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: "xai-oauth" }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(data.fallback).toBe(true);
+    expect(data.source).toBe("builtin");
+    expect(data.models.map((model) => model.id)).toEqual(["grok-4.7", "grok-4.7-build-fast"]);
   });
 
   it("remote 404 falls back to registry for ordinary remote catalogs", async () => {
@@ -2055,7 +2274,6 @@ describe("model sync related routes", () => {
     const data = await res.json();
     expect(data.error).toContain("401");
     expect(data.models).toEqual([]);
-    expect(engine.getRegistryModelsForProvider).not.toHaveBeenCalled();
   });
 
   it("defaults fallback uses authJsonKey when provider ID has no defaults", async () => {
@@ -2137,8 +2355,8 @@ describe("model sync related routes", () => {
 
     const data = await res.json();
     expect(data.models).toEqual([
-      { id: "claude-opus-4-7", name: "Claude Opus 4.7", context: 200000, maxOutput: 64000 },
-      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", context: 200000, maxOutput: 64000 },
+      { id: "claude-opus-4-7", name: "Claude Opus 4.7", context: 200000, maxOutput: 64000, image: true, reasoning: true },
+      { id: "claude-sonnet-4-6", name: "Claude Sonnet 4.6", context: 200000, maxOutput: 64000, image: true, reasoning: true },
     ]);
   });
 
@@ -2234,6 +2452,9 @@ describe("model sync related routes", () => {
         name: "Gemini 3.1 Pro Preview",
         context: 1048576,
         maxOutput: 65536,
+        image: true,
+        video: true,
+        reasoning: true,
       },
     ]);
   });

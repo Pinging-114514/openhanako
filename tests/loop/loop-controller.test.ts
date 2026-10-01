@@ -267,6 +267,45 @@ describe("complete / stop / wakeup / 身份换代 / 投递失败", () => {
   });
 });
 
+describe("stale wakeup cannot leave a terminal loop", () => {
+  it("pauseForDeliveryFailure ignores stopped and completed loops", async () => {
+    const { controller, store } = makeHarness();
+    await controller.start(D, "t");
+    await controller.stop(D);
+    controller.pauseForDeliveryFailure(DK, new Error("late"));
+    await Promise.resolve();
+    expect(store.get(DK).status).toBe("stopped");
+    expect(store.get(DK).pausedReason).toBeNull();
+
+    await controller.start(D, "again");
+    await controller.toolComplete(D_PATH, "goal achieved");
+    controller.pauseForDeliveryFailure(DK, new Error("late"));
+    await Promise.resolve();
+    expect(store.get(DK).status).toBe("completed");
+    expect(store.get(DK).completedSummary).toBe("goal achieved");
+    expect(store.get(DK).pausedReason).toBeNull();
+  });
+
+  it("an in-flight retry does not pause a stopped loop or the loop that replaces it", async () => {
+    vi.useFakeTimers();
+    const { controller, store, alarm } = makeHarness({
+      deliverLoopMessage: vi.fn(async () => ({ mode: "suppressed" })),
+    });
+    await controller.start(D, "first");
+    store.update(DK, { alarm: { wakeAt: Date.now(), reason: "stale" } });
+    const firing = alarm._fire(DK);
+    await vi.advanceTimersByTimeAsync(1);
+    await controller.stop(D);
+    expect(store.get(DK).status).toBe("stopped");
+    await controller.start(D, "second");
+    await vi.advanceTimersByTimeAsync(5_000 + 25_000 + 125_000 + 1_000);
+    await firing;
+    expect(store.get(DK).status).toBe("running");
+    expect(store.get(DK).prompt).toBe("second");
+    expect(store.get(DK).pausedReason).toBeNull();
+  });
+});
+
 describe("recoverAtBoot", () => {
   it("不可运行的目标转 stopped；可运行但无闹钟的补兜底", async () => {
     vi.useFakeTimers();

@@ -61,6 +61,8 @@ import { createApprovalGateway, createModelApprovalReviewer } from "../lib/appro
 import { callText } from "./llm-client.ts";
 import { SESSION_APPROVAL_POLICIES } from "./session-permission-mode.ts";
 import { readCompiledResetAt } from "../lib/memory/compiled-memory-state.ts";
+import { getCodexServiceTierState, refreshCodexServiceEntitlement } from "../lib/auth/codex-service-entitlement.ts";
+import { isCodexOauthProvider, normalizeCodexServiceTier } from "../shared/codex-service-tier.ts";
 
 /** 已知的外部 AI 工具技能目录（相对 $HOME） */
 export const WELL_KNOWN_SKILL_PATHS = [
@@ -788,6 +790,14 @@ export class HanaEngine {
     this._emitEvent(event, this.currentSessionPath);
   }
 
+  emitSessionEventForPath(event, sessionPath) {
+    this._emitEvent(event, sessionPath);
+  }
+
+  prepareSessionCronWake(sessionPath, options) {
+    return this._sessionCoord.prepareSessionCronWake(sessionPath, options);
+  }
+
   setConfirmStore(store) {
     this._confirmStore = store;
     if (store) {
@@ -887,17 +897,22 @@ export class HanaEngine {
     const controller = new LoopController({
       store,
       hasLiveBackgroundWork,
-      deliverLoopMessage: (target, message) => {
+      deliverLoopMessage: (target, message, deliveryOptions: any = {}) => {
+        if (typeof deliveryOptions.shouldDeliver === 'function' && !deliveryOptions.shouldDeliver()) return { mode: 'suppressed' };
         if (target.kind === "desktop") {
           const sessionPath = resolveDesktopPath(target.sessionId);
-          this._emitLoopInterlude(sessionPath, message);
-          return this._sessionCoord.deliverCustomMessage(sessionPath, message, { triggerTurn: true });
+          return this._sessionCoord.deliverCustomMessage(sessionPath, message, {
+            triggerTurn: true,
+            requireIdle: deliveryOptions.requireIdle === true,
+            shouldDeliver: deliveryOptions.shouldDeliver,
+            beforeInputSideEffects: () => this._emitLoopInterlude(sessionPath, message),
+          });
         }
         const hooks = requireBridgeHooks();
         if (hooks.resolveSessionId(target.sessionKey, target.agentId) !== target.sessionId) {
           throw targetResetError(target.sessionKey);
         }
-        return hooks.executeLoopTurn(target.sessionKey, target.agentId, message.content);
+        return hooks.executeLoopTurn(target.sessionKey, target.agentId, message.content, deliveryOptions);
       },
       recordNotice: (target, message) => {
         if (target.kind === "desktop") {
@@ -940,7 +955,7 @@ export class HanaEngine {
     const alarm = new LoopAlarmService({
       store,
       hasLiveBackgroundWork,
-      deliverWakeup: (key, reason) => controller.deliverWakeupTurn(key, reason),
+      deliverWakeup: (key, reason, options) => controller.deliverWakeupTurn(key, reason, options),
       hooks: {
         onDeliveryExhausted: (key, err) => controller.pauseForDeliveryFailure(key, err),
       },
@@ -1595,12 +1610,14 @@ export class HanaEngine {
    * what those options are, so neither path can drift from the other.
    */
   getProviderCompatOptionsForSession(p) {
+    const codexSpeed = this.getCodexServiceTierState();
     return {
       deepseekRoleplayReasoningPatch: this._sessionCoord.isDeepSeekRoleplayReasoningPatchEnabled(p),
       deepseekRoleplayReasoningContext: this._sessionCoord.getDeepSeekRoleplayReasoningContext(p),
       // Codex OAuth speed tier is a global preference today; it rides along here
       // so the live request and any compaction request agree on the wire body.
-      codexServiceTier: this.getCodexServiceTier(),
+      codexServiceTier: codexSpeed.tier,
+      codexUltrafastEligible: codexSpeed.ultrafastEligible,
     };
   }
   /**
@@ -1638,6 +1655,9 @@ export class HanaEngine {
     return this._sessionCoord.promptSession(p, text, opts, submitOptions);
   }
   steerSession(p, text) { return this._sessionCoord.steerSession(p, text); }
+  async handoffStreamingTurnToSibling(p) {
+    return this._sessionCoord.handoffStreamingTurnToSibling(p);
+  }
   async abortSession(p, options) { return this._sessionCoord.abortSession(p, options); }
   async deliverCustomMessage(p, message, options) {
     return this._sessionCoord.deliverCustomMessage(p, message, options);
@@ -1934,11 +1954,21 @@ export class HanaEngine {
   }
   getSearchConfig() { return this._configCoord.getSearchConfig(); }
   setSearchConfig(p) { return this._configCoord.setSearchConfig(p); }
+  getCodexServiceTierState(modelId?) {
+    return getCodexServiceTierState(this, modelId);
+  }
+  refreshCodexServiceEntitlement() {
+    return refreshCodexServiceEntitlement(this);
+  }
   getCodexServiceTier() {
-    return this.preferences.getCodexServiceTier();
+    return this.getCodexServiceTierState().tier;
   }
   setCodexServiceTier(tier) {
-    return this.preferences.setCodexServiceTier(tier);
+    const requested = normalizeCodexServiceTier(tier);
+    if (requested === "ultrafast" && !this.getCodexServiceTierState().ultrafastEligible) {
+      throw new Error("Ultrafast requires a verified current Pro $500 (Pro Max) OAuth account");
+    }
+    return this.preferences.setCodexServiceTier(requested);
   }
   getXaiOauthSearchTools() {
     return this.preferences.getXaiOauthSearchTools();
@@ -2595,18 +2625,23 @@ export class HanaEngine {
           return { messages };
         });
 
-        pi.on("before_provider_request", (event, ctx) => {
+        pi.on("before_provider_request", async (event, ctx) => {
           const p = event.payload;
           if (!p) return p;
           const requestModel = ctx?.model
             || findUniqueModelById(this._models.availableModels, p.model)
             || null;
+          if (isCodexOauthProvider(requestModel?.provider)
+            && this.preferences.getCodexServiceTier() === "ultrafast") {
+            await this.refreshCodexServiceEntitlement();
+          }
           const reasoningLevel = this.resolveRequestReasoningLevel(ctx);
           const sessionPath = ctx?.sessionManager?.getSessionFile?.() || null;
           const {
             deepseekRoleplayReasoningPatch,
             deepseekRoleplayReasoningContext,
             codexServiceTier,
+            codexUltrafastEligible,
           } = this.getProviderCompatOptionsForSession(sessionPath);
           // The SDK hook exposes the serialized body, but not whether maxTokens came
           // from user intent or buildBaseOptions' model-derived default. Keep source
@@ -2617,6 +2652,7 @@ export class HanaEngine {
             deepseekRoleplayReasoningPatch,
             deepseekRoleplayReasoningContext,
             codexServiceTier,
+            codexUltrafastEligible,
           });
         });
       },

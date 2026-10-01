@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { InputArea } from '../../components/InputArea';
+import { InputArea, resetFollowupSendRuntimeForTest } from '../../components/InputArea';
 import { useStore } from '../../stores';
 
 const mocks = vi.hoisted(() => ({
@@ -113,8 +113,9 @@ vi.mock('../../components/input/InputControlBar', () => ({
     onSend,
     isStreaming,
     hasInput,
-    onSteer,
+    onQueue,
     onStop,
+    availableThinkingLevels,
     showAudioInput,
     onAudioToggle,
     audioRecordingActive,
@@ -123,8 +124,9 @@ vi.mock('../../components/input/InputControlBar', () => ({
     onSend: () => void;
     isStreaming?: boolean;
     hasInput?: boolean;
-    onSteer?: () => void;
+    onQueue?: () => void;
     onStop?: () => void;
+    availableThinkingLevels?: string[];
     showAudioInput?: boolean;
     onAudioToggle?: () => void;
     audioRecordingActive?: boolean;
@@ -136,8 +138,9 @@ vi.mock('../../components/input/InputControlBar', () => ({
       {
         type: 'button',
         'data-testid': 'send',
+        'data-thinking-levels': availableThinkingLevels?.join(','),
         disabled: isStreaming ? !hasInput : !canSend,
-        onClick: isStreaming ? onSteer : onSend,
+        onClick: isStreaming ? onQueue : onSend,
       },
       'send',
     ),
@@ -218,9 +221,41 @@ function seedSession() {
     serverPort: 3210,
     serverToken: null,
     modelSwitching: false,
+    followupsBySession: {},
   } as never);
   useStore.getState().clearSession('/session/media.jsonl');
   useStore.getState().initSession('/session/media.jsonl', [], false);
+}
+
+function queueDraft(text: string) {
+  return {
+    text, editorJson: { type: 'doc', content: [] },
+    skills: [], sessionRefs: [], agentMentions: [], attachedFiles: [], quotes: [],
+    docContextAttached: false, doc: null,
+  };
+}
+
+function focusQueueTestOnB(overrides: Record<string, unknown> = {}) {
+  useStore.setState({
+    currentSessionPath: '/session/b.jsonl', currentSessionId: 'sess_b', currentAgentId: 'agent-b',
+    sessions: [
+      { path: '/session/media.jsonl', sessionId: 'sess_media', agentId: 'hana', agentName: 'A' },
+      { path: '/session/b.jsonl', sessionId: 'sess_b', agentId: 'agent-b', agentName: 'B' },
+    ],
+    sessionLocatorsById: { sess_media: { path: '/session/media.jsonl' }, sess_b: { path: '/session/b.jsonl' } },
+    streamingSessions: ['sess_media'], compactingSessions: [], capabilityRefreshingSessions: [],
+    pendingNewSession: false, pendingDraftId: null, pendingSessionSwitchPath: null, modelSwitching: false,
+    attachedFiles: [], attachedFilesBySession: {},
+    models: [
+      { id: 'a-vision', provider: 'vision', input: ['text', 'image'] },
+      { id: 'b-text', provider: 'text-only', input: ['text'], isCurrent: true },
+    ],
+    sessionModelsByPath: {
+      sess_media: { id: 'a-vision', provider: 'vision', input: ['text', 'image'] },
+      sess_b: { id: 'b-text', provider: 'text-only', input: ['text'] },
+    },
+    ...overrides,
+  } as never);
 }
 
 function installAudioCaptureMocks() {
@@ -266,6 +301,7 @@ function installAudioCaptureMocks() {
 describe('InputArea media send', () => {
   afterEach(() => {
     cleanup();
+    resetFollowupSendRuntimeForTest();
     vi.unstubAllGlobals();
   });
 
@@ -287,6 +323,26 @@ describe('InputArea media send', () => {
       readFileBase64: vi.fn(async () => 'IMAGE_BASE64'),
     } as unknown as typeof window.platform;
     delete (window as unknown as { hana?: unknown }).hana;
+  });
+
+  it.each(['stale', 'missing', 'unavailable'])('keeps BPS saved levels when the session snapshot is %s', (snapshot) => {
+    const levels = ['low', 'medium', 'high', 'xhigh'];
+    useStore.setState({
+      models: [
+        { id: 'gpt-6-astra', provider: 'openai-codex', thinkingLevels: [...levels, 'max'], input: ['text', 'image'] },
+        { id: 'gpt-6-astra', provider: 'tokyo-bps', thinkingLevels: levels, input: ['text', 'image'], reasoning: true, isCurrent: true },
+      ],
+      sessionModelsByPath: { sess_media: {
+        id: 'gpt-6-astra', provider: 'tokyo-bps',
+        thinkingLevels: snapshot === 'missing' ? undefined : [...levels, 'max'],
+        available: snapshot !== 'unavailable',
+        unavailableReason: snapshot === 'unavailable' ? 'temporarily_unavailable' : null,
+      } },
+    } as never);
+    render(React.createElement(InputArea));
+    const send = screen.getByTestId('send') as HTMLButtonElement;
+    expect(send.getAttribute('data-thinking-levels')).toBe(levels.join(','));
+    if (snapshot === 'unavailable') expect(send.disabled).toBe(true);
   });
 
   it('sends path-backed images as file identity plus pixels so older servers can still see them', async () => {
@@ -845,7 +901,7 @@ describe('InputArea media send', () => {
     });
   });
 
-  it('interjects streaming attachment sends with the same message envelope as prompt sends', async () => {
+  it('queues streaming attachment sends instead of steering immediately', async () => {
     useStore.setState({
       streamingSessions: ['/session/media.jsonl'],
       attachedFiles: [{
@@ -871,6 +927,13 @@ describe('InputArea media send', () => {
     fireEvent.click(send);
 
     await waitFor(() => {
+      expect(useStore.getState().followupsBySession['sess_media'] || useStore.getState().followupsBySession['/session/media.jsonl']).toHaveLength(1);
+    });
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText('插话'));
+
+    await waitFor(() => {
       expect(mocks.wsSend).toHaveBeenCalledTimes(1);
     });
     const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
@@ -891,6 +954,322 @@ describe('InputArea media send', () => {
         name: 'note.txt',
       }],
     });
+  });
+
+  it('keeps the send reservation across an InputArea remount while reading an attachment', async () => {
+    let release!: () => void;
+    const reading = new Promise<void>(resolve => { release = resolve; });
+    window.platform.readFileBase64 = vi.fn(async () => { await reading; return 'IMAGE_BASE64'; });
+    useStore.setState({ streamingSessions: ['sess_media'], attachedFiles: [], attachedFilesBySession: {} } as never);
+    const first = render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      ...queueDraft('one reserved message'),
+      attachedFiles: [{fileId:'sf_reserved',path:'/tmp/reserved.png',name:'reserved.png',isDirectory:false}],
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(React.createElement(InputArea));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1);
+    release();
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull();
+  });
+
+  it('sends a background queue to its owner rather than the focused session', async () => {
+    const bFile = { fileId: 'sf_b', path: '/tmp/b.txt', name: 'b.txt', isDirectory: false };
+    useStore.setState({
+      currentSessionPath: '/session/b.jsonl',
+      currentSessionId: 'sess_b',
+      currentAgentId: 'agent-b',
+      sessions: [
+        ...useStore.getState().sessions,
+        { path: '/session/b.jsonl', sessionId: 'sess_b', agentId: 'agent-b', agentName: 'B' },
+      ],
+      sessionLocatorsById: {
+        sess_media: { path: '/session/media.jsonl' },
+        sess_b: { path: '/session/b.jsonl' },
+      },
+      streamingSessions: ['sess_media'],
+      compactingSessions: [],
+      capabilityRefreshingSessions: [],
+      attachedFiles: [bFile],
+      attachedFilesBySession: { sess_b: [bFile] },
+      drafts: { '/session/b.jsonl': 'B draft must remain untouched' },
+    } as never);
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      text: 'A queued request',
+      editorJson: { type: 'doc', content: [] },
+      skills: [], sessionRefs: [], agentMentions: [], quotes: [],
+      attachedFiles: [{ fileId: 'sf_a', path: '/tmp/a.txt', name: 'a.txt', isDirectory: false }],
+      docContextAttached: false, doc: null,
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload).toMatchObject({ type: 'prompt', sessionId: 'sess_media', sessionPath: '/session/media.jsonl' });
+    expect(payload.sessionFileRefs[0]).toMatchObject({ fileId: 'sf_a', sessionId: 'sess_media', sessionPath: '/session/media.jsonl' });
+    expect(useStore.getState().currentSessionId).toBe('sess_b');
+    expect(useStore.getState().attachedFiles).toEqual([bFile]);
+    expect(useStore.getState().drafts['/session/b.jsonl']).toBe('B draft must remain untouched');
+    await waitFor(() => expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull());
+  });
+
+  it.each(['streaming', 'compacting', 'refreshing', 'unavailable', 'deleted'])(
+    'does not let focused B being %s block the background A queue', async (blocked) => {
+      focusQueueTestOnB();
+      if (blocked === 'streaming') useStore.setState({ streamingSessions: ['sess_media', 'sess_b'] } as never);
+      if (blocked === 'compacting') useStore.setState({ compactingSessions: ['sess_b'] } as never);
+      if (blocked === 'refreshing') useStore.setState({ capabilityRefreshingSessions: ['sess_b'] } as never);
+      if (blocked === 'unavailable') useStore.setState({ sessionModelsByPath: { sess_b: { id: 'b-text', provider: 'text-only', available: false } } } as never);
+      if (blocked === 'deleted') useStore.setState({ sessions: useStore.getState().sessions.map(s => s.sessionId === 'sess_b' ? { ...s, agentDeleted: true } : s) } as never);
+      render(React.createElement(InputArea));
+      useStore.getState().enqueueFollowup('/session/media.jsonl', queueDraft('Only A'));
+      useStore.setState({ streamingSessions: blocked === 'streaming' ? ['sess_b'] : [] } as never);
+      await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+      expect(JSON.parse(String(mocks.wsSend.mock.calls[0][0]))).toMatchObject({ sessionId: 'sess_media', sessionPath: '/session/media.jsonl' });
+    },
+  );
+
+  it('resumes background A after compaction while B remains focused', async () => {
+    focusQueueTestOnB({ streamingSessions: [], compactingSessions: ['sess_media'] });
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', queueDraft('After A compaction'));
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+    useStore.setState({ compactingSessions: [] } as never);
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    expect(JSON.parse(String(mocks.wsSend.mock.calls[0][0])).sessionId).toBe('sess_media');
+  });
+
+  it('keeps A identity and native image capability while focus changes during image reading', async () => {
+    focusQueueTestOnB();
+    let release!: (value: string) => void;
+    const gate = new Promise<string>(resolve => { release = resolve; });
+    window.platform.readFileBase64 = vi.fn(() => gate);
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      ...queueDraft('A image'),
+      attachedFiles: [{ fileId: 'sf_a_image', path: '/tmp/a.png', name: 'a.png', isDirectory: false }],
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(window.platform.readFileBase64).toHaveBeenCalledWith('/tmp/a.png'));
+    useStore.setState({ currentSessionPath: null, currentSessionId: null, pendingNewSession: true, pendingDraftId: 'draft-c' } as never);
+    release('A_PIXELS');
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload).toMatchObject({ sessionId: 'sess_media', sessionPath: '/session/media.jsonl', uiContext: null });
+    expect(payload.images).toEqual([{ type: 'image', data: 'A_PIXELS', mimeType: 'image/png' }]);
+    expect(payload.displayMessage.attachments[0].visionAuxiliary).toBe(false);
+    expect(mocks.ensureSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unresolved background owner queued instead of sending to B', async () => {
+    focusQueueTestOnB({ streamingSessions: [] });
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('sess_unknown', queueDraft('Unknown owner'));
+    await new Promise(resolve => window.setTimeout(resolve, 40));
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+    expect(useStore.getState().peekFollowup('sess_unknown')?.text).toBe('Unknown owner');
+  });
+
+  it('removes only A entry even if busy B has an entry with the same id', async () => {
+    focusQueueTestOnB({ streamingSessions: ['sess_media', 'sess_b'] });
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', { ...queueDraft('A one'), id: 'shared-item-id' });
+    useStore.getState().enqueueFollowup('/session/b.jsonl', { ...queueDraft('B untouched'), id: 'shared-item-id' });
+    useStore.setState({ streamingSessions: ['sess_b'] } as never);
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull());
+    expect(useStore.getState().peekFollowup('/session/b.jsonl')?.text).toBe('B untouched');
+  });
+
+  it('sends the queued followup as a prompt when compaction ends', async () => {
+    useStore.setState({
+      streamingSessions: [],
+      compactingSessions: ['sess_media'],
+      attachedFiles: [],
+      attachedFilesBySession: { '/session/media.jsonl': [] },
+    } as never);
+
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      text: '套餐选许昌校区融合套餐',
+      editorJson: { type: 'doc', content: [] },
+      skills: [],
+      sessionRefs: [],
+      agentMentions: [],
+      attachedFiles: [],
+      quotes: [],
+      docContextAttached: false,
+      doc: null,
+    });
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+
+    useStore.setState({ compactingSessions: [] } as never);
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalled();
+    });
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.type).toBe('prompt');
+    expect(payload.text).toBe('套餐选许昌校区融合套餐');
+  });
+
+  it('flushes queued followups one turn at a time', async () => {
+    useStore.setState({
+      streamingSessions: ['sess_media'],
+      attachedFiles: [],
+      attachedFilesBySession: { '/session/media.jsonl': [] },
+    } as never);
+
+    render(React.createElement(InputArea));
+    const draft = (text: string) => ({
+      text,
+      editorJson: { type: 'doc', content: [] },
+      skills: [],
+      sessionRefs: [],
+      agentMentions: [],
+      attachedFiles: [],
+      quotes: [],
+      docContextAttached: false,
+      doc: null,
+    });
+    useStore.getState().enqueueFollowup('/session/media.jsonl', draft('剩的都40%'));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', draft('加上一次性固定支出'));
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+
+    useStore.setState({ streamingSessions: [] } as never);
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+    });
+    expect(JSON.parse(String(mocks.wsSend.mock.calls[0][0])).text).toBe('剩的都40%');
+    await waitFor(() => {
+      const queues = useStore.getState().followupsBySession;
+      expect(queues.sess_media || queues['/session/media.jsonl'] || []).toHaveLength(1);
+    });
+
+    await new Promise((resolve) => { window.setTimeout(resolve, 40); });
+    expect(mocks.wsSend).toHaveBeenCalledTimes(1);
+
+    useStore.setState({ streamingSessions: ['sess_media'] } as never);
+    useStore.setState({ streamingSessions: [] } as never);
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalledTimes(2);
+    });
+    expect(JSON.parse(String(mocks.wsSend.mock.calls[1][0])).text).toBe('加上一次性固定支出');
+  });
+
+  it('sends the queued followup as a prompt when streaming ends', async () => {
+    useStore.setState({
+      streamingSessions: ['sess_media'],
+      attachedFiles: [],
+      attachedFilesBySession: { '/session/media.jsonl': [] },
+    } as never);
+
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      text: '接替跑学习通的测验',
+      editorJson: { type: 'doc', content: [] },
+      skills: [],
+      sessionRefs: [],
+      agentMentions: [],
+      attachedFiles: [],
+      quotes: [],
+      docContextAttached: false,
+      doc: null,
+    });
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+
+    useStore.setState({ streamingSessions: [] } as never);
+
+    await waitFor(() => {
+      expect(mocks.wsSend).toHaveBeenCalled();
+    });
+    const payload = JSON.parse(String(mocks.wsSend.mock.calls[0][0]));
+    expect(payload.type).toBe('prompt');
+    expect(payload.text).toBe('接替跑学习通的测验');
+    await waitFor(() => {
+      const queues = useStore.getState().followupsBySession;
+      expect(queues.sess_media || queues['/session/media.jsonl'] || []).toHaveLength(0);
+    });
+  });
+
+  it.each(['remove', 'clear', 'edit'] as const)('does not send a queued attachment read after %s', async (action) => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    window.platform.readFileBase64 = vi.fn(async () => { await gate; return 'IMAGE_BASE64'; });
+    useStore.setState({ attachedFiles: [], attachedFilesBySession: {}, streamingSessions: ['sess_media'] } as never);
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      ...queueDraft('cancelled request'),
+      attachedFiles: [{ fileId: 'sf_audit', path: '/tmp/audit.png', name: 'audit.png', isDirectory: false }],
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1));
+    if (action === 'clear') fireEvent.click(screen.getByRole('button', { name: '清空排队' }));
+    else if (action === 'edit') fireEvent.click(screen.getByRole('button', { name: '编辑' }));
+    else fireEvent.click(screen.getByRole('button', { name: '删除' }));
+    expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull();
+    release();
+    await new Promise((resolve) => { window.setTimeout(resolve, 30); });
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+  });
+
+  it('shares one reservation between automatic flush and the queue send button', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    window.platform.readFileBase64 = vi.fn(async () => { await gate; return 'IMAGE_BASE64'; });
+    useStore.setState({ attachedFiles: [], attachedFilesBySession: {}, streamingSessions: ['sess_media'] } as never);
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      ...queueDraft('duplicate request'),
+      attachedFiles: [{ fileId: 'sf_audit', path: '/tmp/audit.png', name: 'audit.png', isDirectory: false }],
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1));
+    const queueSend = screen.getAllByRole('button', { name: '发送' }).find((el) => el.dataset.testid !== 'send');
+    expect(queueSend).toBeTruthy();
+    fireEvent.click(queueSend!);
+    release();
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1);
+    expect(JSON.parse(String(mocks.wsSend.mock.calls[0][0])).text).toContain('duplicate request');
+    await waitFor(() => expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull());
+  });
+
+  it('keeps the queued item when submission becomes busy or the socket send fails', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    window.platform.readFileBase64 = vi.fn(async () => { await gate; return 'IMAGE_BASE64'; });
+    useStore.setState({ attachedFiles: [], attachedFilesBySession: {}, streamingSessions: ['sess_media'] } as never);
+    render(React.createElement(InputArea));
+    useStore.getState().enqueueFollowup('/session/media.jsonl', {
+      ...queueDraft('keep me'),
+      attachedFiles: [{ fileId: 'sf_audit', path: '/tmp/audit.png', name: 'audit.png', isDirectory: false }],
+    });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(window.platform.readFileBase64).toHaveBeenCalledTimes(1));
+    useStore.setState({ streamingSessions: ['sess_media'] } as never);
+    release();
+    await new Promise((resolve) => { window.setTimeout(resolve, 30); });
+    expect(mocks.wsSend).not.toHaveBeenCalled();
+    expect(useStore.getState().peekFollowup('/session/media.jsonl')?.text).toBe('keep me');
+
+    mocks.wsSend.mockImplementationOnce(() => { throw new Error('socket down'); });
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(1));
+    expect(useStore.getState().peekFollowup('/session/media.jsonl')?.text).toBe('keep me');
+
+    mocks.wsSend.mockImplementation(() => undefined);
+    useStore.setState({ streamingSessions: ['sess_media'] } as never);
+    useStore.setState({ streamingSessions: [] } as never);
+    await waitFor(() => expect(mocks.wsSend).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(useStore.getState().peekFollowup('/session/media.jsonl')).toBeNull());
   });
 
   it('does not send while an agent switch session is still pending', async () => {

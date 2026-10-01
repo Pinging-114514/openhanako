@@ -1,24 +1,24 @@
 import { useI18n } from '../../hooks/use-i18n';
 import styles from './InputArea.module.css';
 
-export function SendButton({ isStreaming, hasInput, disabled, onSend, onSteer, onStop }: {
+export function SendButton({ isStreaming, hasInput, disabled, onSend, onQueue, onStop }: {
   isStreaming: boolean;
   hasInput: boolean;
   disabled: boolean;
   onSend: () => void;
-  onSteer: () => void;
+  onQueue: () => void;
   onStop: () => void;
 }) {
   const { t } = useI18n();
 
-  // 三态：发送 / 插话 / 停止
-  const mode = isStreaming ? (hasInput ? 'steer' : 'stop') : 'send';
+  // 默认排队：流式中有内容入队，空输入才是停止。插话在队列条目上。
+  const mode = isStreaming ? (hasInput ? 'queue' : 'stop') : 'send';
 
   return (
     <button
-      className={`${styles['send-btn']}${mode === 'steer' ? ` ${styles['is-steer']}` : mode === 'stop' ? ` ${styles['is-streaming']}` : ''}`}
+      className={`${styles['send-btn']}${mode === 'queue' ? ` ${styles['is-queue']}` : mode === 'stop' ? ` ${styles['is-streaming']}` : ''}`}
       disabled={disabled}
-      onClick={mode === 'steer' ? onSteer : mode === 'stop' ? onStop : onSend}
+      onClick={mode === 'queue' ? onQueue : mode === 'stop' ? onStop : onSend}
     >
       {mode === 'send' && (
         <span className={styles['send-label']}>
@@ -28,12 +28,13 @@ export function SendButton({ isStreaming, hasInput, disabled, onSend, onSteer, o
           <span>{t('chat.send')}</span>
         </span>
       )}
-      {mode === 'steer' && (
+      {mode === 'queue' && (
         <span className={styles['send-label']}>
           <svg className={styles['send-enter-icon']} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="15 18 9 12 15 6" />
+            <path d="M8 6h13M8 12h13M8 18h13" />
+            <path d="M3 6h.01M3 12h.01M3 18h.01" />
           </svg>
-          <span>{t('chat.steer')}</span>
+          <span>{t('chat.queue')}</span>
         </span>
       )}
       {mode === 'stop' && (

@@ -37,7 +37,7 @@ interface Props {
   audioRecordingBusy: boolean;
   onAudioToggle: () => void;
   onSend: () => void;
-  onSteer: () => void;
+  onQueue: () => void;
   onStop: () => void;
 }
 
@@ -49,9 +49,12 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
     showThinking, thinkingLevel, onThinkingChange, availableThinkingLevels,
     models, sessionModel, isStreaming, hasInput, canSend,
     showAudioInput, audioRecordingActive, audioRecordingBusy, onAudioToggle,
-    onSend, onSteer, onStop,
+    onSend, onQueue, onStop,
   } = props;
   const showCodexSpeed = shouldShowCodexSpeedControl(sessionModel, models);
+  const codexSpeedModelId = sessionModel?.id
+    || models.find((model) => model.isCurrent)?.id
+    || '';
   const oauthAccountProvider = resolveOauthAccountProvider(sessionModel, models);
   const showSplit = showThinking || showCodexSpeed || !!oauthAccountProvider;
 
@@ -85,7 +88,7 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
         {showSplit ? (
           <div className={styles['model-split-control']}>
             {oauthAccountProvider ? <OauthAccountButton providerId={oauthAccountProvider} isStreaming={isStreaming} /> : null}
-            {showCodexSpeed ? <CodexSpeedButton /> : null}
+            {showCodexSpeed ? <CodexSpeedButton modelId={codexSpeedModelId} /> : null}
             {showThinking ? (
               <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} availableLevels={availableThinkingLevels} />
             ) : null}
@@ -118,7 +121,7 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
           </button>
         )}
         <SendButton isStreaming={isStreaming} hasInput={hasInput}
-          disabled={isStreaming ? false : !canSend} onSend={onSend} onSteer={onSteer} onStop={onStop} />
+          disabled={isStreaming ? false : !canSend} onSend={onSend} onQueue={onQueue} onStop={onStop} />
       </div>
     </div>
   );

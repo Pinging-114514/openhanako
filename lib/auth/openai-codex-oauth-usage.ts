@@ -70,7 +70,13 @@ export function summarizeCodexOauthUsage(data) {
   };
 }
 
-export function resolveCodexUsageAccountId({ accountId, accessToken } = {}) {
+export function resolveCodexUsageAccountId({
+  accountId,
+  accessToken,
+}: {
+  accountId?: unknown;
+  accessToken?: unknown;
+} = {}) {
   const direct = typeof accountId === "string" ? accountId.trim() : "";
   return direct || extractAccountIdFromToken(accessToken);
 }
@@ -81,6 +87,12 @@ export async function fetchCodexOauthUsage({
   fetchImpl = globalThis.fetch,
   timeoutMs = 15_000,
   usageUrl = DEFAULT_CODEX_USAGE_URL,
+}: {
+  accessToken?: unknown;
+  accountId?: unknown;
+  fetchImpl?: typeof globalThis.fetch;
+  timeoutMs?: number;
+  usageUrl?: string;
 } = {}) {
   const token = String(accessToken || "").trim();
   if (!token) {
@@ -127,7 +139,11 @@ export function publicCodexOauthUsage(usage) {
   return publicOauthUsage(usage);
 }
 
-export async function refreshCodexOauthUsageCache(engine, { fetchImpl } = {}) {
+export async function refreshCodexOauthUsageCache(engine, {
+  fetchImpl,
+}: {
+  fetchImpl?: typeof globalThis.fetch;
+} = {}) {
   if (engine?.codexOauthUsageInflight) return engine.codexOauthUsageInflight;
   const work = (async () => {
     const cred = engine?.authStorage?.get?.("openai-codex");
@@ -151,7 +167,11 @@ export async function refreshCodexOauthUsageCache(engine, { fetchImpl } = {}) {
   }
 }
 
-export async function readCodexOauthUsageCached(engine, { fetchImpl } = {}) {
+export async function readCodexOauthUsageCached(engine, {
+  fetchImpl,
+}: {
+  fetchImpl?: typeof globalThis.fetch;
+} = {}) {
   if (engine?.codexOauthUsage) return engine.codexOauthUsage;
   return refreshCodexOauthUsageCache(engine, { fetchImpl });
 }

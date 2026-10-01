@@ -8,7 +8,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- store partial patch + API 响应 JSON */
 
 import { useStore } from './index';
-import { sessionScopedKey, sessionScopedListIncludes, sessionScopedValue } from './session-slice';
+import { sessionIdForPathFromLocatorState, sessionScopedKey, sessionScopedListIncludes, sessionScopedValue } from './session-slice';
 import { hanaFetch, hanaUrl } from '../hooks/use-hana-fetch';
 import { hydrateInputDrafts } from './input-draft-persistence';
 import { HOME_DRAFT_KEY } from '../../../../shared/input-drafts.ts';
@@ -23,7 +23,7 @@ import { snapshotStreamBuffer, type StreamBufferSnapshot } from './stream-invali
 import { errorWithCode, presentError, presentErrorWithLabel } from '../errors/error-presenter';
 import { normalizeSessionRouteError } from '../../../../shared/error-user-messages.ts';
 import { renderMarkdown } from '../utils/markdown';
-import type { ChatMessage, ContentBlock } from './chat-types';
+import type { ChatMessage, ContentBlock, SessionMessages } from './chat-types';
 import { readMessageLiveVersion } from './message-live-version';
 import type { SessionMetaRecoveryStatus, SessionPermissionMode } from '../types';
 import { findPrimaryAgent, resolveAgentWorkspace } from '../utils/agent-workspace';
@@ -470,74 +470,688 @@ function buildInflightAssistantMessage(snap: StreamBufferSnapshot): ChatMessage 
   return { id: snap.messageId || `inflight-${Date.now()}`, role: 'assistant', blocks, timestamp: Date.now() };
 }
 
-/** 上滑加载更早的消息（分页） */
-export async function loadMoreMessages(forPath?: string, opts?: { limit?: number }): Promise<void> {
-  const targetPath = forPath || useStore.getState().currentSessionPath;
-  if (!targetPath) return;
-  const session = sessionScopedValue(useStore.getState() as Record<string, any>, useStore.getState().chatSessions, targetPath);
-  if (!session || !session.hasMore || session.loadingMore) return;
+/**
+ * loadMoreMessages 的终态。旧调用方可以继续不读返回值。
+ * loaded: 这一页已经接到原窗口前面，且分页游标变旧了。
+ * busy: 同一会话已有一次翻页在途，本次没有再发请求。
+ * exhausted: 服务端明确没有更早的历史（hasMore=false）。
+ * stalled: 空页、全部重复/被过滤，或游标没有变旧。同一 cursor 不会再自动请求。
+ * stale: 飞行期间原窗口被替换、会话被拿走或连接换代，旧页已丢弃。
+ * failed: HTTP / JSON / 网络失败。不把 hasMore 改成 false。
+ */
+export type LoadMoreStatus = 'loaded' | 'busy' | 'exhausted' | 'stalled' | 'stale' | 'failed';
 
-  useStore.getState().setLoadingMore(targetPath, true);
+export interface LoadMoreMessagesResult {
+  status: LoadMoreStatus;
+  progressed: boolean;
+  cursor?: string;
+  nextCursor?: string;
+  hasMore?: boolean;
+  added?: number;
+  reason?: string;
+}
+
+export interface LoadMoreMessagesOptions {
+  limit?: number;
+  /** 显式操作：绕过同一 cursor 的 stalled 门闩，再请求一次。再失败仍会重新闩住。 */
+  retry?: boolean;
+}
+
+export interface LoadAllOlderOptions {
+  /** 用户取消或页面失活。触发后停止继续翻，不等待中的空转。 */
+  signal?: AbortSignal;
+  /** 返回 false 时停止。旧调用不传。 */
+  shouldContinue?: () => boolean;
+  /** 等待别人已经发出的那次翻页，毫秒，默认 8000。没有 owner 的孤立 loading 标记不等。 */
+  flightWaitMs?: number;
+}
+
+const LOAD_MORE_MAX_LIMIT = 200;
+const LOAD_ALL_OLDER_PAGE_LIMIT = 200;
+const LOAD_ALL_OLDER_MAX_PAGES = 50;
+const LOAD_ALL_OLDER_FLIGHT_WAIT_MS = 8_000;
+
+type LoadMoreFlight = {
+  token: number;
+  promise: Promise<LoadMoreMessagesResult>;
+};
+
+type HistoryWindowSnap = {
+  sessionId: string | null;
+  connectionId: string | null;
+  loadVersion: number;
+  oldestId: string | undefined;
+  anchorId: string | undefined;
+  revision: string | null;
+};
+
+type HistoryWindowVerdict = 'ok' | 'removed' | 'connection' | 'identity' | 'replaced';
+
+let _loadMoreFlightSeq = 0;
+const _loadMoreFlights = new Map<string, LoadMoreFlight>();
+const _loadMoreStalledCursor = new Map<string, { cursor: string; sessionId: string | null; connectionId: string | null }>();
+
+function stableHistorySessionId(state: Record<string, any>, path: string): string | null {
+  return sessionIdForPathFromLocatorState(state, path);
+}
+
+/** 连接 + 稳定会话身份。同一 sessionId 的 path 别名共享 flight；无 sessionId 时退回 path。 */
+function loadMoreScopeKey(connectionId: string | null, sessionId: string | null, path: string): string {
+  const identity = sessionId ? `session:${sessionId}` : `path:${path}`;
+  return `${connectionId ?? ''}\n${identity}`;
+}
+
+function connectionIdFromState(state: Record<string, any>): string | null {
+  const activeId = state.activeServerConnectionId;
+  if (typeof activeId === 'string' && activeId) return activeId;
+  const nested = state.activeServerConnection?.connectionId;
+  return typeof nested === 'string' && nested ? nested : null;
+}
+
+function readLoadMessagesVersion(state: Record<string, any>, path: string): number {
+  const value = sessionScopedValue(state, state._loadMessagesVersion, path);
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function readChatSession(path: string): any | null {
+  const state = useStore.getState() as Record<string, any>;
+  return sessionScopedValue(state, state.chatSessions, path) ?? null;
+}
+
+function firstHistoryMessageId(items: any): string | undefined {
+  if (!Array.isArray(items)) return undefined;
+  for (const item of items) {
+    if (item?.type === 'message' && typeof item.data?.id === 'string' && item.data.id) return item.data.id;
+  }
+  return undefined;
+}
+
+function historyItemKey(item: any): string | null {
+  if (item?.type === 'message' && typeof item.data?.id === 'string' && item.data.id) {
+    return `message:${item.data.id}`;
+  }
+  if (typeof item?.id === 'string' && item.id) return `${item.type || 'item'}:${item.id}`;
+  return null;
+}
+
+function snapshotHistoryWindow(path: string, session: any): HistoryWindowSnap {
+  const state = useStore.getState() as Record<string, any>;
+  return {
+    sessionId: stableHistorySessionId(state, path),
+    connectionId: connectionIdFromState(state),
+    loadVersion: readLoadMessagesVersion(state, path),
+    oldestId: typeof session?.oldestId === 'string' ? session.oldestId : undefined,
+    anchorId: firstHistoryMessageId(session?.items),
+    revision: typeof session?.revision === 'string' ? session.revision : null,
+  };
+}
+
+function historyWindowVerdict(path: string, snap: HistoryWindowSnap): HistoryWindowVerdict {
+  const state = useStore.getState() as Record<string, any>;
+  if (connectionIdFromState(state) !== snap.connectionId) return 'connection';
+  if (stableHistorySessionId(state, path) !== snap.sessionId) return 'identity';
+  const session = sessionScopedValue<SessionMessages>(state, state.chatSessions, path);
+  if (!session) return 'removed';
+  if (readLoadMessagesVersion(state, path) !== snap.loadVersion) return 'replaced';
+  if ((typeof session.revision === 'string' ? session.revision : null) !== snap.revision) return 'replaced';
+  if (session.oldestId !== snap.oldestId) return 'replaced';
+  if (snap.anchorId) {
+    if (firstHistoryMessageId(session.items) !== snap.anchorId) return 'replaced';
+    const anchorRemains = Array.isArray(session.items) && session.items.some((item: any) => (
+      item?.type === 'message' && item.data?.id === snap.anchorId
+    ));
+    if (!anchorRemains) return 'replaced';
+  }
+  return 'ok';
+}
+
+function cursorMovedOlder(previous: string | undefined, next: string | undefined): boolean {
+  if (!next) return false;
+  if (!previous) return false;
+  if (next === previous) return false;
+  const prevNum = Number(previous);
+  const nextNum = Number(next);
+  if (Number.isFinite(prevNum) && Number.isFinite(nextNum)) return nextNum < prevNum;
+  return true;
+}
+
+function readServerHistoryCursor(data: Record<string, any>): string | null {
+  for (const key of ['nextBefore', 'oldestCursor', 'nextCursor', 'pageBefore']) {
+    const value = data[key];
+    if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+    if (typeof value === 'string' && value.trim()) return value.trim();
+  }
+  return null;
+}
+
+function responseIsOk(res: any): boolean {
+  if (typeof res?.ok === 'boolean') return res.ok;
+  if (typeof res?.status === 'number') return res.status >= 200 && res.status < 300;
+  return false;
+}
+
+function normalizeLoadMoreLimit(limit: unknown): number | null {
+  const parsed = Number(limit);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(Math.floor(parsed), LOAD_MORE_MAX_LIMIT);
+}
+
+function registryFileIdentity(file: any): string | null {
+  const id = typeof file?.fileId === 'string' && file.fileId
+    ? file.fileId
+    : (typeof file?.id === 'string' && file.id ? file.id : '');
+  if (id) return `id:${id}`;
+  const filePath = typeof file?.filePath === 'string' && file.filePath
+    ? file.filePath
+    : (typeof file?.realPath === 'string' && file.realPath ? file.realPath : '');
+  return filePath ? `path:${filePath}` : null;
+}
+
+function registryFileStamp(file: any): string {
+  const version = file?.version;
+  if (typeof version === 'string' || typeof version === 'number') return `v:${version}`;
+  if (version && typeof version === 'object') {
+    const token = version.token ?? version.id ?? version.rev ?? version.etag ?? version.revision;
+    if (token != null && token !== '') return `v:${String(token)}`;
+  }
+  if (typeof file?.mtimeMs === 'number') return `m:${file.mtimeMs}`;
+  if (typeof file?.updatedAt === 'number') return `u:${file.updatedAt}`;
+  return '';
+}
+
+function readRegistryFiles(path: string): any[] {
+  const state = useStore.getState() as Record<string, any>;
+  const files = sessionScopedValue(state, state.sessionRegistryFilesByPath, path);
+  return Array.isArray(files) ? files : [];
+}
+
+function snapshotRegistryFiles(path: string): Map<string, { ref: any; stamp: string }> {
+  const snap = new Map<string, { ref: any; stamp: string }>();
+  for (const file of readRegistryFiles(path)) {
+    const key = registryFileIdentity(file);
+    if (!key || snap.has(key)) continue;
+    snap.set(key, { ref: file, stamp: registryFileStamp(file) });
+  }
+  return snap;
+}
+
+function sessionFilesResetOwnsRegistry(path: string): boolean {
+  const state = useStore.getState() as Record<string, any>;
+  const flight = sessionScopedValue<{ resetSeen?: boolean }>(state, state._sessionFilesFlightByPath, path);
+  return !!flight?.resetSeen;
+}
+
+/** 分页快照不能抹掉飞行期间新到或被替换的文件，也不复活本地已删掉的旧记录。 */
+function mergeRegistryFiles(
+  serverFiles: any[],
+  started: Map<string, { ref: any; stamp: string }>,
+  currentFiles: any[],
+): any[] {
+  const currentByKey = new Map<string, any>();
+  for (const file of currentFiles) {
+    const key = registryFileIdentity(file);
+    if (key) currentByKey.set(key, file);
+  }
+  const liveKeys = new Set<string>();
+  for (const [key, file] of currentByKey) {
+    const previous = started.get(key);
+    if (!previous || previous.ref !== file || previous.stamp !== registryFileStamp(file)) {
+      liveKeys.add(key);
+    }
+  }
+  const merged: any[] = [];
+  const seen = new Set<string>();
+  for (const file of serverFiles) {
+    const key = registryFileIdentity(file);
+    if (key && liveKeys.has(key)) {
+      merged.push(currentByKey.get(key));
+      seen.add(key);
+      continue;
+    }
+    if (key && started.has(key) && !currentByKey.has(key)) continue;
+    merged.push(file);
+    if (key) seen.add(key);
+  }
+  for (const key of liveKeys) {
+    if (seen.has(key)) continue;
+    merged.push(currentByKey.get(key));
+  }
+  return merged;
+}
+
+function applyPagedRegistryFiles(
+  path: string,
+  serverFiles: any[],
+  started: Map<string, { ref: any; stamp: string }>,
+): void {
+  if (sessionFilesResetOwnsRegistry(path)) return;
+  const merged = mergeRegistryFiles(serverFiles, started, readRegistryFiles(path));
+  useStore.getState().setSessionRegistryFiles(path, merged);
+}
+
+function novelHistoryItems(existing: any[], incoming: any[]): any[] {
+  const seen = new Set<string>();
+  for (const item of existing) {
+    const key = historyItemKey(item);
+    if (key) seen.add(key);
+  }
+  const novel: any[] = [];
+  for (const item of incoming) {
+    const key = historyItemKey(item);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    novel.push(item);
+  }
+  return novel;
+}
+
+function releaseLoadMoreFlight(path: string, key: string, token: number, snap: HistoryWindowSnap): void {
+  const owner = _loadMoreFlights.get(key);
+  if (!owner || owner.token !== token) return;
+  _loadMoreFlights.delete(key);
+  // A hydrate may bump its version and then bail out on live updates/error without
+  // replacing the window. Data from this flight is stale, but its busy flag still
+  // needs release. Only this layer raises loadingMore; never clear another scope/owner.
+  const state = useStore.getState() as Record<string, any>;
+  if (connectionIdFromState(state) !== snap.connectionId || stableHistorySessionId(state, path) !== snap.sessionId) return;
+  if (_loadMoreFlights.has(loadMoreScopeKey(snap.connectionId, snap.sessionId, path))) return;
+  const session = readChatSession(path);
+  if (!session?.loadingMore) return;
+  if (session.oldestId !== snap.oldestId || firstHistoryMessageId(session.items) !== snap.anchorId
+    || (typeof session.revision === 'string' ? session.revision : null) !== snap.revision) return;
+  useStore.getState().setLoadingMore(path, false);
+}
+
+function loadMoreResult(
+  path: string,
+  result: LoadMoreMessagesResult,
+): LoadMoreMessagesResult {
+  const session = readChatSession(path);
+  if (!session) return result;
+  return {
+    ...result,
+    cursor: result.cursor ?? (typeof session.oldestId === 'string' ? session.oldestId : undefined),
+    nextCursor: result.nextCursor ?? (typeof session.oldestId === 'string' ? session.oldestId : undefined),
+    hasMore: result.hasMore ?? !!session.hasMore,
+  };
+}
+
+function rememberStalledCursor(path: string, snap: HistoryWindowSnap, cursor: string | undefined): void {
+  if (cursor == null) return;
+  _loadMoreStalledCursor.set(loadMoreScopeKey(snap.connectionId, snap.sessionId, path), {
+    cursor,
+    sessionId: snap.sessionId,
+    connectionId: snap.connectionId,
+  });
+}
+
+function clearStalledCursor(path: string, snap: HistoryWindowSnap): void {
+  _loadMoreStalledCursor.delete(loadMoreScopeKey(snap.connectionId, snap.sessionId, path));
+}
+
+/** 上滑加载更早的消息。只拼接历史，不改视口。 */
+export async function loadMoreMessages(
+  forPath?: string,
+  opts?: LoadMoreMessagesOptions,
+): Promise<LoadMoreMessagesResult> {
+  const targetPath = forPath || useStore.getState().currentSessionPath;
+  if (!targetPath) return { status: 'failed', progressed: false, reason: 'no-path' };
+  const session = readChatSession(targetPath);
+  if (!session) return { status: 'failed', progressed: false, reason: 'missing-session' };
+  const cursor = typeof session.oldestId === 'string' ? session.oldestId : undefined;
+  if (!session.hasMore) {
+    return {
+      status: 'exhausted',
+      progressed: false,
+      cursor,
+      nextCursor: cursor,
+      hasMore: false,
+      reason: 'no-more',
+    };
+  }
+
+  const snap = snapshotHistoryWindow(targetPath, session);
+  const flightKey = loadMoreScopeKey(snap.connectionId, snap.sessionId, targetPath);
+  const existingFlight = _loadMoreFlights.get(flightKey);
+  if (existingFlight) {
+    return {
+      status: 'busy',
+      progressed: false,
+      cursor,
+      nextCursor: cursor,
+      hasMore: !!session.hasMore,
+      reason: 'in-flight',
+    };
+  }
+  const stalled = _loadMoreStalledCursor.get(flightKey);
+  if (
+    !opts?.retry
+    && stalled
+    && stalled.cursor === (cursor ?? '')
+    && stalled.sessionId === snap.sessionId
+    && stalled.connectionId === snap.connectionId
+  ) {
+    return {
+      status: 'stalled',
+      progressed: false,
+      cursor,
+      nextCursor: cursor,
+      hasMore: !!session.hasMore,
+      reason: 'cursor-latched',
+    };
+  }
+
+  const token = ++_loadMoreFlightSeq;
+  let resolveFlight: (result: LoadMoreMessagesResult) => void = () => {};
+  const promise = new Promise<LoadMoreMessagesResult>((resolve) => {
+    resolveFlight = resolve;
+  });
+  _loadMoreFlights.set(flightKey, { token, promise });
+  void executeLoadMore(targetPath, snap, flightKey, token, cursor, opts).then(
+    (result) => resolveFlight(result),
+    (err) => {
+      console.error('[loadMoreMessages] error:', err);
+      resolveFlight({
+        status: 'failed',
+        progressed: false,
+        cursor,
+        hasMore: true,
+        reason: 'network',
+      });
+    },
+  );
+  return promise;
+}
+
+async function executeLoadMore(
+  path: string,
+  snap: HistoryWindowSnap,
+  flightKey: string,
+  token: number,
+  cursor: string | undefined,
+  opts: LoadMoreMessagesOptions | undefined,
+): Promise<LoadMoreMessagesResult> {
   try {
-    const before = session.oldestId ?? '';
-    const extra: Record<string, string> = { before };
-    const limit = Number(opts?.limit);
-    if (Number.isFinite(limit) && limit > 0) extra.limit = String(Math.min(Math.floor(limit), 200));
-    const res = await hanaFetch(sessionMessagesUrl(targetPath, extra));
-    const data = await res.json();
+    useStore.getState().setLoadingMore(path, true);
+    const registryAtStart = snapshotRegistryFiles(path);
+    const extra: Record<string, string> = { before: cursor ?? '' };
+    const explicitLimit = normalizeLoadMoreLimit(opts?.limit);
+    if (explicitLimit) extra.limit = String(explicitLimit);
+    let res: any;
+    try {
+      res = await hanaFetch(sessionMessagesUrl(path, extra));
+    } catch (err) {
+      const verdict = historyWindowVerdict(path, snap);
+      if (verdict !== 'ok') {
+        return loadMoreResult(path, {
+          status: 'stale',
+          progressed: false,
+          cursor,
+          reason: verdict === 'removed'
+            ? 'session-removed'
+            : verdict === 'connection'
+              ? 'connection-changed'
+              : verdict === 'identity'
+                ? 'session-identity-changed'
+                : 'window-replaced',
+        });
+      }
+      console.error('[loadMoreMessages] error:', err);
+      return loadMoreResult(path, {
+        status: 'failed',
+        progressed: false,
+        cursor,
+        reason: isAbortError(err) ? 'aborted' : 'network',
+      });
+    }
+
+    const verdict = historyWindowVerdict(path, snap);
+    if (verdict !== 'ok') {
+      return loadMoreResult(path, {
+        status: 'stale',
+        progressed: false,
+        cursor,
+        reason: verdict === 'removed'
+          ? 'session-removed'
+          : verdict === 'connection'
+            ? 'connection-changed'
+            : verdict === 'identity'
+              ? 'session-identity-changed'
+              : 'window-replaced',
+      });
+    }
+
+    if (!responseIsOk(res)) {
+      return loadMoreResult(path, {
+        status: 'failed',
+        progressed: false,
+        cursor,
+        reason: `http-${typeof res?.status === 'number' ? res.status : 'error'}`,
+      });
+    }
+
+    let data: any;
+    try {
+      data = await res.json();
+    } catch (err) {
+      console.error('[loadMoreMessages] error:', err);
+      return loadMoreResult(path, {
+        status: 'failed',
+        progressed: false,
+        cursor,
+        reason: 'invalid-json',
+      });
+    }
+    if (!data || typeof data !== 'object' || Array.isArray(data) || !Array.isArray(data.messages)) {
+      return loadMoreResult(path, {
+        status: 'failed',
+        progressed: false,
+        cursor,
+        reason: 'invalid-payload',
+      });
+    }
+    if (historyWindowVerdict(path, snap) !== 'ok') {
+      return loadMoreResult(path, {
+        status: 'stale',
+        progressed: false,
+        cursor,
+        reason: 'window-replaced',
+      });
+    }
+
     if (Array.isArray(data.sessionFiles)) {
-      useStore.getState().setSessionRegistryFiles(targetPath, data.sessionFiles);
+      applyPagedRegistryFiles(path, data.sessionFiles, registryAtStart);
     }
-    const items = buildItemsFromHistory(data);
-    if (items.length > 0) {
-      useStore.getState().prependItems(targetPath, items, data.hasMore ?? false);
-    } else {
-      useStore.getState().setLoadingMore(targetPath, false);
+
+    let built: any[];
+    try {
+      built = buildItemsFromHistory(data);
+    } catch (err) {
+      console.error('[loadMoreMessages] error:', err);
+      return loadMoreResult(path, {
+        status: 'failed',
+        progressed: false,
+        cursor,
+        reason: 'invalid-payload',
+      });
     }
-  } catch (err) {
-    console.error('[loadMoreMessages] error:', err);
-    useStore.getState().setLoadingMore(targetPath, false);
+    if (historyWindowVerdict(path, snap) !== 'ok') {
+      return loadMoreResult(path, {
+        status: 'stale',
+        progressed: false,
+        cursor,
+        reason: 'window-replaced',
+      });
+    }
+
+    const current = readChatSession(path);
+    const novel = novelHistoryItems(Array.isArray(current?.items) ? current.items : [], built);
+    const pageOldest = firstHistoryMessageId(built);
+    const serverCursor = readServerHistoryCursor(data);
+    const messageCursorOk = pageOldest
+      ? cursorMovedOlder(cursor, pageOldest)
+      : !!(serverCursor && cursorMovedOlder(cursor, serverCursor));
+    const serverCursorOk = !serverCursor || cursorMovedOlder(cursor, serverCursor);
+    const cursorOk = messageCursorOk && serverCursorOk;
+    const hasMoreFlag = typeof data.hasMore === 'boolean' ? data.hasMore : null;
+
+    if (!cursorOk || novel.length === 0) {
+      if (hasMoreFlag === false) {
+        clearStalledCursor(path, snap);
+        useStore.getState().prependItems(path, [], false);
+        return loadMoreResult(path, {
+          status: 'exhausted',
+          progressed: false,
+          cursor,
+          hasMore: false,
+          added: 0,
+          reason: novel.length === 0 ? 'empty-tail' : 'cursor-unmoved',
+        });
+      }
+      rememberStalledCursor(path, snap, cursor ?? '');
+      return loadMoreResult(path, {
+        status: 'stalled',
+        progressed: false,
+        cursor,
+        hasMore: !!current?.hasMore,
+        added: 0,
+        reason: novel.length === 0 ? (built.length === 0 ? 'empty-page' : 'duplicate-page') : 'cursor-unmoved',
+      });
+    }
+
+    const nextHasMore = hasMoreFlag === null ? !!current?.hasMore : hasMoreFlag;
+    useStore.getState().prependItems(path, novel, nextHasMore);
+    const after = readChatSession(path);
+    const nextCursor = typeof after?.oldestId === 'string' ? after.oldestId : undefined;
+    if (!cursorMovedOlder(cursor, nextCursor)) {
+      rememberStalledCursor(path, snap, cursor ?? '');
+      return loadMoreResult(path, {
+        status: 'stalled',
+        progressed: false,
+        cursor,
+        nextCursor,
+        hasMore: !!after?.hasMore,
+        added: novel.length,
+        reason: 'cursor-unmoved',
+      });
+    }
+    clearStalledCursor(path, snap);
+    return loadMoreResult(path, {
+      status: 'loaded',
+      progressed: true,
+      cursor,
+      nextCursor,
+      hasMore: nextHasMore,
+      added: novel.length,
+    });
+  } finally {
+    releaseLoadMoreFlight(path, flightKey, token, snap);
   }
 }
 
-const LOAD_ALL_OLDER_PAGE_LIMIT = 200;
-const LOAD_ALL_OLDER_MAX_PAGES = 50;
+function normalizeFlightWait(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return LOAD_ALL_OLDER_FLIGHT_WAIT_MS;
+  return Math.max(0, value);
+}
 
-/** 把当前窗口之前的历史翻完。翻页时 prepend 会保住视口，调用方再滚到真正开头。 */
-export async function loadAllOlderMessages(forPath?: string): Promise<boolean> {
+function isLoadAllCancelled(opts?: LoadAllOlderOptions): boolean {
+  if (opts?.signal?.aborted) return true;
+  return typeof opts?.shouldContinue === 'function' && !opts.shouldContinue();
+}
+
+function waitForOwnedFlight(
+  flight: Promise<LoadMoreMessagesResult>,
+  budgetMs: number,
+  opts?: LoadAllOlderOptions,
+): Promise<'done' | 'timeout' | 'cancelled'> {
+  if (isLoadAllCancelled(opts)) return Promise.resolve('cancelled');
+  if (budgetMs <= 0) return Promise.resolve('timeout');
+  return new Promise((resolve) => {
+    let settled = false;
+    let watcher: ReturnType<typeof setInterval> | undefined;
+    const finish = (value: 'done' | 'timeout' | 'cancelled') => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (watcher) clearInterval(watcher);
+      opts?.signal?.removeEventListener('abort', onAbort);
+      resolve(value);
+    };
+    const onAbort = () => finish('cancelled');
+    const timer = setTimeout(() => finish('timeout'), budgetMs);
+    opts?.signal?.addEventListener('abort', onAbort, { once: true });
+    if (typeof opts?.shouldContinue === 'function') {
+      const shouldContinue = opts.shouldContinue;
+      watcher = setInterval(() => {
+        if (!shouldContinue()) finish('cancelled');
+      }, 200);
+    }
+    flight.then(
+      () => finish(isLoadAllCancelled(opts) ? 'cancelled' : 'done'),
+      () => finish(isLoadAllCancelled(opts) ? 'cancelled' : 'done'),
+    );
+  });
+}
+
+async function yieldOlderPageFrame(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => resolve());
+      return;
+    }
+    setTimeout(resolve, 0);
+  });
+}
+
+function olderFlightFor(path: string): LoadMoreFlight | undefined {
+  const session = readChatSession(path);
+  if (!session) return undefined;
+  const snap = snapshotHistoryWindow(path, session);
+  return _loadMoreFlights.get(loadMoreScopeKey(snap.connectionId, snap.sessionId, path));
+}
+
+/** 把指定会话当前窗口之前的历史翻完。不切换焦点，也不改视口。 */
+export async function loadAllOlderMessages(forPath?: string, opts?: LoadAllOlderOptions): Promise<boolean> {
   const targetPath = typeof forPath === 'string' && forPath.trim()
     ? forPath
     : useStore.getState().currentSessionPath;
   if (!targetPath) return false;
-  for (let page = 0; page < LOAD_ALL_OLDER_MAX_PAGES; page += 1) {
-    const session = sessionScopedValue(
-      useStore.getState() as Record<string, any>,
-      useStore.getState().chatSessions,
-      targetPath,
-    );
+  const deadline = Date.now() + normalizeFlightWait(opts?.flightWaitMs);
+  let pages = 0;
+  while (pages < LOAD_ALL_OLDER_MAX_PAGES) {
+    const session = readChatSession(targetPath);
     if (!session) return false;
     if (!session.hasMore) return true;
-    if (session.loadingMore) {
-      await new Promise((resolve) => setTimeout(resolve, 40));
+    if (isLoadAllCancelled(opts)) return false;
+    const flight = olderFlightFor(targetPath);
+    if (flight) {
+      const waited = await waitForOwnedFlight(flight.promise, deadline - Date.now(), opts);
+      if (waited !== 'done') return false;
       continue;
     }
-    const oldest = session.oldestId;
-    await loadMoreMessages(targetPath, { limit: LOAD_ALL_OLDER_PAGE_LIMIT });
-    const after = sessionScopedValue(
-      useStore.getState() as Record<string, any>,
-      useStore.getState().chatSessions,
-      targetPath,
-    );
-    if (!after) return false;
-    if (!after.hasMore) return true;
-    if (after.oldestId === oldest) return false;
-    await new Promise<void>((resolve) => {
-      if (typeof requestAnimationFrame === 'function') {
-        requestAnimationFrame(() => resolve());
-        return;
-      }
-      setTimeout(resolve, 0);
+    if (session.loadingMore) return false;
+    pages += 1;
+    const result = await loadMoreMessages(targetPath, {
+      limit: LOAD_ALL_OLDER_PAGE_LIMIT,
+      retry: true,
     });
+    const after = readChatSession(targetPath);
+    if (after && !after.hasMore) return true;
+    if (isLoadAllCancelled(opts)) return false;
+    if (result.status === 'exhausted') return true;
+    if (result.status === 'loaded') {
+      if (!result.progressed || result.hasMore === false) return result.hasMore === false;
+      await yieldOlderPageFrame();
+      continue;
+    }
+    if (result.status === 'busy') {
+      const again = olderFlightFor(targetPath);
+      if (!again) return false;
+      const waited = await waitForOwnedFlight(again.promise, deadline - Date.now(), opts);
+      if (waited !== 'done') return false;
+      continue;
+    }
+    return false;
   }
   return false;
 }

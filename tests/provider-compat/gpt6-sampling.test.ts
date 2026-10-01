@@ -5,6 +5,8 @@ import { isGpt6Model, stripGpt6SamplingParameters } from "../../core/provider-co
 describe("GPT-6 sampling parameter cleanup", () => {
   it("recognizes the GPT-6 family by model id or payload model, including relay prefixes", () => {
     expect(isGpt6Model({ id: "gpt-6-astra" })).toBe(true);
+    expect(isGpt6Model({ id: "gpt-6.1-sol" })).toBe(true);
+    expect(isGpt6Model({ id: "openai/gpt-6.1-sol" })).toBe(true);
     expect(isGpt6Model({ id: "openai/gpt-6-astra" })).toBe(true);
     expect(isGpt6Model(null, { model: "gpt-6" })).toBe(true);
     expect(isGpt6Model({ id: "gpt-5.6-sol" })).toBe(false);

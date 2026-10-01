@@ -2,7 +2,7 @@
  * UserMessage — 用户消息气泡
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from 'react';
 import { MarkdownContent } from './MarkdownContent';
 import { MessageFooterActions, formatMessageTime, type MessageFooterAction } from './MessageFooterActions';
 import { useMessageFooterActions } from './MessageActions';
@@ -10,11 +10,13 @@ import { AttachmentChip } from '../shared/AttachmentChip';
 import { AudioAttachmentChip } from '../shared/AudioAttachmentChip';
 import { FileKindIcon } from '../shared/FileKindIcon';
 import { FolderIcon } from '../shared/FolderIcon';
+import { AttachedFilesBar } from '../input/AttachedFilesBar';
 import type { ChatMessage, UserAttachment, DeskContext } from '../../stores/chat-types';
 import { useStore } from '../../stores';
+import type { AttachedFile } from '../../stores/input-slice';
 import { selectSelectedIdsBySession } from '../../stores/session-selectors';
 import { extractSelectedTexts } from '../../utils/message-text';
-import { openFilePreview } from '../../utils/file-preview';
+import { openAttachmentFile, openFilePreview } from '../../utils/file-preview';
 import { isImageOrSvgExt, extOfName, kindOfFileName } from '../../utils/file-kind';
 import { getUserAttachmentImageSrc } from '../../utils/user-attachment-media';
 import { AgentAvatar, resolveAgentDisplayInfo } from '../../utils/agent-display';
@@ -23,6 +25,14 @@ import {
   type ForkedSessionHandler,
   type SessionNodeTarget,
 } from '../../stores/message-turn-actions';
+import {
+  attachedFilesFromNativePaths,
+  attachedFilesToUserAttachments,
+  splitClipboardImages,
+  uploadChatFilesAsAttachments,
+  userAttachmentSnapshotsEqual,
+  userAttachmentsToAttachedFiles,
+} from '../../utils/user-edit-attachments';
 import { AgentReviewCard } from './AgentReviewCard';
 import { AgentReviewRequestCard } from './AgentReviewRequestCard';
 import { useSessionNodeActions } from './SessionNodeActions';
@@ -74,12 +84,19 @@ export const UserMessage = memo(function UserMessage({
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState(message.text || '');
+  const [editAttachments, setEditAttachments] = useState<AttachedFile[]>(
+    () => userAttachmentsToAttachedFiles(message.attachments),
+  );
   const [editBusy, setEditBusy] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const failedSend = message.sendStatus === 'failed';
 
   useEffect(() => {
-    if (!editing) setEditValue(message.text || '');
-  }, [editing, message.text]);
+    if (!editing) {
+      setEditValue(message.text || '');
+      setEditAttachments(userAttachmentsToAttachedFiles(message.attachments));
+    }
+  }, [editing, message.attachments, message.text]);
 
   useEffect(() => {
     if (!editing) return;
@@ -124,35 +141,84 @@ export const UserMessage = memo(function UserMessage({
   const handleEdit = useCallback(() => {
     if (busy || isStreaming) return;
     setEditValue(message.text || '');
+    setEditAttachments(userAttachmentsToAttachedFiles(message.attachments));
     setEditing(true);
-  }, [busy, isStreaming, message.text]);
+  }, [busy, isStreaming, message.attachments, message.text]);
 
   const handleCancelEdit = useCallback(() => {
     if (busy) return;
     setEditing(false);
     setEditValue(message.text || '');
-  }, [busy, message.text]);
+    setEditAttachments(userAttachmentsToAttachedFiles(message.attachments));
+  }, [busy, message.attachments, message.text]);
+
+  const resendFailedMessage = useCallback((nextText: string, files: AttachedFile[]) => {
+    useStore.getState().removeOptimisticUserMessages(sessionPath, [message.id]);
+    useStore.getState().requestComposerResend({
+      sessionPath,
+      text: nextText,
+      attachedFiles: files,
+      autoSend: true,
+    });
+  }, [message.id, sessionPath]);
 
   const handleConfirmEdit = useCallback(async () => {
     const nextText = editValue.trim();
-    if (!nextText || busy || isStreaming) return;
+    if ((!nextText && editAttachments.length === 0) || busy || isStreaming) return;
     setEditBusy(true);
     try {
-      if (!turnTarget) return;
+      if (failedSend || !turnTarget) {
+        resendFailedMessage(nextText, editAttachments);
+        setEditing(false);
+        return;
+      }
+      const nextAttachments = attachedFilesToUserAttachments(editAttachments);
+      const nextMessage = userAttachmentSnapshotsEqual(message.attachments, nextAttachments)
+        ? message
+        : { ...message, attachments: nextAttachments };
       const ok = await retrySessionTurn(
         sessionPath,
         turnTarget,
-        { message, replacementText: nextText },
+        { message: nextMessage, replacementText: nextText },
       );
       if (ok) setEditing(false);
     } finally {
       setEditBusy(false);
     }
-  }, [busy, editValue, isStreaming, message, sessionPath, turnTarget]);
+  }, [busy, editAttachments, editValue, failedSend, isStreaming, message, resendFailedMessage, sessionPath, turnTarget]);
 
-  // Retry and fork preserve the recorded review envelope. Inline text editing remains
-  // unavailable because changing only its text would no longer match that snapshot.
-  const canEdit = !readOnly && !isReviewTurn && isLatestUserMessage && !!turnTarget;
+  const handleResendFailed = useCallback(() => {
+    if (busy || isStreaming) return;
+    resendFailedMessage(
+      (message.text || '').trim(),
+      userAttachmentsToAttachedFiles(message.attachments),
+    );
+  }, [busy, isStreaming, message.attachments, message.text, resendFailedMessage]);
+
+  const handleEditPaste = useCallback(async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+    const { paths, files } = splitClipboardImages(event.clipboardData);
+    if (paths.length === 0 && files.length === 0) return;
+    event.preventDefault();
+    if (busy || isStreaming) return;
+    if (paths.length) {
+      setEditAttachments((current) => [...current, ...attachedFilesFromNativePaths(paths)]);
+    }
+    if (files.length === 0) return;
+    setEditBusy(true);
+    try {
+      const uploaded = await uploadChatFilesAsAttachments({ files, sessionPath });
+      setEditAttachments((current) => [...current, ...uploaded]);
+    } catch (error) {
+      console.warn('[user-edit] paste image failed', error);
+      useStore.getState().addToast(t('error.uploadFailed'), 'error');
+    } finally {
+      setEditBusy(false);
+    }
+  }, [busy, isStreaming, sessionPath, t]);
+
+  // Review envelopes stay frozen: changing only the visible text would no longer
+  // match the recorded snapshot. Any other persisted user turn can rewind like Cursor.
+  const canEdit = !readOnly && !isReviewTurn && (!!turnTarget || failedSend);
   const timeText = formatMessageTime(message.timestamp);
   const editingActions: MessageFooterAction[] = useMemo(() => [
     {
@@ -167,9 +233,9 @@ export const UserMessage = memo(function UserMessage({
       title: t('common.confirm'),
       icon: <CheckIcon />,
       onClick: () => { void handleConfirmEdit(); },
-      disabled: busy || !editValue.trim(),
+      disabled: busy || (!editValue.trim() && editAttachments.length === 0),
     },
-  ], [busy, editValue, handleCancelEdit, handleConfirmEdit, t]);
+  ], [busy, editAttachments.length, editValue, handleCancelEdit, handleConfirmEdit, t]);
   const standardMessageActions = useMessageFooterActions({
     messageId: message.id,
     sessionPath,
@@ -179,15 +245,27 @@ export const UserMessage = memo(function UserMessage({
     isStreaming: isStreaming || busy,
   });
   const messageActions = readOnly || editing ? [] : standardMessageActions;
-  const editActions: MessageFooterAction[] = useMemo(() => canEdit ? [
-    {
+  const editActions: MessageFooterAction[] = useMemo(() => {
+    if (!canEdit) return [];
+    const actions: MessageFooterAction[] = [];
+    if (failedSend) {
+      actions.push({
+        id: 'resend',
+        title: t('chat.resend'),
+        icon: <ResendIcon />,
+        onClick: () => handleResendFailed(),
+        disabled: isStreaming || busy,
+      });
+    }
+    actions.push({
       id: 'edit',
       title: t('common.edit'),
       icon: <EditIcon />,
       onClick: () => handleEdit(),
       disabled: isStreaming || busy,
-    },
-  ] : [], [busy, canEdit, handleEdit, isStreaming, t]);
+    });
+    return actions;
+  }, [busy, canEdit, failedSend, handleEdit, handleResendFailed, isStreaming, t]);
   const footerActions = editing ? editingActions : [...nodeActions, ...editActions];
   const hasSkillBadges = !!message.skills?.length;
   const hasTextBubble = editing || !!message.textHtml || hasSkillBadges;
@@ -195,7 +273,8 @@ export const UserMessage = memo(function UserMessage({
   return (
     <div className={`${styles.messageGroup} ${styles.messageGroupUser}${isSelected ? ` ${styles.messageGroupSelected}` : ''}`}
          ref={messageRef}
-         data-message-id={message.id}>
+         data-message-id={message.id}
+         data-send-status={message.sendStatus || undefined}>
       {showAvatar && !hideIdentity && (
         <div className={`${styles.avatarRow} ${styles.avatarRowUser}`}>
           <span className={styles.avatarName}>{userName}</span>
@@ -214,14 +293,23 @@ export const UserMessage = memo(function UserMessage({
           />
         </div>
       )}
-      {message.attachments && message.attachments.length > 0 && (
+      {editing && editAttachments.length > 0 ? (
+        <div className={styles.userEditAttachments}>
+          <AttachedFilesBar
+            files={editAttachments}
+            onRemove={(index) => {
+              setEditAttachments((current) => current.filter((_, itemIndex) => itemIndex !== index));
+            }}
+          />
+        </div>
+      ) : !editing && message.attachments && message.attachments.length > 0 ? (
         <UserAttachmentsView
           attachments={message.attachments}
           deskContext={message.deskContext}
           sessionPath={sessionPath}
           messageId={message.id}
         />
-      )}
+      ) : null}
       {hasTextBubble && (
         <div className={`${styles.message} ${styles.messageUser}${editing ? ` ${styles.messageUserEditing}` : ''}`}>
           {message.skills && message.skills.length > 0 && message.skills.map(skillName => (
@@ -239,6 +327,7 @@ export const UserMessage = memo(function UserMessage({
               className={styles.userEditTextarea}
               value={editValue}
               onChange={(e) => setEditValue(e.target.value)}
+              onPaste={(e) => { void handleEditPaste(e); }}
               onKeyDown={(e) => {
                 if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
                   e.preventDefault();
@@ -256,6 +345,9 @@ export const UserMessage = memo(function UserMessage({
             message.textHtml && <MarkdownContent html={message.textHtml} linkContext={{ origin: 'session', sessionPath, messageId: message.id }} />
           )}
         </div>
+      )}
+      {failedSend && !editing && (
+        <div className={styles.messageSendFailed}>{t('chat.sendFailed')}</div>
       )}
       {message.agentReview && <AgentReviewCard review={message.agentReview} />}
       {message.agentReviewRequest && <AgentReviewRequestCard request={message.agentReviewRequest} />}
@@ -367,6 +459,15 @@ const UserAttachmentsView = memo(function UserAttachmentsView({ attachments, des
             icon={att.isDir ? <FolderIcon /> : <FileKindIcon kind={kindOfFileName(att.name || att.path, att.mimeType)} size={14} />}
             name={expired ? `${att.name} · ${expiredLabel}` : att.name}
             variant={expired ? 'expired' : 'normal'}
+            onOpen={expired || att.isDir || !att.path ? undefined : () => {
+              void openAttachmentFile(att.path, att.name, {
+                origin: 'session',
+                sessionPath,
+                messageId,
+                fileId: att.fileId,
+              });
+            }}
+            openLabel={expired || att.isDir || !att.path ? undefined : t('input.previewAttachment', { name: att.name })}
           />
         );
       })}
@@ -406,6 +507,15 @@ function CheckIcon() {
   return (
     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
+    </svg>
+  );
+}
+
+function ResendIcon() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="1 4 1 10 7 10" />
+      <path d="M3.51 15a9 9 0 1 0 .49-4.5" />
     </svg>
   );
 }

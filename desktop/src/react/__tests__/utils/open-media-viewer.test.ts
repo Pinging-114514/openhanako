@@ -3,7 +3,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { useStore } from '../../stores';
-import { openMediaViewerFromContext, openMediaViewerForRef } from '../../utils/open-media-viewer';
+import { openMediaViewerFromContext, openMediaViewerForRef, openMediaViewerForInputAttachments } from '../../utils/open-media-viewer';
 
 describe('openMediaViewerFromContext', () => {
   beforeEach(() => {
@@ -261,5 +261,29 @@ describe('openMediaViewerFromContext', () => {
     const mv = useStore.getState().mediaViewer;
     expect(mv!.files.length).toBe(2);
     expect(mv!.currentId).toBe('sess:/s/1:m2:block:0:screenshot');
+  });
+
+  it('openMediaViewerForInputAttachments: 用当前输入附件组成预览序列', () => {
+    openMediaViewerForInputAttachments([
+      { path: '/tmp/a.png', name: 'a.png', mimeType: 'image/png' },
+      { path: '/tmp/note.txt', name: 'note.txt', mimeType: 'text/plain' },
+      { path: '/tmp/b.png', name: 'b.png', mimeType: 'image/png' },
+    ], { path: '/tmp/b.png', name: 'b.png' });
+
+    const mv = useStore.getState().mediaViewer;
+    expect(mv!.files.map(f => f.name)).toEqual(['a.png', 'b.png']);
+    expect(mv!.currentId).toBe('input-att:2:/tmp/b.png');
+    expect(mv!.origin).toBe('desk');
+  });
+
+  it('openMediaViewerForInputAttachments: 无 path 的粘贴图走 inlineData', () => {
+    openMediaViewerForInputAttachments([
+      { path: 'clip-1', name: 'clipboard.png', base64Data: 'QUJD', mimeType: 'image/png' },
+    ], { path: 'clip-1', name: 'clipboard.png' });
+
+    const mv = useStore.getState().mediaViewer;
+    expect(mv!.files).toHaveLength(1);
+    expect(mv!.files[0].inlineData).toEqual({ base64: 'QUJD', mimeType: 'image/png' });
+    expect(mv!.currentId).toBe('input-att:0:clip-1');
   });
 });

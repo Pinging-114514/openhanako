@@ -152,6 +152,9 @@ function normalizeThread(threadId, record: any = {}, existing = null) {
     kind,
     status,
     lastRunStatus: normalizeRunStatus(record.lastRunStatus || record.runStatus, existing?.lastRunStatus || "pending"),
+    lastRunTaskId: Object.prototype.hasOwnProperty.call(record, 'lastRunTaskId')
+      ? pickString(record.lastRunTaskId)
+      : existing?.lastRunTaskId || null,
     parentSessionId: pickString(record.parentSessionId) || existing?.parentSessionId || null,
     parentSessionPath: pickString(record.parentSessionPath) || existing?.parentSessionPath || null,
     parentTaskId: pickString(record.parentTaskId) || existing?.parentTaskId || null,
@@ -222,6 +225,7 @@ export class SubagentThreadStore {
       parentSessionId: this._parentSessionIdFromRecord(record, existing),
       status: "open",
       lastRunStatus: "pending",
+      lastRunTaskId: pickString(record.taskId) || pickString(record.lastRunTaskId),
       runCount: (existing?.runCount || 0) + 1,
       lastRunAt: nowIso(),
       closedAt: null,

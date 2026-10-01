@@ -20,6 +20,7 @@ import {
   type StreamBufferSnapshot,
 } from '../stores/stream-invalidator';
 import { bumpMessageLiveVersion } from '../stores/message-live-version';
+import { isSessionCronCheck } from '../stores/session-cron-check';
 import { scheduleTurnUsageBackfill } from '../utils/turn-usage-backfill';
 
 /* eslint-disable @typescript-eslint/no-explicit-any -- 流式消息 handle(msg) 接收动态 JSON */
@@ -312,6 +313,7 @@ class StreamBufferManager {
     }
     const sessionId = normalizeSessionId(msg.sessionId);
     const buf = this.getBuffer(sessionPath, sessionId);
+    if (isSessionCronCheck(sessionPath) && msg.type !== 'turn_end') return;
 
     switch (msg.type) {
       case 'text_delta':

@@ -167,6 +167,43 @@ describe("session thinking level capabilities", () => {
     expect(normalizeThinkingLevelForModel("xhigh", model)).toBe("xhigh");
   });
 
+  it.each([undefined, false])("preserves resolved provider levels without a user-saved marker (%s)", (thinkingLevelsUserSaved) => {
+    const levels = ["low", "medium", "high", "xhigh"];
+    const model = {
+      id: "gpt-6-astra",
+      provider: "tokyo-bps",
+      thinkingLevels: levels,
+      thinkingLevelsUserSaved,
+      thinkingLevelMap: { xhigh: "xhigh" },
+      defaultThinkingLevel: "medium",
+    };
+
+    expect(getModelThinkingLevels(model)).toEqual(levels);
+    expect(modelSupportsMax(model)).toBe(false);
+    expect(normalizeThinkingLevelForModel("max", model)).toBe("xhigh");
+    expect(getModelThinkingLevels({ id: model.id, provider: "openai-codex" })).toContain("max");
+  });
+
+  it("uses the reference card only when no resolved thinking levels are supplied", () => {
+    expect(getModelThinkingLevels({
+      id: "gpt-6-astra",
+      provider: "anyrouter",
+    })).toEqual(["low", "medium", "high", "xhigh", "max"]);
+
+    expect(getModelThinkingLevels({
+      id: "gpt-6-astra",
+      provider: "anyrouter",
+      thinkingLevels: ["off", "medium", "high"],
+    })).toEqual(["off", "medium", "high"]);
+
+    expect(getModelThinkingLevels({
+      id: "gpt-6-astra",
+      provider: "anyrouter",
+      thinkingLevels: ["high"],
+      thinkingLevelsUserSaved: true,
+    })).toEqual(["high"]);
+  });
+
   it("declares DeepSeek's official three-tier ladder (off/low/high/max) for V4 models, dropping the unsupported medium", () => {
     const model = {
       id: "deepseek-v4-flash",

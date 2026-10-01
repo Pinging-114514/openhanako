@@ -1,5 +1,6 @@
 import knownModelFallbacks from '../../../../lib/known-model-fallbacks.json';
 import knownModels from '../../../../lib/known-models.json';
+import { lookupReferenceMetadata } from '../../../../shared/model-reference-lookup.ts';
 
 export interface ModelReferenceMeta {
   name?: string;
@@ -26,38 +27,10 @@ function normalizeMeta(value: unknown): ModelReferenceMeta | null {
 }
 
 export function lookupReferenceModelMeta(modelId: string, provider?: string): ModelReferenceMeta | null {
-  if (!modelId) return null;
-  const dict = knownModels as Record<string, unknown>;
-  const fallbacks = knownModelFallbacks as Record<string, unknown>;
-  const bare = modelId.includes('/') ? modelId.split('/').pop() || '' : '';
-
-  if (provider) {
-    const providerModels = dict[provider];
-    if (isRecord(providerModels)) {
-      const exact = normalizeMeta(providerModels[modelId]);
-      if (exact) return exact;
-      if (bare) {
-        const bareHit = normalizeMeta(providerModels[bare]);
-        if (bareHit) return bareHit;
-      }
-    }
-  }
-
-  const fallback = normalizeMeta(fallbacks[modelId]);
-  if (fallback) return fallback;
-  if (bare) {
-    const bareFallback = normalizeMeta(fallbacks[bare]);
-    if (bareFallback) return bareFallback;
-  }
-
-  for (const [key, value] of Object.entries(dict)) {
-    if (key === '_comment' || !isRecord(value)) continue;
-    const hit = normalizeMeta(value[modelId]);
-    if (hit) return hit;
-    if (bare) {
-      const bareHit = normalizeMeta(value[bare]);
-      if (bareHit) return bareHit;
-    }
-  }
-  return null;
+  return normalizeMeta(lookupReferenceMetadata(
+    knownModels as Record<string, unknown>,
+    knownModelFallbacks as Record<string, unknown>,
+    provider,
+    modelId,
+  ));
 }

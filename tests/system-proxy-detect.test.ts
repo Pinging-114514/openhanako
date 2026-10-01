@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   currentEnvProxyFingerprint,
+  effectiveSystemProxy,
   fingerprintSystemProxy,
   parseMacScutilProxy,
   parsePacFirstHop,
@@ -107,5 +108,57 @@ describe("system proxy sync", () => {
     expect(applied).toEqual(["system"]);
     await expect(syncer.sync()).resolves.toBe(false);
     syncer.stop();
+  });
+
+  it.each([
+    ["socks only", "socks=127.0.0.1:7891"],
+    ["mixed http and socks", "http=127.0.0.1:7890;https=127.0.0.1:7890;socks=127.0.0.1:7891"],
+  ])("does not reapply an unchanged %s mapping", async (_label, server) => {
+    const env: Record<string, string | undefined> = {};
+    const detected = urlsFromWindowsProxyServer(server);
+    const apply = vi.fn();
+    const syncer = startSystemProxySync({
+      getMode: () => "system",
+      apply,
+      env,
+      intervalMs: 60_000,
+      detect: async () => detected,
+    });
+    try {
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      expect(fingerprintSystemProxy(effectiveSystemProxy(detected))).toBe(currentEnvProxyFingerprint(env));
+      const before = { ...env };
+      await expect(syncer.sync()).resolves.toBe(false);
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(env).toEqual(before);
+    } finally {
+      syncer.stop();
+    }
+  });
+
+  it("applies again when the effective http proxy changes and ignores a socks-only change beside it", async () => {
+    const env: Record<string, string | undefined> = {};
+    let server = "http=127.0.0.1:7890;https=127.0.0.1:7890;socks=127.0.0.1:7891";
+    const apply = vi.fn();
+    const syncer = startSystemProxySync({
+      getMode: () => "system",
+      apply,
+      env,
+      intervalMs: 60_000,
+      detect: async () => urlsFromWindowsProxyServer(server),
+    });
+    try {
+      await vi.waitFor(() => expect(apply).toHaveBeenCalledTimes(1));
+      server = "http=127.0.0.1:7890;https=127.0.0.1:7890;socks=127.0.0.1:7999";
+      await expect(syncer.sync()).resolves.toBe(false);
+      expect(apply).toHaveBeenCalledTimes(1);
+      expect(env.HTTP_PROXY).toBe("http://127.0.0.1:7890");
+      server = "http=127.0.0.1:7892;https=127.0.0.1:7892;socks=127.0.0.1:7999";
+      await expect(syncer.sync()).resolves.toBe(true);
+      expect(apply).toHaveBeenCalledTimes(2);
+      expect(env.HTTP_PROXY).toBe("http://127.0.0.1:7892");
+    } finally {
+      syncer.stop();
+    }
   });
 });

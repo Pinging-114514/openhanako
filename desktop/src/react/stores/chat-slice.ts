@@ -29,6 +29,8 @@ export interface ChatSlice {
   appendOptimisticUserMessage: (path: string, message: ChatMessage) => void;
   confirmOptimisticUserMessage: (path: string, clientMessageId: string, message: ChatMessage) => boolean;
   markOptimisticUserMessageFailed: (path: string, clientMessageId: string, error: string) => boolean;
+  failPendingOptimisticUserMessages: (path: string, error: string) => string[];
+  removeOptimisticUserMessages: (path: string, clientMessageIds: string[]) => boolean;
   updateLastMessage: (path: string, updater: (msg: ChatMessage) => ChatMessage) => void;
   updateMessageById: (path: string, messageId: string, updater: (msg: ChatMessage) => ChatMessage) => boolean;
   bindPersistedTurnEntries: (path: string, entries: {
@@ -112,11 +114,21 @@ export const createChatSlice = (
     const sessions = { ...s.chatSessions };
     const registryFiles = { ...s.sessionRegistryFilesByPath };
     const scrollPositions = { ...s.scrollPositions };
+    const existing = sessions[key] || sessions[path];
+    const incomingIds = new Set(
+      items
+        .filter((item): item is { type: 'message'; data: ChatMessage } => item.type === 'message')
+        .map((item) => item.data.id),
+    );
+    const preserved = (existing?.items || []).filter((item) => (
+      isUnpersistedOptimisticUserItem(item) && !incomingIds.has(item.data.id)
+    ));
+    const nextItems = preserved.length ? [...items, ...preserved] : items;
     sessions[key] = {
-      items,
+      items: nextItems,
       hasMore,
       loadingMore: false,
-      oldestId: firstMessageId(items),
+      oldestId: firstMessageId(nextItems),
       revision,
     };
     if (key !== path) delete sessions[path];
@@ -249,6 +261,62 @@ export const createChatSlice = (
     });
     if (consumed) bumpMessageLiveVersion(path);
     return consumed;
+  },
+
+  failPendingOptimisticUserMessages: (path, error) => {
+    const ids: string[] = [];
+    set((s) => {
+      const session = scopedMapValue<SessionMessages>(s as any, s.chatSessions, path);
+      if (!session) return {};
+      let changed = false;
+      const items = session.items.map((item) => {
+        if (item.type !== 'message' || item.data.role !== 'user') return item;
+        if (item.data.sendStatus !== 'pending' || item.data.sourceEntryId) return item;
+        changed = true;
+        ids.push(item.data.id);
+        return {
+          type: 'message' as const,
+          data: {
+            ...item.data,
+            sendStatus: 'failed' as const,
+            sendError: error,
+          },
+        };
+      });
+      if (!changed) return {};
+      return {
+        chatSessions: putScopedMapValue(s as any, s.chatSessions, path, { ...session, items }),
+      };
+    });
+    if (ids.length) bumpMessageLiveVersion(path);
+    return ids;
+  },
+
+  removeOptimisticUserMessages: (path, clientMessageIds) => {
+    const idSet = new Set(clientMessageIds.filter(Boolean));
+    if (idSet.size === 0) return false;
+    let removed = false;
+    set((s) => {
+      const session = scopedMapValue<SessionMessages>(s as any, s.chatSessions, path);
+      if (!session) return {};
+      const items = session.items.filter((item) => {
+        if (item.type !== 'message' || item.data.role !== 'user') return true;
+        if (!idSet.has(item.data.id)) return true;
+        if (item.data.sourceEntryId) return true;
+        removed = true;
+        return false;
+      });
+      if (!removed) return {};
+      return {
+        chatSessions: putScopedMapValue(s as any, s.chatSessions, path, {
+          ...session,
+          items,
+          oldestId: firstMessageId(items),
+        }),
+      };
+    });
+    if (removed) bumpMessageLiveVersion(path);
+    return removed;
   },
 
   updateLastMessage: (path, updater) => set((s) => {
@@ -699,6 +767,15 @@ function registryFileKey(file: SessionRegistryFile): string | null {
   if (fileId) return `id:${fileId}`;
   const filePath = file.filePath || file.realPath;
   return filePath ? `path:${filePath}` : null;
+}
+
+export function isUnpersistedOptimisticUserItem(
+  item: ChatListItem,
+): item is { type: 'message'; data: ChatMessage } {
+  return item.type === 'message'
+    && item.data.role === 'user'
+    && !item.data.sourceEntryId
+    && (item.data.sendStatus === 'pending' || item.data.sendStatus === 'failed');
 }
 
 function firstMessageId(items: ChatListItem[]): string | undefined {

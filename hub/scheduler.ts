@@ -12,6 +12,7 @@ import fs from "fs";
 import path from "path";
 import { createHeartbeat } from "../lib/desk/heartbeat.ts";
 import { createCronScheduler } from "../lib/desk/cron-scheduler.ts";
+import { buildSessionCronWakeMessage } from "../lib/desk/session-cron-wake.ts";
 import { getAutomationExecutor } from "../lib/desk/automation-executors.ts";
 import {
   automationExecutionScopeKey,
@@ -254,8 +255,8 @@ export class Scheduler {
     ) {
       throw new Error(`cron job ${job.id} execution context does not match its actor`);
     }
-    await this._executeCronJobForAgent(actorAgentId, job, executor);
-    return { executorKind: "agent_session" };
+    const result = await this._executeCronJobForAgent(actorAgentId, job, executor);
+    return result || { executorKind: "agent_session" };
   }
 
   /**
@@ -273,10 +274,81 @@ export class Scheduler {
     }
     const ac = new AbortController();
     this._executingJobs.set(executionKey, ac);
+    let cronCheck: { jobId: string; wakeId: string } | null = null;
+    let cronSessionPath: string | null = null;
+    const emitCron = (payload) => {
+      if (!cronSessionPath || typeof this._engine.emitSessionEventForPath !== "function") return;
+      this._engine.emitSessionEventForPath(payload, cronSessionPath);
+    };
     try {
       const isZh = getLocale().startsWith("zh");
       const promptBody = executor.prompt || job.prompt || "";
       const model = executor.model || job.model || undefined;
+      const executionOptions = this._cronExecutionOptions(job, executor);
+      const sourceSessionPath = executionOptions.parentSessionPath || null;
+      if (sourceSessionPath && typeof this._engine.deliverCustomMessage === "function") {
+        const rawContext = job?.executionContext || executor?.executionContext || {};
+        const storedAnchor = typeof rawContext.anchorEntryId === "string" ? rawContext.anchorEntryId : null;
+        let previousConclusion = "";
+        let anchorEntryId = storedAnchor;
+        if (typeof this._engine.prepareSessionCronWake === "function") {
+          const prepared = await this._engine.prepareSessionCronWake(sourceSessionPath, {
+            jobId: job.id,
+            anchorEntryId: storedAnchor,
+          });
+          previousConclusion = typeof prepared?.previousConclusion === "string" ? prepared.previousConclusion : "";
+          if (typeof prepared?.anchorEntryId === "string" && prepared.anchorEntryId) {
+            anchorEntryId = prepared.anchorEntryId;
+          }
+        }
+        const wakeLabel = isZh
+          ? `定时 · ${job.label || job.id}`
+          : `Scheduled · ${job.label || job.id}`;
+        const wakeId = `${job.id}:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
+        cronSessionPath = sourceSessionPath;
+        const delivered = await this._engine.deliverCustomMessage(
+          sourceSessionPath,
+          buildSessionCronWakeMessage(job, promptBody, isZh, {
+            previousConclusion,
+            anchorEntryId,
+          }),
+          {
+            triggerTurn: true,
+            beforeInputSideEffects: () => {
+              if (cronCheck) return;
+              cronCheck = { jobId: String(job.id), wakeId };
+              emitCron({
+                type: "session_cron_checking",
+                label: wakeLabel,
+                jobId: job.id,
+                wakeId,
+                anchorEntryId,
+                holdStream: true,
+              });
+            },
+          },
+        );
+        if (delivered?.mode === "followUp") {
+          if (cronCheck) {
+            emitCron({
+              type: "session_cron_rotated",
+              jobId: cronCheck.jobId,
+              wakeId: cronCheck.wakeId,
+              preserveClientState: true,
+            });
+            cronCheck = null;
+          }
+          return {
+            executorKind: "source_session",
+            sessionPath: sourceSessionPath,
+            queued: true,
+          };
+        }
+        return {
+          executorKind: "source_session",
+          sessionPath: sourceSessionPath,
+        };
+      }
       const prompt = isZh
         ? [
             `[定时任务 ${job.id}: ${job.label}]`,
@@ -297,9 +369,17 @@ export class Scheduler {
       await this._executeActivityForAgent(agentId, prompt, "cron", job.label, {
         model,
         signal: ac.signal,
-        ...this._cronExecutionOptions(job, executor),
+        ...executionOptions,
       });
     } finally {
+      if (cronCheck) {
+        emitCron({
+          type: "session_cron_rotated",
+          jobId: cronCheck.jobId,
+          wakeId: cronCheck.wakeId,
+        });
+        cronCheck = null;
+      }
       this._executingJobs.delete(executionKey);
     }
   }

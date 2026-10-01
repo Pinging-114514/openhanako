@@ -30,5 +30,6 @@ export interface CronJob {
   createdAt?: string;
   model?: string | ModelRef;
   actorAgentId?: string;
+  executionContext?: { sourceSessionId?: string | null };
   executor?: AutomationExecutor;
 }

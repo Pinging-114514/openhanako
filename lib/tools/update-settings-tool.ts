@@ -10,7 +10,7 @@ import { Type, StringEnum } from "../pi-sdk/index.ts";
 import { t } from "../i18n.ts";
 import themeRegistry from "../../desktop/src/shared/theme-registry.cjs";
 import { parseModelRef } from "../../shared/model-ref.ts";
-import { CODEX_SERVICE_TIERS } from "../../shared/codex-service-tier.ts";
+import { CODEX_SERVICE_TIERS, normalizeCodexServiceTier } from "../../shared/codex-service-tier.ts";
 import { emitAppEvent } from "../../server/app-events.ts";
 import {
   migrateLegacyEditableFacts,
@@ -50,6 +50,68 @@ const CODEX_SPEED_I18N = {
   fast: "settings.api.codexSpeed.fast",
   ultrafast: "settings.api.codexSpeed.ultrafast",
 };
+
+const CODEX_SPEED_BASE_TERMS = ["speed", "fast", "priority", "service tier", "速度", "快速", "codex"];
+
+function readCodexSpeedState(engine) {
+  if (typeof engine?.getCodexServiceTierState === "function") {
+    const status = engine.getCodexServiceTierState();
+    if (status && typeof status === "object") return status;
+  }
+  if (typeof engine?.getCodexServiceTierStatus === "function") {
+    const status = engine.getCodexServiceTierStatus();
+    if (status && typeof status === "object") return status;
+  }
+  return null;
+}
+
+function readCodexSpeedEligibility(engine): boolean {
+  const status = readCodexSpeedState(engine);
+  if (status && typeof status.ultrafastEligible === "boolean") {
+    return status.ultrafastEligible === true;
+  }
+  if (typeof engine?.getCodexUltrafastEligible === "function") {
+    return engine.getCodexUltrafastEligible() === true;
+  }
+  return false;
+}
+
+function codexSpeedChoices(engine): string[] {
+  if (!readCodexSpeedEligibility(engine)) return ["standard", "fast"];
+  return [...CODEX_SERVICE_TIERS];
+}
+
+function codexSpeedOptionLabels(engine) {
+  const labels = i18nLabels(CODEX_SPEED_I18N);
+  if (!readCodexSpeedEligibility(engine)) {
+    const { ultrafast: _hidden, ...rest } = labels;
+    return rest;
+  }
+  return labels;
+}
+
+function readCodexSpeedValue(engine) {
+  const status = readCodexSpeedState(engine);
+  const raw = status && typeof status.tier === "string"
+    ? status.tier
+    : engine?.getCodexServiceTier?.();
+  const normalized = normalizeCodexServiceTier(raw || "standard");
+  if (normalized === "ultrafast" && !readCodexSpeedEligibility(engine)) return "fast";
+  return normalized;
+}
+
+const CODEX_SPEED_QUERY_NEEDLES = ["speed", "fast", "ultra", "priority", "service tier", "codex", "速度", "快速", "超快", "加速"];
+
+function codexSpeedQuery(query) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q) return false;
+  return CODEX_SPEED_QUERY_NEEDLES.some((needle) => q.includes(needle));
+}
+
+async function refreshCodexSpeedEntitlement(engine) {
+  if (typeof engine?.refreshCodexServiceEntitlement !== "function") return;
+  await engine.refreshCodexServiceEntitlement();
+}
 
 const LOCALE_LABELS = {
   "zh-CN": "简体中文", "zh-TW": "繁體中文", "ja": "日本語", "ko": "한국어", "en": "English",
@@ -228,15 +290,30 @@ const SETTINGS_REGISTRY = {
     type: "list",
     get label() { return t("toolDef.updateSettings.codexSpeed"); },
     get description() { return t("toolDef.updateSettings.codexSpeedDesc"); },
-    options: [...CODEX_SERVICE_TIERS],
-    get optionLabels() { return i18nLabels(CODEX_SPEED_I18N); },
-    searchTerms: ["speed", "fast", "ultrafast", "priority", "service tier", "速度", "快速", "超快", "codex"],
-    get: (engine, _agent) => engine.getCodexServiceTier?.() || "standard",
+    optionsFrom: "codexServiceTiers",
+    searchTermsFor(engine) {
+      const terms = [...CODEX_SPEED_BASE_TERMS];
+      if (readCodexSpeedEligibility(engine)) terms.push("ultrafast", "超快");
+      return terms;
+    },
+    get: (engine, _agent) => readCodexSpeedValue(engine),
     apply: (engine, _agent, v) => {
       if (typeof engine.setCodexServiceTier !== "function") {
         throw new Error("Codex speed preferences are not available");
       }
-      return engine.setCodexServiceTier(v);
+      const allowed = codexSpeedChoices(engine);
+      const normalized = normalizeCodexServiceTier(v);
+      if (!allowed.includes(normalized) || (String(v).trim().toLowerCase() === "ultrafast" && !allowed.includes("ultrafast"))) {
+        throw new Error(`Codex speed must be one of ${allowed.join(", ")}`);
+      }
+      try {
+        return engine.setCodexServiceTier(normalized);
+      } catch (err) {
+        if (!codexSpeedChoices(engine).includes("ultrafast")) {
+          throw new Error("Codex speed must be one of standard, fast");
+        }
+        throw err;
+      }
     },
   },
   "memory.enabled": {
@@ -359,10 +436,16 @@ const SETTINGS_REGISTRY = {
 
 // ── 搜索 ──
 
+function resolveSearchTerms(reg, engine) {
+  if (typeof reg.searchTermsFor === "function") return reg.searchTermsFor(engine);
+  return reg.searchTerms || [];
+}
+
 function resolveOptions(reg, engine) {
   if (reg.optionsFrom === "availableModels") {
     return (engine.availableModels || []).map(m => `${m.provider}/${m.id}`);
   }
+  if (reg.optionsFrom === "codexServiceTiers") return codexSpeedChoices(engine);
   return reg.options || null;
 }
 
@@ -372,6 +455,7 @@ function resolveOptionLabels(reg, engine) {
       (engine.availableModels || []).map(m => [`${m.provider}/${m.id}`, m.name || m.id]),
     );
   }
+  if (reg.optionsFrom === "codexServiceTiers") return codexSpeedOptionLabels(engine);
   return reg.optionLabels || null;
 }
 
@@ -393,7 +477,7 @@ function searchSettings(query, engine) {
     const optionLabels = resolveOptionLabels(reg, engine);
     const haystack = [
       key, reg.label, reg.description || "",
-      ...(reg.searchTerms || []),
+      ...resolveSearchTerms(reg, engine),
       ...(options || []),
       ...Object.keys(optionLabels || {}),
       ...Object.values(optionLabels || {}),
@@ -583,6 +667,13 @@ export function createUpdateSettingsTool(deps: Record<string, any> = {}) {
           if (!engine) {
             return { content: [{ type: "text", text: t("error.settingsNotReady") }] };
           }
+          if (codexSpeedQuery(query)) {
+            try {
+              await refreshCodexSpeedEntitlement(engine);
+            } catch {
+              // A failed account check stays ineligible. Search can still list the base tiers.
+            }
+          }
           const results = searchSettings(query, engine);
           if (results.length === 0) {
             return { content: [{ type: "text", text: t("toolDef.updateSettings.searchNoResults", { query }) }] };
@@ -624,6 +715,16 @@ export function createUpdateSettingsTool(deps: Record<string, any> = {}) {
             return { content: [{ type: "text", text: t("error.settingsNoAgent") }] };
           }
 
+          if (key === "codex_speed") {
+            try {
+              await refreshCodexSpeedEntitlement(engine);
+            } catch (err) {
+              if (String(value || "").trim().toLowerCase() === "ultrafast") {
+                return { content: [{ type: "text", text: err?.message || "Codex speed entitlement could not be verified" }] };
+              }
+            }
+          }
+
           // 读取当前值
           const currentValue = reg.get(engine, targetAgent);
 
@@ -639,6 +740,9 @@ export function createUpdateSettingsTool(deps: Record<string, any> = {}) {
           if (reg.type === "list" && options?.length && !options.includes(value)) {
             const ol = resolveOptionLabels(reg, engine);
             const optList = formatOptionList(options, ol);
+            if (key === "codex_speed") {
+              return { content: [{ type: "text", text: `Codex speed must be one of ${optList}` }] };
+            }
             return { content: [{ type: "text", text: t("error.settingsInvalidValue", { value, options: optList }) }] };
           }
 

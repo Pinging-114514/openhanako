@@ -16,7 +16,7 @@
  *   });
  */
 
-import { inspectLeadingInternalMoodOpener } from "../shared/internal-mood-block.ts";
+import { findInternalMoodOpener, internalMoodOpenerHoldLength } from "../shared/internal-mood-block.ts";
 
 /** 检查 buffer 末尾是否是 target 的前缀（1..target.length-1 个字符），返回匹配长度 */
 function trailingPrefixLen(buffer, target) {
@@ -95,24 +95,25 @@ export class MoodParser {
           continue;
         }
 
-        const inspection = inspectLeadingInternalMoodOpener(this.buffer);
-        if (inspection.kind === "open") {
-          if (inspection.prefix) emit({ type: "text", data: inspection.prefix });
+        const opener = findInternalMoodOpener(this.buffer);
+        if (opener) {
+          if (opener.prefix) emit({ type: "text", data: opener.prefix });
           emit({ type: "mood_start" });
           this.inMood = true;
-          this._currentTag = inspection.tag;
-          this.buffer = inspection.remainder;
+          this._currentTag = opener.tag;
+          this.buffer = opener.remainder;
           continue;
         }
 
-        if (inspection.kind === "pending") {
-          if (inspection.prefix) emit({ type: "text", data: inspection.prefix });
-          this.buffer = inspection.pending;
+        const hold = internalMoodOpenerHoldLength(this.buffer);
+        if (hold > 0) {
+          const safe = this.buffer.slice(0, -hold);
+          if (safe) emit({ type: "text", data: safe });
+          this.buffer = this.buffer.slice(-hold);
           break;
         }
 
         emit({ type: "text", data: this.buffer });
-        if (this.buffer.trim().length > 0) this._allowOpenTag = false;
         this.buffer = "";
       } else {
         // 寻找对应的关闭标签

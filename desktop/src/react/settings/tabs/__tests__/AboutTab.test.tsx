@@ -236,6 +236,21 @@ describe('AboutTab', () => {
     expect(screen.queryByText('settings.about.updateCheckBtn')).toBeNull();
   });
 
+  it('distinguishes current content from the installed shell and its downloaded update', async () => {
+    const getAppVersion = vi.fn().mockResolvedValue('0.452.0');
+    const autoUpdateInstall = vi.fn();
+    installHana({ getAppVersion, autoUpdateInstall });
+    shellUpdateStateOverride = { status: 'downloaded', version: '0.453.0' };
+    trainOverride = { ...DEFAULT_TRAIN_OVERRIDE, currentVersion: '0.453.0', lastCheckedAt: '2026-09-29T10:00:00.000Z' };
+    render(<AboutTab />);
+    expect(screen.getByText('settings.about.contentVersionLabel')).toBeTruthy();
+    expect(screen.getByText('settings.about.updateLatestCheckedAt')).toBeTruthy();
+    expect(await screen.findByText('v0.452.0')).toBeTruthy();
+    expect(screen.getByText('settings.about.shellVersionLabel')).toBeTruthy();
+    expect(screen.getAllByText('v0.453.0')).toHaveLength(2);
+    expect(autoUpdateInstall).not.toHaveBeenCalled();
+  });
+
   it('lastError: shows the error text with a retry button that calls checkNow', () => {
     const autoUpdateCheck = vi.fn();
     installHana({ autoUpdateCheck });

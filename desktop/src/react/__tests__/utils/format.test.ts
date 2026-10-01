@@ -136,6 +136,13 @@ describe('parseMoodFromContent (format.ts)', () => {
     expect(parseMoodFromContent(input)).toEqual({ mood: null, text: input });
   });
 
+  it('正文之后单独成行的 mood 会收进卡片', () => {
+    expect(parseMoodFromContent('改好了。\n\n<mood>\nVibe\n</mood>\n后文')).toEqual({
+      mood: 'Vibe',
+      text: '改好了。\n\n后文',
+    });
+  });
+
   it('解析 BOM/空白后的单个开头块并保留后续标签字面量', () => {
     expect(parseMoodFromContent('\uFEFF \n<pulse>inside</pulse>\nafter <mood>literal</mood>')).toEqual({
       mood: 'inside',

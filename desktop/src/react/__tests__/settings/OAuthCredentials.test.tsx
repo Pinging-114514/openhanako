@@ -147,7 +147,11 @@ describe('OAuthCredentials', () => {
       />,
     );
     expect(screen.getByText(/settings.oauth.weeklyRemaining/)).toBeInTheDocument();
-    expect(mocks.hanaFetch.mock.calls.every(([path]) => String(path).includes('/accounts'))).toBe(true);
+    expect(mocks.hanaFetch.mock.calls.every(([path]) => {
+      const value = String(path);
+      return value.includes('/accounts') || value.includes('/preferences/codex-service-tier');
+    })).toBe(true);
+    expect(mocks.hanaFetch.mock.calls.some(([path]) => String(path).includes('/usage'))).toBe(false);
   });
 
   it('shows startup-cached Grok quota immediately without waiting for a usage request', () => {
@@ -448,5 +452,52 @@ describe('OAuthCredentials', () => {
     expect(screen.getByText(/settings.oauth.weeklyRemaining/)).toBeInTheDocument();
     expect(screen.getByText(/settings.oauth.weeklyRefreshFailed/)).toBeInTheDocument();
     expect(screen.queryByText(/settings.oauth.weeklyUnknown/)).not.toBeInTheDocument();
+  });
+
+  it('hides ultrafast for a normal Codex plan and shows it only when the flag is true', async () => {
+    mocks.hanaFetch.mockImplementation(async (url: unknown) => {
+      const value = String(url);
+      if (value.includes('/accounts')) return jsonResponse({ accounts: [] });
+      if (value.includes('/codex-service-tier')) {
+        return jsonResponse({
+          tier: 'fast',
+          preferredTier: 'ultrafast',
+          ultrafastEligible: false,
+          options: ['standard', 'fast', 'ultrafast'],
+        });
+      }
+      return jsonResponse({});
+    });
+    const view = render(
+      <OAuthCredentials
+        providerId="openai-codex-oauth"
+        summary={{ ...summary, logged_in: true }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+    const select = await screen.findByRole('combobox', { name: 'settings.oauth.codexSpeed' });
+    expect(select).not.toHaveTextContent('settings.api.codexSpeed.ultrafast');
+    view.unmount();
+
+    mocks.hanaFetch.mockImplementation(async (url: unknown) => {
+      const value = String(url);
+      if (value.includes('/accounts')) return jsonResponse({ accounts: [] });
+      if (value.includes('/codex-service-tier')) {
+        return jsonResponse({
+          tier: 'fast',
+          ultrafastEligible: true,
+          options: ['standard', 'fast', 'ultrafast'],
+        });
+      }
+      return jsonResponse({});
+    });
+    render(
+      <OAuthCredentials
+        providerId="openai-codex-oauth"
+        summary={{ ...summary, logged_in: true }}
+        onRefresh={vi.fn(async () => {})}
+      />,
+    );
+    expect(await screen.findByRole('option', { name: 'settings.api.codexSpeed.ultrafast' })).toBeInTheDocument();
   });
 });

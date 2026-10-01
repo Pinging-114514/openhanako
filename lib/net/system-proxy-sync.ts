@@ -1,6 +1,7 @@
 import {
   currentEnvProxyFingerprint,
   detectOsSystemProxy,
+  effectiveSystemProxy,
   fingerprintSystemProxy,
   stampDetectedProxyEnv,
 } from "./system-proxy-detect.ts";
@@ -23,7 +24,7 @@ export function startSystemProxySync(options: {
   const sync = async () => {
     if (stopped || options.getMode() !== "system") return false;
     const detected = await detect();
-    const next = fingerprintSystemProxy(detected);
+    const next = fingerprintSystemProxy(effectiveSystemProxy(detected));
     const current = currentEnvProxyFingerprint(env);
     if (next === current) return false;
     stampDetectedProxyEnv(detected, env);
