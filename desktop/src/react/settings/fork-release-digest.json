@@ -145,8 +145,8 @@
             "en": "Keep OAuth refresh and service-tier state scoped"
           },
           "summary": {
-            "zh": "旧快照不再复活已删账号或撤销切号，优先使用活槽新凭证；Ultrafast 同时检查当前账号权益与模型支持。",
-            "en": "Stale refresh snapshots no longer resurrect deleted accounts or undo switches. Prefer live credentials and gate Ultrafast by both current-account entitlement and model support."
+            "zh": "旧快照不再复活已删账号或撤销切号，优先使用活槽新凭证；Ultrafast 同时检查当前账号权益与模型支持。Grok 客户端标记升至 1.0.13，修复 426 版本拦截。",
+            "en": "Stale refresh snapshots no longer resurrect deleted accounts or undo switches. Prefer live credentials and gate Ultrafast by current-account entitlement and model support. Update the Grok client marker to 1.0.13 to fix HTTP 426 version rejection."
           },
           "details": [
             {

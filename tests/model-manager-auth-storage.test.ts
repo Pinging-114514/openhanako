@@ -114,7 +114,7 @@ describe("ModelManager AuthStorage ownership", () => {
     });
     expect(execution.headers).toEqual({
       "x-xai-token-auth": "xai-grok-cli",
-      "x-grok-client-version": "0.2.95",
+      "x-grok-client-version": "1.0.13",
       "x-grok-client-identifier": "hana",
       "x-grok-model-override": "grok-4.5",
     });

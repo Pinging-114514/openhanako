@@ -124,7 +124,7 @@ describe("ProviderRegistry chat projection plans", () => {
     ]));
     expect(plan?.config.headers).toEqual({
       "x-xai-token-auth": "xai-grok-cli",
-      "x-grok-client-version": "0.2.95",
+      "x-grok-client-version": "1.0.13",
       "x-grok-client-identifier": "hana",
     });
     expect(plan?.modelExecutionHeaders).toEqual({
@@ -155,7 +155,7 @@ describe("ProviderRegistry chat projection plans", () => {
           api: "openai-responses",
           headers: {
             "x-xai-token-auth": "xai-grok-cli",
-            "x-grok-client-version": "0.2.95",
+            "x-grok-client-version": "1.0.13",
             "x-grok-client-identifier": "hana",
           },
           oauth: expect.objectContaining({ name: "xAI Grok (OAuth)" }),

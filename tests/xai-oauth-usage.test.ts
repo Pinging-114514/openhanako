@@ -70,6 +70,7 @@ describe("fetchXaiOauthUsage", () => {
         headers: expect.objectContaining({
           Authorization: "Bearer grok-access",
           "x-xai-token-auth": "xai-grok-cli",
+          "x-grok-client-version": "1.0.13",
         }),
       }),
     );

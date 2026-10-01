@@ -8,11 +8,11 @@ import {
 
 describe("xai-oauth CLI proxy headers", () => {
   it("pins a client version above the 426 floor and identifies as hana", () => {
-    expect(GROK_CLI_CLIENT_VERSION).toBe("0.2.95");
+    expect(GROK_CLI_CLIENT_VERSION).toBe("1.0.13");
     expect(GROK_CLI_CLIENT_IDENTIFIER).toBe("hana");
     expect(buildXaiOauthCliProviderHeaders()).toEqual({
       "x-xai-token-auth": "xai-grok-cli",
-      "x-grok-client-version": "0.2.95",
+      "x-grok-client-version": "1.0.13",
       "x-grok-client-identifier": "hana",
     });
   });

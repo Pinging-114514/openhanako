@@ -1,13 +1,13 @@
 /**
  * Grok CLI chat-proxy request markers for xai-oauth.
  *
- * cli-chat-proxy.grok.com requires these headers (Cherry Studio / pi-grok-build
- * contract). Missing x-grok-client-version surfaces as HTTP 426 with version
- * "(none)". Floor from that error is >= 0.1.202; we pin near current
- * @xai-official/grok rather than Cherry's stale 0.2.16.
+ * cli-chat-proxy.grok.com requires these headers. On 2026-10-01, the same
+ * active OAuth credential returned HTTP 426 for 0.2.95 (minimum 1.0.13),
+ * and HTTP 200/completed for 1.0.13. Keep chat, billing, and native-search
+ * markers on this shared constant; future floor changes need a live probe.
  */
 
-export const GROK_CLI_CLIENT_VERSION = "0.2.95";
+export const GROK_CLI_CLIENT_VERSION = "1.0.13";
 export const GROK_CLI_CLIENT_IDENTIFIER = "hana";
 
 export function buildXaiOauthCliProviderHeaders(): Record<string, string> {

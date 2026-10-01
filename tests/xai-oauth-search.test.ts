@@ -1,11 +1,23 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
+  callXaiOauthNativeSearch,
   collectXaiSearchCitations,
   extractXaiSearchText,
   resultsFromXaiSearch,
 } from "../lib/tools/xai-oauth-search.ts";
 
 describe("xAI OAuth search mapping", () => {
+  it("uses the current shared CLI version for both native search request types", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ output_text: "test" }), { status: 200 }));
+    for (const toolType of ["web_search", "x_search"] as const) {
+      const result = await callXaiOauthNativeSearch({ toolType, prompt: "fixture query", accessToken: "fixture-access", fetchImpl });
+      expect(result.ok).toBe(true);
+      expect(fetchImpl).toHaveBeenLastCalledWith("https://cli-chat-proxy.grok.com/v1/responses", expect.objectContaining({
+        headers: expect.objectContaining({ "x-grok-client-version": "1.0.13", "x-xai-token-auth": "xai-grok-cli", Authorization: "Bearer fixture-access" }),
+      }));
+    }
+  });
+
   it("extracts output_text and citation URLs", () => {
     const data = {
       output_text: "Grok found two pages.",
